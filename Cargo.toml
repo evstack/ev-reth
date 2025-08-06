@@ -18,63 +18,63 @@ repository = "https://github.com/evstack/ev-reth"
 authors = ["Evolve Stack Contributors"]
 
 [workspace.dependencies]
-# Reth dependencies - Using the latest stable versions
-reth-chainspec = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
-reth-cli = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
-reth-cli-util = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
-reth-rpc-eth-api = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
-reth-node-api = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
-reth-node-builder = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
-reth-errors = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
-reth-optimism-node = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
-reth-optimism-cli = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
-reth-optimism-rpc = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
-reth-optimism-forks = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
-reth-optimism-chainspec = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
-reth-optimism-payload-builder = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
-reth-optimism-primitives = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
-reth-trie-db = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
-reth-trie-common = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
-reth-rpc-eth-types = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
-reth-primitives-traits = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
-reth-provider = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
-reth-storage-api = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
-reth-tracing = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
-reth-transaction-pool = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
-reth-network = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
-reth-network-types = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
-reth-chain-state = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
-reth-ethereum = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
-reth-ethereum-cli = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
-reth-basic-payload-builder = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
-reth-engine-local = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
-reth-engine-primitives = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
-reth-ethereum-payload-builder = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
-reth-ethereum-primitives = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
-reth-evm = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
-reth-evm-ethereum = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
-reth-execution-types = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
-reth-node-core = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
-reth-node-types = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
-reth-payload-builder = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
-reth-payload-builder-primitives = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
-reth-payload-primitives = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
-reth-primitives = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
-reth-revm = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
-reth-rpc-api = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
-reth-rpc-builder = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
-reth-rpc-engine-api = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0" }
+# Reth dependencies - Using altius-reth fork
+reth-chainspec = { path = "../altius-reth/crates/chainspec", default-features = false }
+reth-cli = { path = "../altius-reth/crates/cli/cli" }
+reth-cli-util = { path = "../altius-reth/crates/cli/util" }
+reth-rpc-eth-api = { path = "../altius-reth/crates/rpc/rpc-eth-api" }
+reth-node-api = { path = "../altius-reth/crates/node/api" }
+reth-node-builder = { path = "../altius-reth/crates/node/builder" }
+reth-errors = { path = "../altius-reth/crates/errors" }
+reth-optimism-node = { path = "../altius-reth/crates/optimism/node" }
+reth-optimism-cli = { path = "../altius-reth/crates/optimism/cli" }
+reth-optimism-rpc = { path = "../altius-reth/crates/optimism/rpc" }
+reth-optimism-forks = { path = "../altius-reth/crates/optimism/hardforks", default-features = false }
+reth-optimism-chainspec = { path = "../altius-reth/crates/optimism/chainspec", default-features = false }
+reth-optimism-payload-builder = { path = "../altius-reth/crates/optimism/payload" }
+reth-optimism-primitives = { path = "../altius-reth/crates/optimism/primitives", default-features = false }
+reth-trie-db = { path = "../altius-reth/crates/trie/db" }
+reth-trie-common = { path = "../altius-reth/crates/trie/common", default-features = false }
+reth-rpc-eth-types = { path = "../altius-reth/crates/rpc/rpc-eth-types", default-features = false }
+reth-primitives-traits = { path = "../altius-reth/crates/primitives-traits", default-features = false }
+reth-provider = { path = "../altius-reth/crates/storage/provider" }
+reth-storage-api = { path = "../altius-reth/crates/storage/storage-api", default-features = false }
+reth-tracing = { path = "../altius-reth/crates/tracing" }
+reth-transaction-pool = { path = "../altius-reth/crates/transaction-pool" }
+reth-network = { path = "../altius-reth/crates/net/network" }
+reth-network-types = { path = "../altius-reth/crates/net/network-types" }
+reth-chain-state = { path = "../altius-reth/crates/chain-state" }
+reth-ethereum = { path = "../altius-reth/crates/ethereum/reth" }
+reth-ethereum-cli = { path = "../altius-reth/crates/ethereum/cli" }
+reth-basic-payload-builder = { path = "../altius-reth/crates/payload/basic" }
+reth-engine-local = { path = "../altius-reth/crates/engine/local" }
+reth-engine-primitives = { path = "../altius-reth/crates/engine/primitives", default-features = false }
+reth-ethereum-payload-builder = { path = "../altius-reth/crates/ethereum/payload" }
+reth-ethereum-primitives = { path = "../altius-reth/crates/ethereum/primitives", default-features = false }
+reth-evm = { path = "../altius-reth/crates/evm/evm", default-features = false }
+reth-evm-ethereum = { path = "../altius-reth/crates/ethereum/evm", default-features = false }
+reth-execution-types = { path = "../altius-reth/crates/evm/execution-types", default-features = false }
+reth-node-core = { path = "../altius-reth/crates/node/core" }
+reth-node-types = { path = "../altius-reth/crates/node/types" }
+reth-payload-builder = { path = "../altius-reth/crates/payload/builder" }
+reth-payload-builder-primitives = { path = "../altius-reth/crates/payload/builder-primitives" }
+reth-payload-primitives = { path = "../altius-reth/crates/payload/primitives" }
+reth-primitives = { path = "../altius-reth/crates/primitives", default-features = false }
+reth-revm = { path = "../altius-reth/crates/revm", default-features = false }
+reth-rpc-api = { path = "../altius-reth/crates/rpc/rpc-api" }
+reth-rpc-builder = { path = "../altius-reth/crates/rpc/rpc-builder" }
+reth-rpc-engine-api = { path = "../altius-reth/crates/rpc/rpc-engine-api" }
 
 
 # Consensus dependencies
-reth-consensus = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0", default-features = false }
-reth-consensus-common = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0", default-features = false }
-reth-ethereum-consensus = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0", default-features = false }
+reth-consensus = { path = "../altius-reth/crates/consensus/consensus", default-features = false }
+reth-consensus-common = { path = "../altius-reth/crates/consensus/common", default-features = false }
+reth-ethereum-consensus = { path = "../altius-reth/crates/ethereum/consensus", default-features = false }
 
 # Test dependencies
-reth-testing-utils = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0", default-features = false }
-reth-db = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0", default-features = false }
-reth-tasks = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.6.0", default-features = false }
+reth-testing-utils = { path = "../altius-reth/testing/testing-utils" }
+reth-db = { path = "../altius-reth/crates/storage/db", default-features = false }
+reth-tasks = { path = "../altius-reth/crates/tasks" }
 
 # Alloy dependencies
 alloy = { version = "1.0.23", features = [
