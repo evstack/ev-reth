@@ -1,5 +1,9 @@
 use alloy_consensus::transaction::Transaction;
 use evolve_ev_reth::RollkitPayloadAttributes;
+use fee_handlers::{
+    compute_totals, credit_plan,
+    types::{FeeHandlersConfig, TxBytesAcc},
+};
 use reth_errors::RethError;
 use reth_evm::{
     execute::{BlockBuilder, BlockBuilderOutcome},
@@ -11,6 +15,21 @@ use reth_primitives::{transaction::SignedTransaction, Header, SealedBlock, Seale
 use reth_provider::{HeaderProvider, StateProviderFactory};
 use reth_revm::{database::StateProviderDatabase, State};
 use std::sync::Arc;
+use tracing::debug;
+
+/// Reads optional fee-handlers config from env var `EV_RETH_FEE_HANDLERS_JSON`.
+/// Expected to contain the `ev_reth.feeHandlers` object as in etc/fee-handlers.example.json.
+fn fee_handlers_config_from_env() -> Option<FeeHandlersConfig> {
+    let s = std::env::var("EV_RETH_FEE_HANDLERS_JSON").ok()?;
+    let v: serde_json::Value = serde_json::from_str(&s).ok()?;
+    // Accept either the nested ev_reth.feeHandlers or a direct FeeHandlersConfig object.
+    if let Ok(cfg) = serde_json::from_value::<FeeHandlersConfig>(v.clone()) {
+        return Some(cfg);
+    }
+    v.get("ev_reth")
+        .and_then(|x| x.get("feeHandlers").cloned())
+        .and_then(|x| serde_json::from_value::<FeeHandlersConfig>(x).ok())
+}
 
 /// Payload builder for Rollkit Reth node
 #[derive(Debug)]
@@ -67,9 +86,16 @@ where
             ))
         })?;
 
+        // Set coinbase/beneficiary: prefer SequencerFeeVault from fee-handlers cfg if provided via env.
+        let fee_cfg_env = fee_handlers_config_from_env();
+        let suggested_fee_recipient = fee_cfg_env
+            .as_ref()
+            .map(|c| c.vaults.sequencer_fee_vault)
+            .unwrap_or(attributes.suggested_fee_recipient);
+
         let next_block_attrs = NextBlockEnvAttributes {
             timestamp: attributes.timestamp,
-            suggested_fee_recipient: attributes.suggested_fee_recipient,
+            suggested_fee_recipient,
             prev_randao: attributes.prev_randao,
             gas_limit,
             parent_beacon_block_root: Some(alloy_primitives::B256::ZERO), // Set to zero for rollkit blocks
@@ -92,6 +118,7 @@ where
             transaction_count = attributes.transactions.len(),
             "Rollkit payload builder: executing transactions"
         );
+        let mut total_tx_bytes: u64 = 0;
         for (i, tx) in attributes.transactions.iter().enumerate() {
             tracing::debug!(
             index = i,
@@ -112,6 +139,9 @@ where
             // Execute the transaction
             match builder.execute_transaction(recovered_tx) {
                 Ok(gas_used) => {
+                    // Count the RLP-encoded tx bytes as DA size proxy using alloy-rlp.
+                    let this_len = alloy_rlp::encode(tx).len() as u64;
+                    total_tx_bytes = total_tx_bytes.saturating_add(this_len);
                     tracing::debug!(index = i, gas_used, "Transaction executed successfully");
                 }
                 Err(err) => {
@@ -132,6 +162,39 @@ where
             .map_err(PayloadBuilderError::other)?;
 
         let sealed_block = block.sealed_block().clone();
+
+        // If fee-handlers config is present, compute totals and log/apply credits.
+        if let Some(fee_cfg) = fee_cfg_env {
+            let base_fee = sealed_block.header().base_fee_per_gas.unwrap_or(0);
+            let gas_used = sealed_block.gas_used;
+
+            // Use total RLP tx bytes as DA size proxy.
+            let tx_bytes_acc = TxBytesAcc { total_size: total_tx_bytes };
+            let l1_base_fee_wei: u128 = 0;
+            // Allow an env override until a Celestia feed is wired.
+            let l1_blob_base_fee_wei: u128 = std::env::var("EV_RETH_CELESTIA_BLOB_BASE_FEE_WEI")
+                .ok()
+                .and_then(|v| v.parse::<u128>().ok())
+                .unwrap_or(0);
+
+            let totals = compute_totals(
+                &fee_cfg,
+                base_fee,
+                gas_used,
+                &tx_bytes_acc,
+                l1_base_fee_wei,
+                l1_blob_base_fee_wei,
+            );
+
+            let credits = credit_plan(&fee_cfg, &totals);
+            if !credits.is_empty() {
+                // TODO(ev-reth): apply these to state before finish() to reflect in the state root.
+                // Currently we just log the plan.
+                for (addr, amount) in &credits {
+                    debug!(target: "ev-reth", ?addr, amount, "fee-handlers credit plan");
+                }
+            }
+        }
         tracing::info!(
                     block_number = sealed_block.number,
                     block_hash = ?sealed_block.hash(),
@@ -142,6 +205,17 @@ where
 
         // Return the sealed block
         Ok(sealed_block)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use fee_handlers::compute::compute_base_fee_wei;
+    #[test]
+    fn test_basefee_redirect_math() {
+        // 30,000,000 gas used * 1 gwei basefee = 3e16 wei
+        let wei = compute_base_fee_wei(1_000_000_000u64, 30_000_000u64);
+        assert_eq!(wei, 30_000_000u128 * 1_000_000_000u128);
     }
 }
 
