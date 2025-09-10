@@ -220,7 +220,7 @@ The payload builder can be configured with:
 The txpool RPC extension can be configured with:
 
 - `max_txpool_bytes`: Maximum bytes of transactions to return (default: 1.85 MB)
-- `max_txpool_gas`: Maximum cumulative gas for transactions to return (default: 10,000,000)
+- `max_txpool_gas`: Maximum cumulative gas for transactions to return (default: 30,000,000)
 
 Notes:
 - Both limits apply together. Selection stops when either cap is reached.
@@ -235,7 +235,7 @@ CLI/env overrides:
 All standard Reth configuration options are supported. Key options for Rollkit integration:
 
 - `--http`: Enable HTTP-RPC server
-- `--ws`: Enable WebSocket-RPC server  
+- `--ws`: Enable WebSocket-RPC server
 - `--authrpc.port`: Engine API port (default: 8551)
 - `--authrpc.jwtsecret`: Path to JWT secret for Engine API authentication
 
