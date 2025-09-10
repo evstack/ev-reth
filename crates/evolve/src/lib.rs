@@ -21,6 +21,6 @@ pub mod consensus;
 mod tests;
 
 // Re-export public types
-pub use config::{RollkitConfig, DEFAULT_MAX_TXPOOL_BYTES};
+pub use config::{RollkitConfig, DEFAULT_MAX_TXPOOL_BYTES, DEFAULT_MAX_TXPOOL_GAS};
 pub use consensus::{RollkitConsensus, RollkitConsensusBuilder};
 pub use types::{PayloadAttributesError, RollkitPayloadAttributes};

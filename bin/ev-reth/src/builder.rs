@@ -36,6 +36,16 @@ pub struct RollkitArgs {
         help = "Enable Evolve integration for transaction processing via Engine API"
     )]
     pub enable_rollkit: bool,
+
+    /// Maximum cumulative gas to return from txpoolExt_getTxs
+    /// 0 disables the gas constraint and uses bytes-only selection
+    #[arg(
+        long = "ev-reth.txpool-max-gas",
+        env = "EV_RETH_TXPOOL_MAX_GAS",
+        value_parser = clap::value_parser!(u64),
+        help = "Override max cumulative gas returned by txpoolExt_getTxs (default: 10,000,000)"
+    )]
+    pub txpool_max_gas: Option<u64>,
 }
 
 /// Rollkit payload service builder that integrates with the rollkit payload builder

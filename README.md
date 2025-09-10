@@ -219,7 +219,16 @@ The payload builder can be configured with:
 
 The txpool RPC extension can be configured with:
 
-- `max_txpool_bytes`: Maximum bytes of transactions to return (default: 1.98 MB)
+- `max_txpool_bytes`: Maximum bytes of transactions to return (default: 1.85 MB)
+- `max_txpool_gas`: Maximum cumulative gas for transactions to return (default: 10,000,000)
+
+Notes:
+- Both limits apply together. Selection stops when either cap is reached.
+- Set a limit to `0` to disable that constraint.
+
+CLI/env overrides:
+- `--ev-reth.txpool-max-gas` or `EV_RETH_TXPOOL_MAX_GAS` sets the gas cap used by `txpoolExt_getTxs`.
+  Example: `--ev-reth.txpool-max-gas 15000000` or `EV_RETH_TXPOOL_MAX_GAS=15000000`
 
 ### Node Configuration
 
