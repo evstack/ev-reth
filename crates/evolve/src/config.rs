@@ -5,7 +5,7 @@ pub const DEFAULT_MAX_TXPOOL_BYTES: u64 = 1_939_865; // 1.85 MiB = 1,939,865 byt
 
 /// Default maximum gas for txpool transactions selection
 /// This caps how much total gas worth of transactions the txpool RPC returns.
-pub const DEFAULT_MAX_TXPOOL_GAS: u64 = 10_000_000; // 10M gas
+pub const DEFAULT_MAX_TXPOOL_GAS: u64 = 30_000_000; // 30M gas
 
 /// Configuration for Rollkit-specific functionality
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -28,11 +28,17 @@ impl Default for RollkitConfig {
 impl RollkitConfig {
     /// Creates a new `RollkitConfig` with the given max txpool bytes
     pub const fn new(max_txpool_bytes: u64) -> Self {
-        Self { max_txpool_bytes, max_txpool_gas: DEFAULT_MAX_TXPOOL_GAS }
+        Self {
+            max_txpool_bytes,
+            max_txpool_gas: DEFAULT_MAX_TXPOOL_GAS,
+        }
     }
 
     /// Creates a new `RollkitConfig` with the given max txpool bytes and gas
     pub const fn new_with_gas(max_txpool_bytes: u64, max_txpool_gas: u64) -> Self {
-        Self { max_txpool_bytes, max_txpool_gas }
+        Self {
+            max_txpool_bytes,
+            max_txpool_gas,
+        }
     }
 }
