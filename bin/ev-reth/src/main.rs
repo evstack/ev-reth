@@ -172,10 +172,7 @@ fn main() {
                     // Build custom txpool RPC with config + optional CLI/env override
                     let mut rollkit_cfg = RollkitConfig::default();
                     if let Some(g) = txpool_max_gas_override {
-                        rollkit_cfg = RollkitConfig::new_with_gas(
-                            rollkit_cfg.max_txpool_bytes,
-                            g,
-                        );
+                        rollkit_cfg = RollkitConfig::new_with_gas(rollkit_cfg.max_txpool_bytes, g);
                     }
                     let rollkit_txpool = RollkitTxpoolApiImpl::new(
                         ctx.pool().clone(),

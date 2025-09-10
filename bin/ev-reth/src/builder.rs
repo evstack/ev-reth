@@ -37,7 +37,7 @@ pub struct RollkitArgs {
     )]
     pub enable_rollkit: bool,
 
-    /// Maximum cumulative gas to return from txpoolExt_getTxs
+    /// Maximum cumulative gas to return from `txpoolExt_getTxs`
     /// 0 disables the gas constraint and uses bytes-only selection
     #[arg(
         long = "ev-reth.txpool-max-gas",
