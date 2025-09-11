@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Default maximum bytes for txpool transactions (1.85 MiB)
 pub const DEFAULT_MAX_TXPOOL_BYTES: u64 = 1_939_865; // 1.85 MiB = 1,939,865 bytes
@@ -41,4 +42,22 @@ impl RollkitConfig {
             max_txpool_gas,
         }
     }
+}
+
+/// Tracks the most recent effective block gas limit selected by the payload builder.
+///
+/// Initialized to the default txpool gas cap so selection has a sensible value
+/// before the first payload is built.
+pub static CURRENT_BLOCK_GAS_LIMIT: AtomicU64 = AtomicU64::new(DEFAULT_MAX_TXPOOL_GAS);
+
+/// Helper to set the current block gas limit.
+#[inline]
+pub fn set_current_block_gas_limit(gas_limit: u64) {
+    CURRENT_BLOCK_GAS_LIMIT.store(gas_limit, Ordering::Relaxed);
+}
+
+/// Helper to read the current block gas limit.
+#[inline]
+pub fn current_block_gas_limit() -> u64 {
+    CURRENT_BLOCK_GAS_LIMIT.load(Ordering::Relaxed)
 }

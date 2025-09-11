@@ -25,6 +25,7 @@ use std::sync::Arc;
 use tracing::info;
 
 use crate::{attributes::RollkitEnginePayloadBuilderAttributes, RollkitEngineTypes};
+use evolve_ev_reth::config::set_current_block_gas_limit;
 
 /// Rollkit-specific command line arguments
 #[derive(Debug, Clone, Parser, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -36,16 +37,6 @@ pub struct RollkitArgs {
         help = "Enable Evolve integration for transaction processing via Engine API"
     )]
     pub enable_rollkit: bool,
-
-    /// Maximum cumulative gas to return from `txpoolExt_getTxs`
-    /// 0 disables the gas constraint and uses bytes-only selection
-    #[arg(
-        long = "ev-reth.txpool-max-gas",
-        env = "EV_RETH_TXPOOL_MAX_GAS",
-        value_parser = clap::value_parser!(u64),
-        help = "Max gas limit for building blocks (default: 30,000,000)"
-    )]
-    pub txpool_max_gas: Option<u64>,
 }
 
 /// Rollkit payload service builder that integrates with the rollkit payload builder
@@ -153,9 +144,16 @@ where
         );
 
         // Convert Engine API attributes to Rollkit payload attributes
+        // If no gas_limit provided, default to the parent header's gas limit (genesis for first block)
+        let effective_gas_limit = attributes
+            .gas_limit
+            .unwrap_or(parent_header.gas_limit);
+        // Publish effective gas limit for RPC alignment
+        set_current_block_gas_limit(effective_gas_limit);
+
         let rollkit_attrs = RollkitPayloadAttributes::new(
             attributes.transactions.clone(),
-            attributes.gas_limit,
+            Some(effective_gas_limit),
             attributes.timestamp(),
             attributes.prev_randao(),
             attributes.suggested_fee_recipient(),
@@ -203,9 +201,16 @@ where
         info!("Rollkit engine payload builder: building empty payload");
 
         // Create empty rollkit attributes (no transactions)
+        // If no gas_limit provided, default to the parent header's gas limit (genesis for first block)
+        let effective_gas_limit = attributes
+            .gas_limit
+            .unwrap_or(parent_header.gas_limit);
+        // Publish effective gas limit for RPC alignment
+        set_current_block_gas_limit(effective_gas_limit);
+
         let rollkit_attrs = RollkitPayloadAttributes::new(
             vec![],
-            attributes.gas_limit,
+            Some(effective_gas_limit),
             attributes.timestamp(),
             attributes.prev_randao(),
             attributes.suggested_fee_recipient(),

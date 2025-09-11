@@ -114,7 +114,7 @@ When using the Engine API, you can include transactions in the payload attribute
       "withdrawals": [],
       "parentBeaconBlockRoot": "0x...",
       "transactions": ["0x...", "0x..."],  // RLP-encoded transactions
-      "gasLimit": "0x1c9c380"  // Optional custom gas limit
+      "gasLimit": "0x1c9c380"  // Optional; defaults to parent header gas limit
     }
   ]
 }
@@ -227,8 +227,17 @@ Notes:
 - Set a limit to `0` to disable that constraint.
 
 CLI/env overrides:
-- `--ev-reth.txpool-max-gas` or `EV_RETH_TXPOOL_MAX_GAS` sets the gas cap used by `txpoolExt_getTxs`.
-  Example: `--ev-reth.txpool-max-gas 15000000` or `EV_RETH_TXPOOL_MAX_GAS=15000000`
+- None for txpool gas. The RPC follows the current block gas automatically.
+
+### Gas Limits: Block vs Txpool
+
+- Block gas limit (per-block): Can be passed via Engine API payload attributes `gasLimit`. If omitted, ev-reth now defaults to the parent header’s gas limit (which is the genesis gas limit for the first block). The payload builder enforces this during execution and requires it to be > 0.
+- Txpool gas cap (RPC selection): `txpoolExt_getTxs` follows the current block gas limit automatically. There is no CLI/env override; this keeps txpool selection aligned with execution gas by default.
+- Relationship: These limits are aligned by default. Overriding the txpool cap makes them independent again; exact packing still depends on real execution.
+
+Changing limits on a running chain:
+- Per-block gas: Set `gasLimit` in Engine API payload attributes to change the block’s gas limit for that payload. Subsequent payloads will default to that new parent header gas limit unless overridden again.
+- Txpool gas cap: Follows the head block’s gas limit automatically. There is no fixed-cap override; change your block gas and the RPC alignment follows.
 
 ### Node Configuration
 

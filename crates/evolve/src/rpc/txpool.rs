@@ -1,3 +1,4 @@
+use crate::config::current_block_gas_limit;
 use alloy_primitives::Bytes;
 use async_trait::async_trait;
 use jsonrpsee::tracing::debug;
@@ -20,18 +21,12 @@ pub struct RollkitTxpoolApiImpl<Pool> {
     pool: Pool,
     /// Maximum bytes allowed for transaction selection
     max_bytes: u64,
-    /// Maximum gas allowed for transaction selection
-    max_gas: u64,
 }
 
 impl<Pool> RollkitTxpoolApiImpl<Pool> {
     /// Creates a new instance of `TxpoolApi`.
-    pub const fn new(pool: Pool, max_bytes: u64, max_gas: u64) -> Self {
-        Self {
-            pool,
-            max_bytes,
-            max_gas,
-        }
+    pub const fn new(pool: Pool, max_bytes: u64) -> Self {
+        Self { pool, max_bytes }
     }
 }
 
@@ -39,16 +34,11 @@ impl<Pool> RollkitTxpoolApiImpl<Pool> {
 pub const fn create_rollkit_txpool_module<Pool>(
     pool: Pool,
     max_bytes: u64,
-    max_gas: u64,
 ) -> RollkitTxpoolApiImpl<Pool>
 where
     Pool: TransactionPool + Send + Sync + 'static,
 {
-    RollkitTxpoolApiImpl {
-        pool,
-        max_bytes,
-        max_gas,
-    }
+    RollkitTxpoolApiImpl { pool, max_bytes }
 }
 
 #[async_trait]
@@ -66,6 +56,9 @@ where
         let mut total_gas = 0u64;
         let mut selected_txs: Vec<Bytes> = Vec::new();
 
+        // Determine the active gas cap for selection
+        let gas_cap = current_block_gas_limit();
+
         // Use best_transactions() which returns an iterator of transactions
         // ordered by their priority (gas price/priority fee)
         for best_tx in self.pool.best_transactions() {
@@ -81,7 +74,7 @@ where
                 break;
             }
             // Enforce gas cap if configured (> 0)
-            if self.max_gas > 0 && total_gas + gas > self.max_gas {
+            if gas_cap > 0 && total_gas + gas > gas_cap {
                 break;
             }
 
