@@ -1,12 +1,13 @@
-use reth_ethereum::evm::revm::precompile::Precompiles;
+use reth_ethereum::evm::revm::precompile::{secp256r1, Precompiles};
 use std::sync::OnceLock;
 
 pub(crate) fn custom_prague_precompiles() -> &'static Precompiles {
     static INSTANCE: OnceLock<Precompiles> = OnceLock::new();
     INSTANCE.get_or_init(|| {
-        let precompiles = Precompiles::prague().clone();
+        let mut precompiles = Precompiles::prague().clone();
 
-        // TODO: Add RIP-7212.
+        // https://github.com/ethereum/RIPs/blob/master/RIPS/rip-7212.md
+        precompiles.extend(secp256r1::precompiles());
 
         precompiles
     })
