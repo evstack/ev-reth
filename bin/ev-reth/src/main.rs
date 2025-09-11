@@ -18,6 +18,7 @@ use clap::Parser;
 use evolve_ev_reth::{
     config::RollkitConfig,
     consensus::RollkitConsensusBuilder,
+    executor::RollkitExecutorBuilder,
     rpc::txpool::{RollkitTxpoolApiImpl, RollkitTxpoolApiServer},
 };
 use reth_ethereum::{
@@ -29,7 +30,7 @@ use reth_ethereum::{
             rpc::RpcAddOns,
             Node, NodeAdapter, NodeComponentsBuilder,
         },
-        node::{EthereumExecutorBuilder, EthereumNetworkBuilder, EthereumPoolBuilder},
+        node::{EthereumNetworkBuilder, EthereumPoolBuilder},
         EthereumEthApiBuilder,
     },
     primitives::SealedBlock,
@@ -124,7 +125,7 @@ where
         EthereumPoolBuilder,
         BasicPayloadServiceBuilder<RollkitPayloadBuilderBuilder>,
         EthereumNetworkBuilder,
-        EthereumExecutorBuilder,
+        RollkitExecutorBuilder,
         RollkitConsensusBuilder,
     >;
     type AddOns = RollkitNodeAddOns<
@@ -135,7 +136,7 @@ where
         ComponentsBuilder::default()
             .node_types::<N>()
             .pool(EthereumPoolBuilder::default())
-            .executor(EthereumExecutorBuilder::default())
+            .executor(RollkitExecutorBuilder::default())
             .payload(BasicPayloadServiceBuilder::new(
                 RollkitPayloadBuilderBuilder::new(&self.args),
             ))

@@ -1,7 +1,7 @@
 use alloy_primitives::U256;
 use clap::Parser;
 use ev_node::{RollkitPayloadBuilder, RollkitPayloadBuilderConfig};
-use evolve_ev_reth::RollkitPayloadAttributes;
+use evolve_ev_reth::{evm::RollkitEvmFactory, RollkitPayloadAttributes};
 use reth_basic_payload_builder::{
     BuildArguments, BuildOutcome, HeaderForPayload, MissingPayloadBehaviour, PayloadBuilder,
     PayloadConfig,
@@ -74,7 +74,8 @@ where
     pub(crate) config: RollkitPayloadBuilderConfig,
 }
 
-impl<Node, Pool> PayloadBuilderBuilder<Node, Pool, EthEvmConfig> for RollkitPayloadBuilderBuilder
+impl<Node, Pool> PayloadBuilderBuilder<Node, Pool, EthEvmConfig<ChainSpec, RollkitEvmFactory>>
+    for RollkitPayloadBuilderBuilder
 where
     Node: FullNodeTypes<
         Types: NodeTypes<
@@ -93,7 +94,7 @@ where
         self,
         ctx: &BuilderContext<Node>,
         pool: Pool,
-        evm_config: EthEvmConfig,
+        evm_config: EthEvmConfig<ChainSpec, RollkitEvmFactory>,
     ) -> eyre::Result<Self::PayloadBuilder> {
         let rollkit_builder = Arc::new(RollkitPayloadBuilder::new(
             Arc::new(ctx.provider().clone()),

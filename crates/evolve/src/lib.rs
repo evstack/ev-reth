@@ -5,9 +5,6 @@
 //! - Rollkit-specific types and traits
 //! - Custom consensus implementation
 
-/// Rollkit-specific types and related definitions.
-pub mod types;
-
 /// Configuration for Rollkit functionality.
 pub mod config;
 
@@ -16,6 +13,18 @@ pub mod rpc;
 
 /// Custom consensus implementation for Rollkit.
 pub mod consensus;
+
+/// Custom EVM implementation for Rollkit.
+pub mod evm;
+
+/// Custom executor implementation for Rollkit.
+pub mod executor;
+
+/// Custom precompiles for Rollkit.
+mod precompiles;
+
+/// Rollkit-specific types and related definitions.
+pub mod types;
 
 #[cfg(test)]
 mod tests;
