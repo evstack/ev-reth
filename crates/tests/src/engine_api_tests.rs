@@ -52,6 +52,14 @@ impl EngineApiTestFixture {
         );
 
         let sealed_block = self.base.builder.build_payload(payload_attrs).await?;
+        // Debug output to help identify whether transactions are included and how gas is accounted
+        println!(
+            "Built block #{}, txs={}, gas_used={}, base_fee={:?}",
+            block_height,
+            sealed_block.transaction_count(),
+            sealed_block.gas_used,
+            sealed_block.header().base_fee_per_gas
+        );
         Ok((sealed_block.state_root.to_vec(), sealed_block.gas_used))
     }
 

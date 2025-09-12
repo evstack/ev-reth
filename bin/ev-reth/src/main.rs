@@ -27,7 +27,7 @@ use reth_ethereum::{
         builder::{
             components::{BasicPayloadServiceBuilder, ComponentsBuilder},
             rpc::RpcAddOns,
-            Node, NodeAdapter, NodeComponentsBuilder,
+            Node, NodeAdapter,
         },
         node::{EthereumExecutorBuilder, EthereumNetworkBuilder, EthereumPoolBuilder},
         EthereumEthApiBuilder,
@@ -36,7 +36,6 @@ use reth_ethereum::{
 };
 use reth_ethereum_cli::{chainspec::EthereumChainSpecParser, Cli};
 use reth_payload_builder::EthBuiltPayload;
-use reth_trie_db::MerklePatriciaTrie;
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
@@ -100,7 +99,6 @@ impl RollkitNode {
 impl NodeTypes for RollkitNode {
     type Primitives = reth_ethereum::EthPrimitives;
     type ChainSpec = ChainSpec;
-    type StateCommitment = MerklePatriciaTrie;
     type Storage = reth_ethereum::provider::EthStorage;
     type Payload = RollkitEngineTypes;
 }
@@ -110,14 +108,7 @@ pub type RollkitNodeAddOns<N> = RpcAddOns<N, EthereumEthApiBuilder, RollkitEngin
 
 impl<N> Node<N> for RollkitNode
 where
-    N: FullNodeTypes<
-        Types: NodeTypes<
-            Payload = RollkitEngineTypes,
-            ChainSpec = ChainSpec,
-            Primitives = reth_ethereum::EthPrimitives,
-            Storage = reth_ethereum::provider::EthStorage,
-        >,
-    >,
+    N: FullNodeTypes<Types = Self>,
 {
     type ComponentsBuilder = ComponentsBuilder<
         N,
@@ -127,9 +118,7 @@ where
         EthereumExecutorBuilder,
         RollkitConsensusBuilder,
     >;
-    type AddOns = RollkitNodeAddOns<
-        NodeAdapter<N, <Self::ComponentsBuilder as NodeComponentsBuilder<N>>::Components>,
-    >;
+    type AddOns = RollkitNodeAddOns<NodeAdapter<N>>;
 
     fn components_builder(&self) -> Self::ComponentsBuilder {
         ComponentsBuilder::default()

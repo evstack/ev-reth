@@ -73,7 +73,9 @@ where
             prev_randao: attributes.prev_randao,
             gas_limit,
             parent_beacon_block_root: Some(alloy_primitives::B256::ZERO), // Set to zero for rollkit blocks
-            withdrawals: None,
+            // For post-Shanghai/Cancun chains, an empty withdrawals list is valid
+            // and ensures version-specific fields are initialized.
+            withdrawals: Some(Default::default()),
         };
 
         // Create block builder using the EVM config
@@ -113,10 +115,12 @@ where
             match builder.execute_transaction(recovered_tx) {
                 Ok(gas_used) => {
                     tracing::debug!(index = i, gas_used, "Transaction executed successfully");
+                    println!("[debug] execute_transaction ok: index={}, gas_used={}", i, gas_used);
                 }
                 Err(err) => {
                     // Log the error but continue with other transactions
                     tracing::warn!(index = i, error = ?err, "Transaction execution failed");
+                    println!("[debug] execute_transaction err: index={}, err={:?}", i, err);
                 }
             }
         }
