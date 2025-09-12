@@ -2724,12 +2724,14 @@ dependencies = [
  "alloy-eips",
  "alloy-genesis",
  "alloy-primitives",
+ "alloy-rlp",
  "alloy-rpc-types",
  "alloy-rpc-types-engine",
  "async-trait",
  "ev-common",
  "evolve-ev-reth",
  "eyre",
+ "fee-handlers",
  "futures",
  "hex",
  "reth-basic-payload-builder",
@@ -2936,6 +2938,16 @@ checksum = "e182f7dbc2ef73d9ef67351c5fbbea084729c48362d3ce9dd44c28e32e277fe5"
 dependencies = [
  "libc",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "fee-handlers"
+version = "0.1.0"
+dependencies = [
+ "alloy-primitives",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.12",
 ]
 
 [[package]]
