@@ -145,9 +145,7 @@ where
 
         // Convert Engine API attributes to Rollkit payload attributes
         // If no gas_limit provided, default to the parent header's gas limit (genesis for first block)
-        let effective_gas_limit = attributes
-            .gas_limit
-            .unwrap_or(parent_header.gas_limit);
+        let effective_gas_limit = attributes.gas_limit.unwrap_or(parent_header.gas_limit);
         // Publish effective gas limit for RPC alignment
         set_current_block_gas_limit(effective_gas_limit);
 
@@ -202,9 +200,7 @@ where
 
         // Create empty rollkit attributes (no transactions)
         // If no gas_limit provided, default to the parent header's gas limit (genesis for first block)
-        let effective_gas_limit = attributes
-            .gas_limit
-            .unwrap_or(parent_header.gas_limit);
+        let effective_gas_limit = attributes.gas_limit.unwrap_or(parent_header.gas_limit);
         // Publish effective gas limit for RPC alignment
         set_current_block_gas_limit(effective_gas_limit);
 
