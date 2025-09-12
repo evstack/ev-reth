@@ -163,15 +163,13 @@ fn main() {
             info!("=== EV-RETH: Starting with args: {:?} ===", rollkit_args);
             info!("=== EV-RETH: EV-node mode enabled ===");
             info!("=== EV-RETH: Using custom payload builder with transaction support ===");
-
             let handle = builder
                 .node(RollkitNode::new(rollkit_args))
                 .extend_rpc_modules(move |ctx| {
-                    // Build custom txpool RPC
-                    let rollkit_txpool = RollkitTxpoolApiImpl::new(
-                        ctx.pool().clone(),
-                        RollkitConfig::default().max_txpool_bytes,
-                    );
+                    // Build custom txpool RPC with config + optional CLI/env override
+                    let rollkit_cfg = RollkitConfig::default();
+                    let rollkit_txpool =
+                        RollkitTxpoolApiImpl::new(ctx.pool().clone(), rollkit_cfg.max_txpool_bytes);
 
                     // Merge into all enabled transports (HTTP / WS)
                     ctx.modules.merge_configured(rollkit_txpool.into_rpc())?;
