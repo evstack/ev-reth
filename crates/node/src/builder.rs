@@ -1,5 +1,6 @@
 use alloy_consensus::transaction::Transaction;
-use evolve_ev_reth::RollkitPayloadAttributes;
+use evolve_ev_reth::{evm::RollkitEvmFactory, RollkitPayloadAttributes};
+use reth_chainspec::ChainSpec;
 use reth_errors::RethError;
 use reth_evm::{
     execute::{BlockBuilder, BlockBuilderOutcome},
@@ -18,7 +19,7 @@ pub struct RollkitPayloadBuilder<Client> {
     /// The client for state access
     pub client: Arc<Client>,
     /// EVM configuration
-    pub evm_config: EthEvmConfig,
+    pub evm_config: EthEvmConfig<ChainSpec, RollkitEvmFactory>,
 }
 
 impl<Client> RollkitPayloadBuilder<Client>
@@ -26,7 +27,10 @@ where
     Client: StateProviderFactory + HeaderProvider<Header = Header> + Send + Sync + 'static,
 {
     /// Creates a new instance of `RollkitPayloadBuilder`
-    pub const fn new(client: Arc<Client>, evm_config: EthEvmConfig) -> Self {
+    pub const fn new(
+        client: Arc<Client>,
+        evm_config: EthEvmConfig<ChainSpec, RollkitEvmFactory>,
+    ) -> Self {
         Self { client, evm_config }
     }
 
@@ -148,7 +152,7 @@ where
 /// Creates a new payload builder service
 pub const fn create_payload_builder_service<Client>(
     client: Arc<Client>,
-    evm_config: EthEvmConfig,
+    evm_config: EthEvmConfig<ChainSpec, RollkitEvmFactory>,
 ) -> Option<RollkitPayloadBuilder<Client>>
 where
     Client: StateProviderFactory + HeaderProvider<Header = Header> + Send + Sync + 'static,

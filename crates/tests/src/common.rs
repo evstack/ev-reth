@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use alloy_consensus::{transaction::SignerRecoverable, TxLegacy, TypedTransaction};
 use alloy_primitives::{Address, Bytes, ChainId, Signature, TxKind, B256, U256};
+use evolve_ev_reth::evm::RollkitEvmFactory;
 use eyre::Result;
 use reth_chainspec::{ChainSpecBuilder, MAINNET};
 use reth_ethereum_primitives::TransactionSigned;
@@ -75,9 +76,12 @@ impl RollkitTestFixture {
         // Create a test chain spec with our test chain ID
         let test_chainspec = ChainSpecBuilder::from(&*MAINNET)
             .chain(reth_chainspec::Chain::from_id(TEST_CHAIN_ID))
-            .cancun_activated()
+            .prague_activated()
             .build();
-        let evm_config = EthEvmConfig::new(Arc::new(test_chainspec));
+        let evm_config = EthEvmConfig::new_with_evm_factory(
+            Arc::new(test_chainspec),
+            RollkitEvmFactory::default(),
+        );
 
         let builder = RollkitPayloadBuilder::new(Arc::new(provider.clone()), evm_config);
 
