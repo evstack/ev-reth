@@ -36,9 +36,11 @@ use reth_ethereum::{
 };
 use reth_ethereum_cli::{chainspec::EthereumChainSpecParser, Cli};
 use reth_payload_builder::EthBuiltPayload;
+use reth_tracing_otlp;
 use reth_trie_db::MerklePatriciaTrie;
 use serde::{Deserialize, Serialize};
 use tracing::info;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 use crate::{
     attributes::{RollkitEnginePayloadAttributes, RollkitEnginePayloadBuilderAttributes},
@@ -48,6 +50,19 @@ use crate::{
 
 #[global_allocator]
 static ALLOC: reth_cli_util::allocator::Allocator = reth_cli_util::allocator::new_allocator();
+
+/// Initialize reth OTLP tracing
+fn init_otlp_tracing() -> eyre::Result<()> {
+    // Set up tracing subscriber with reth OTLP layer
+    tracing_subscriber::registry()
+        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
+        .with(tracing_subscriber::fmt::layer().with_target(false))
+        .with(reth_tracing_otlp::layer("ev-reth"))
+        .init();
+
+    info!("Reth OTLP tracing initialized for service: ev-reth");
+    Ok(())
+}
 
 /// Rollkit engine types - uses custom payload attributes that support transactions
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -156,6 +171,12 @@ fn main() {
     // Enable backtraces unless a RUST_BACKTRACE value has already been explicitly provided.
     if std::env::var_os("RUST_BACKTRACE").is_none() {
         std::env::set_var("RUST_BACKTRACE", "1");
+    }
+
+    // Initialize OTLP tracing
+    if let Err(e) = init_otlp_tracing() {
+        eprintln!("Failed to initialize OTLP tracing: {:?}", e);
+        eprintln!("Continuing without OTLP tracing...");
     }
 
     if let Err(err) = Cli::<EthereumChainSpecParser, RollkitArgs>::parse().run(
