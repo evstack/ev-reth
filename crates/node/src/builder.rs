@@ -40,11 +40,6 @@ where
             .validate()
             .map_err(|e| PayloadBuilderError::Internal(RethError::Other(Box::new(e))))?;
 
-        // Get the state provider for the parent header
-        tracing::info!(
-            "Creating state provider using parent hash: {}",
-            attributes.parent_hash
-        );
         let state_provider = self
             .client
             .state_by_block_hash(attributes.parent_hash)
