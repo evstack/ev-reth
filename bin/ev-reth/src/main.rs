@@ -36,7 +36,6 @@ use reth_ethereum::{
 };
 use reth_ethereum_cli::{chainspec::EthereumChainSpecParser, Cli};
 use reth_payload_builder::EthBuiltPayload;
-use reth_tracing_otlp;
 use reth_trie_db::MerklePatriciaTrie;
 use serde::{Deserialize, Serialize};
 use tracing::info;
@@ -174,9 +173,11 @@ fn main() {
     }
 
     // Initialize OTLP tracing
-    if let Err(e) = init_otlp_tracing() {
-        eprintln!("Failed to initialize OTLP tracing: {:?}", e);
-        eprintln!("Continuing without OTLP tracing...");
+    if std::env::var("OTEL_SDK_DISABLED").as_deref() == Ok("false") {
+        if let Err(e) = init_otlp_tracing() {
+            eprintln!("Failed to initialize OTLP tracing: {:?}", e);
+            eprintln!("Continuing without OTLP tracing...");
+        }
     }
 
     if let Err(err) = Cli::<EthereumChainSpecParser, RollkitArgs>::parse().run(
