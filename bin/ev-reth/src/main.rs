@@ -38,6 +38,7 @@ use reth_ethereum_cli::{chainspec::EthereumChainSpecParser, Cli};
 use reth_payload_builder::EthBuiltPayload;
 use serde::{Deserialize, Serialize};
 use tracing::info;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 use crate::{
     attributes::{RollkitEnginePayloadAttributes, RollkitEnginePayloadBuilderAttributes},
@@ -47,6 +48,19 @@ use crate::{
 
 #[global_allocator]
 static ALLOC: reth_cli_util::allocator::Allocator = reth_cli_util::allocator::new_allocator();
+
+/// Initialize reth OTLP tracing
+fn init_otlp_tracing() -> eyre::Result<()> {
+    // Set up tracing subscriber with reth OTLP layer
+    tracing_subscriber::registry()
+        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
+        .with(tracing_subscriber::fmt::layer().with_target(false))
+        .with(reth_tracing_otlp::layer("ev-reth"))
+        .init();
+
+    info!("Reth OTLP tracing initialized for service: ev-reth");
+    Ok(())
+}
 
 /// Rollkit engine types - uses custom payload attributes that support transactions
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -147,20 +161,26 @@ fn main() {
         std::env::set_var("RUST_BACKTRACE", "1");
     }
 
+    // Initialize OTLP tracing
+    if std::env::var("OTEL_SDK_DISABLED").as_deref() == Ok("false") {
+        if let Err(e) = init_otlp_tracing() {
+            eprintln!("Failed to initialize OTLP tracing: {:?}", e);
+            eprintln!("Continuing without OTLP tracing...");
+        }
+    }
+
     if let Err(err) = Cli::<EthereumChainSpecParser, RollkitArgs>::parse().run(
         async move |builder, rollkit_args| {
             info!("=== EV-RETH: Starting with args: {:?} ===", rollkit_args);
             info!("=== EV-RETH: EV-node mode enabled ===");
             info!("=== EV-RETH: Using custom payload builder with transaction support ===");
-
             let handle = builder
                 .node(RollkitNode::new(rollkit_args))
                 .extend_rpc_modules(move |ctx| {
-                    // Build custom txpool RPC
-                    let rollkit_txpool = RollkitTxpoolApiImpl::new(
-                        ctx.pool().clone(),
-                        RollkitConfig::default().max_txpool_bytes,
-                    );
+                    // Build custom txpool RPC with config + optional CLI/env override
+                    let rollkit_cfg = RollkitConfig::default();
+                    let rollkit_txpool =
+                        RollkitTxpoolApiImpl::new(ctx.pool().clone(), rollkit_cfg.max_txpool_bytes);
 
                     // Merge into all enabled transports (HTTP / WS)
                     ctx.modules.merge_configured(rollkit_txpool.into_rpc())?;
