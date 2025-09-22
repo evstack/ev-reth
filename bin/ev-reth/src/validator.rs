@@ -94,11 +94,7 @@ impl EngineApiValidator<crate::RollkitEngineTypes> for RollkitEngineValidator {
     fn validate_version_specific_fields(
         &self,
         version: EngineApiMessageVersion,
-        payload_or_attrs: PayloadOrAttributes<
-            '_,
-            ExecutionData,
-            RollkitEnginePayloadAttributes,
-        >,
+        payload_or_attrs: PayloadOrAttributes<'_, ExecutionData, RollkitEnginePayloadAttributes>,
     ) -> Result<(), EngineObjectValidationError> {
         validate_version_specific_fields(self.chain_spec(), version, payload_or_attrs)
     }

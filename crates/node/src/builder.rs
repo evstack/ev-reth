@@ -115,12 +115,18 @@ where
             match builder.execute_transaction(recovered_tx) {
                 Ok(gas_used) => {
                     tracing::debug!(index = i, gas_used, "Transaction executed successfully");
-                    println!("[debug] execute_transaction ok: index={}, gas_used={}", i, gas_used);
+                    println!(
+                        "[debug] execute_transaction ok: index={}, gas_used={}",
+                        i, gas_used
+                    );
                 }
                 Err(err) => {
                     // Log the error but continue with other transactions
                     tracing::warn!(index = i, error = ?err, "Transaction execution failed");
-                    println!("[debug] execute_transaction err: index={}, err={:?}", i, err);
+                    println!(
+                        "[debug] execute_transaction err: index={}, err={:?}",
+                        i, err
+                    );
                 }
             }
         }
