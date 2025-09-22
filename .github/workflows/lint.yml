@@ -19,7 +19,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: clippy
+          components: clippy
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
@@ -35,7 +35,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: clippy
+          components: clippy
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
