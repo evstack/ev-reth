@@ -23,6 +23,7 @@ reth-chainspec = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.7.
 reth-cli = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.7.0" }
 reth-cli-util = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.7.0" }
 reth-rpc-eth-api = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.7.0" }
+reth-tracing-otlp = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.7.0" }
 reth-node-api = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.7.0" }
 reth-node-builder = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.7.0" }
 reth-errors = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.7.0" }
