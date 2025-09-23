@@ -1,9 +1,12 @@
 use alloy_consensus::transaction::Transaction;
 use evolve_ev_reth::EvolvePayloadAttributes;
 use fee_handlers::{
-    compute_totals, credit_plan,
+    compute_totals,
+    config::{parse_fee_handlers_config, ConfigError},
+    credit_plan,
     types::{FeeHandlersConfig, TxBytesAcc},
 };
+use reth_chainspec::{ChainSpec, ChainSpecProvider};
 use reth_errors::RethError;
 use reth_evm::{
     execute::{BlockBuilder, BlockBuilderOutcome},
@@ -18,20 +21,18 @@ use reth_revm::{
     database::StateProviderDatabase, revm::database::states::bundle_state::BundleRetention, State,
 };
 use std::sync::Arc;
-use tracing::debug;
+use tracing::{debug, warn};
 
-/// Reads optional fee-handlers config from env var `EV_RETH_FEE_HANDLERS_JSON`.
-/// Expected to contain the `ev_reth.feeHandlers` object as in etc/fee-handlers.example.json.
-fn fee_handlers_config_from_env() -> Option<FeeHandlersConfig> {
-    let s = std::env::var("EV_RETH_FEE_HANDLERS_JSON").ok()?;
-    let v: serde_json::Value = serde_json::from_str(&s).ok()?;
-    // Accept either the nested ev_reth.feeHandlers or a direct FeeHandlersConfig object.
-    if let Ok(cfg) = serde_json::from_value::<FeeHandlersConfig>(v.clone()) {
-        return Some(cfg);
+fn fee_handlers_config_from_chain_spec(
+    chain_spec: &ChainSpec,
+) -> Result<Option<FeeHandlersConfig>, ConfigError> {
+    let extras_map = chain_spec.genesis.config.extra_fields.as_ref();
+    if extras_map.is_empty() {
+        return Ok(None);
     }
-    v.get("ev_reth")
-        .and_then(|x| x.get("feeHandlers").cloned())
-        .and_then(|x| serde_json::from_value::<FeeHandlersConfig>(x).ok())
+
+    let extras_value = serde_json::Value::Object(extras_map.clone().into_iter().collect());
+    parse_fee_handlers_config(&extras_value).map(Some)
 }
 
 /// Payload builder for Evolve Reth node
@@ -41,15 +42,36 @@ pub struct EvolvePayloadBuilder<Client> {
     pub client: Arc<Client>,
     /// EVM configuration
     pub evm_config: EthEvmConfig,
+    /// Optional fee handler configuration sourced from chainspec or overrides.
+    pub fee_config: Option<Arc<FeeHandlersConfig>>,
 }
 
 impl<Client> EvolvePayloadBuilder<Client>
 where
-    Client: StateProviderFactory + HeaderProvider<Header = Header> + Send + Sync + 'static,
+    Client: StateProviderFactory
+        + HeaderProvider<Header = Header>
+        + ChainSpecProvider<ChainSpec = ChainSpec>
+        + Send
+        + Sync
+        + 'static,
 {
     /// Creates a new instance of `EvolvePayloadBuilder`
-    pub const fn new(client: Arc<Client>, evm_config: EthEvmConfig) -> Self {
-        Self { client, evm_config }
+    pub fn new(client: Arc<Client>, evm_config: EthEvmConfig) -> Self {
+        let chain_spec = client.chain_spec();
+        let fee_config = match fee_handlers_config_from_chain_spec(&chain_spec) {
+            Ok(Some(cfg)) => Some(Arc::new(cfg)),
+            Ok(None) => None,
+            Err(err) => {
+                warn!(target: "ev-reth", error = %err, "Failed to parse fee-handlers config from chainspec extras");
+                None
+            }
+        };
+
+        Self {
+            client,
+            evm_config,
+            fee_config,
+        }
     }
 
     /// Builds a payload using the provided attributes
@@ -89,9 +111,9 @@ where
             ))
         })?;
 
-        // Set coinbase/beneficiary: prefer SequencerFeeVault from fee-handlers cfg if provided via env.
-        let fee_cfg_env = fee_handlers_config_from_env();
-        let suggested_fee_recipient = fee_cfg_env
+        // Set coinbase/beneficiary: prefer SequencerFeeVault from configured fee handlers.
+        let suggested_fee_recipient = self
+            .fee_config
             .as_ref()
             .map(|c| c.vaults.sequencer_fee_vault)
             .unwrap_or(attributes.suggested_fee_recipient);
@@ -176,7 +198,8 @@ where
 
         let mut sealed_block = block.sealed_block().clone();
 
-        if let Some(fee_cfg) = fee_cfg_env {
+        if let Some(fee_cfg_arc) = self.fee_config.as_ref() {
+            let fee_cfg = fee_cfg_arc.as_ref();
             let base_fee = sealed_block.header().base_fee_per_gas.unwrap_or(0);
             let gas_used = sealed_block.gas_used;
 
@@ -190,7 +213,7 @@ where
                 .unwrap_or(0);
 
             let totals = compute_totals(
-                &fee_cfg,
+                fee_cfg,
                 base_fee,
                 gas_used,
                 &tx_bytes_acc,
@@ -198,7 +221,7 @@ where
                 l1_blob_base_fee_wei,
             );
 
-            let credits = credit_plan(&fee_cfg, &totals);
+            let credits = credit_plan(fee_cfg, &totals);
             if !credits.is_empty() {
                 state_db
                     .increment_balances(credits.iter().copied())
@@ -250,12 +273,17 @@ mod tests {
 }
 
 /// Creates a new payload builder service
-pub const fn create_payload_builder_service<Client>(
+pub fn create_payload_builder_service<Client>(
     client: Arc<Client>,
     evm_config: EthEvmConfig,
 ) -> Option<EvolvePayloadBuilder<Client>>
 where
-    Client: StateProviderFactory + HeaderProvider<Header = Header> + Send + Sync + 'static,
+    Client: StateProviderFactory
+        + HeaderProvider<Header = Header>
+        + ChainSpecProvider<ChainSpec = ChainSpec>
+        + Send
+        + Sync
+        + 'static,
 {
     Some(EvolvePayloadBuilder::new(client, evm_config))
 }

@@ -204,11 +204,11 @@ This modular design allows for:
 ev-reth can route and credit fees to vaults configured in genesis:
 
 - Predeploy vaults: SequencerFeeVault (coinbase), BaseFeeVault, L1FeeVault, and optional OperatorFeeVault.
-- Add `ev_reth.feeHandlers` to chainspec extras (see `etc/fee-handlers.example.json`).
+- Add `ev_reth.feeHandlers` to chainspec extras (see `etc/ev-reth-genesis.json` and [docs/fee-handlers.md](docs/fee-handlers.md) for field descriptions).
 - L1 fee model (V1) uses a Celestia shares-based formula: shares = ceil(compressed_size / 512) + overhead_shares; l1_fee_wei = shares × (blob_price_scalar × l1_blob_base_fee) / 10^decimals.
 - Runtime: coinbase points to SequencerFeeVault; after execution, base fee, L1 fee, and optional operator fee are computed and credited to their vaults.
 
-Note: current integration reads config from `EV_RETH_FEE_HANDLERS_JSON` if provided and logs credit plans. To activate Celestia fees, supply `l1_blob_base_fee` per block (from your Celestia header feed) or wire a default in the builder; then apply credits before finalization so they reflect in the state root.
+Note: the node loads fee handler parameters from the chainspec extras. To activate Celestia fees, supply `l1_blob_base_fee` per block (from your Celestia header feed) or wire a default in the builder; then apply credits before finalization so they reflect in the state root.
 
 ### Transaction Flow
 
