@@ -1,4 +1,4 @@
-//! Engine API integration tests for the Rollkit payload builder.
+//! Engine API integration tests for the Evolve payload builder.
 //!
 //! This test suite focuses on complex Engine API specific functionality,
 //! including end-to-end execution flows, build/sync chain scenarios,
@@ -9,17 +9,17 @@ use crate::common;
 use eyre::Result;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use common::{create_test_transactions, RollkitTestFixture, TEST_GAS_LIMIT, TEST_TIMESTAMP};
+use common::{create_test_transactions, EvolveTestFixture, TEST_GAS_LIMIT, TEST_TIMESTAMP};
 
 /// Engine API test fixture with additional Engine API specific methods
 struct EngineApiTestFixture {
-    base: RollkitTestFixture,
+    base: EvolveTestFixture,
 }
 
 impl EngineApiTestFixture {
     /// Creates a new Engine API test fixture
     async fn new() -> Result<Self> {
-        let base = RollkitTestFixture::new().await?;
+        let base = EvolveTestFixture::new().await?;
         Ok(Self { base })
     }
 

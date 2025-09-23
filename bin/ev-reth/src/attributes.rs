@@ -11,11 +11,11 @@ use reth_ethereum::{
 use reth_payload_builder::EthPayloadBuilderAttributes;
 use serde::{Deserialize, Serialize};
 
-use crate::error::RollkitEngineError;
+use crate::error::EvolveEngineError;
 
-/// Rollkit payload attributes that support passing transactions via Engine API
+/// Evolve payload attributes that support passing transactions via Engine API
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RollkitEnginePayloadAttributes {
+pub struct EvolveEnginePayloadAttributes {
     /// Standard Ethereum payload attributes
     #[serde(flatten)]
     pub inner: EthPayloadAttributes,
@@ -26,7 +26,7 @@ pub struct RollkitEnginePayloadAttributes {
     pub gas_limit: Option<u64>,
 }
 
-impl PayloadAttributes for RollkitEnginePayloadAttributes {
+impl PayloadAttributes for EvolveEnginePayloadAttributes {
     fn timestamp(&self) -> u64 {
         self.inner.timestamp()
     }
@@ -40,9 +40,9 @@ impl PayloadAttributes for RollkitEnginePayloadAttributes {
     }
 }
 
-/// Rollkit payload builder attributes
+/// Evolve payload builder attributes
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct RollkitEnginePayloadBuilderAttributes {
+pub struct EvolveEnginePayloadBuilderAttributes {
     /// Ethereum payload builder attributes
     pub ethereum_attributes: EthPayloadBuilderAttributes,
     /// Decoded transactions from the Engine API
@@ -51,13 +51,13 @@ pub struct RollkitEnginePayloadBuilderAttributes {
     pub gas_limit: Option<u64>,
 }
 
-impl PayloadBuilderAttributes for RollkitEnginePayloadBuilderAttributes {
-    type RpcPayloadAttributes = RollkitEnginePayloadAttributes;
-    type Error = RollkitEngineError;
+impl PayloadBuilderAttributes for EvolveEnginePayloadBuilderAttributes {
+    type RpcPayloadAttributes = EvolveEnginePayloadAttributes;
+    type Error = EvolveEngineError;
 
     fn try_new(
         parent: B256,
-        attributes: RollkitEnginePayloadAttributes,
+        attributes: EvolveEnginePayloadAttributes,
         _version: u8,
     ) -> Result<Self, Self::Error> {
         let ethereum_attributes = EthPayloadBuilderAttributes::new(parent, attributes.inner);
@@ -69,7 +69,7 @@ impl PayloadBuilderAttributes for RollkitEnginePayloadBuilderAttributes {
             .into_iter()
             .map(|tx_bytes| {
                 TransactionSigned::network_decode(&mut tx_bytes.as_ref())
-                    .map_err(|e| RollkitEngineError::InvalidTransactionData(e.to_string()))
+                    .map_err(|e| EvolveEngineError::InvalidTransactionData(e.to_string()))
             })
             .collect::<Result<Vec<_>, _>>()?;
 

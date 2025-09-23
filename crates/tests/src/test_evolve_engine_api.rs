@@ -1,7 +1,7 @@
-//! Engine API integration tests for Rollkit.
+//! Engine API integration tests for Evolve.
 //!
 //! This test suite tests the Engine API integration by:
-//! 1. Attempting to connect to a real Rollkit node
+//! 1. Attempting to connect to a real Evolve node
 //! 2. Falling back to mock mode if no node is available
 //! 3. Testing `engine_forkchoiceUpdatedV3` with transactions
 //! 4. Verifying payload building and retrieval
@@ -19,9 +19,9 @@ use std::str::FromStr;
 
 use common::{create_test_transactions, TEST_TO_ADDRESS};
 
-/// Rollkit Engine API payload attributes
+/// Evolve Engine API payload attributes
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct RollkitEnginePayloadAttributes {
+pub(crate) struct EvolveEnginePayloadAttributes {
     /// Standard Ethereum payload attributes
     #[serde(flatten)]
     pub inner: alloy_rpc_types::engine::PayloadAttributes,
@@ -168,7 +168,7 @@ impl EngineApiTestNode {
     pub(crate) async fn fork_choice_updated_v3(
         &self,
         forkchoice_state: ForkchoiceState,
-        payload_attributes: Option<RollkitEnginePayloadAttributes>,
+        payload_attributes: Option<EvolveEnginePayloadAttributes>,
     ) -> Result<serde_json::Value> {
         let params = if let Some(attrs) = payload_attributes {
             json!([forkchoice_state, attrs])
@@ -231,7 +231,7 @@ async fn test_fork_choice_with_transactions(node: &EngineApiTestNode) -> Result<
     let tx_bytes = tx_bytes?;
 
     // Create payload attributes with transactions
-    let payload_attributes = RollkitEnginePayloadAttributes {
+    let payload_attributes = EvolveEnginePayloadAttributes {
         inner: alloy_rpc_types::engine::PayloadAttributes {
             timestamp: chrono::Utc::now().timestamp() as u64,
             prev_randao: B256::random(),
@@ -304,8 +304,8 @@ async fn test_engine_api_fork_choice_with_transactions() -> Result<()> {
 
 /// Integration test that runs all Engine API tests
 #[tokio::test]
-async fn test_rollkit_engine_api_integration() -> Result<()> {
-    println!("🚀 Rollkit Engine API Integration Test");
+async fn test_evolve_engine_api_integration() -> Result<()> {
+    println!("🚀 Evolve Engine API Integration Test");
     println!("=====================================");
     println!("This test verifies Engine API compatibility with transaction passthrough");
 
@@ -349,7 +349,7 @@ async fn test_rollkit_engine_api_integration() -> Result<()> {
     if failed == 0 {
         println!("🎉 All Engine API tests passed!");
         println!(
-            "The Rollkit payload builder successfully handles Engine API calls with transactions."
+            "The Evolve payload builder successfully handles Engine API calls with transactions."
         );
     } else {
         println!("⚠️ Some tests failed - this may be expected if no real node is running");

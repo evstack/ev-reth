@@ -1,7 +1,7 @@
 use alloy_primitives::U256;
 use clap::Parser;
-use ev_node::{RollkitPayloadBuilder, RollkitPayloadBuilderConfig};
-use evolve_ev_reth::RollkitPayloadAttributes;
+use ev_node::{EvolvePayloadBuilder, EvolvePayloadBuilderConfig};
+use evolve_ev_reth::EvolvePayloadAttributes;
 use reth_basic_payload_builder::{
     BuildArguments, BuildOutcome, HeaderForPayload, MissingPayloadBehaviour, PayloadBuilder,
     PayloadConfig,
@@ -24,62 +24,62 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::info;
 
-use crate::{attributes::RollkitEnginePayloadBuilderAttributes, RollkitEngineTypes};
+use crate::{attributes::EvolveEnginePayloadBuilderAttributes, EvolveEngineTypes};
 use evolve_ev_reth::config::set_current_block_gas_limit;
 
-/// Rollkit-specific command line arguments
+/// Evolve-specific command line arguments
 #[derive(Debug, Clone, Parser, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub struct RollkitArgs {
-    /// Enable Rollkit mode for the node (enabled by default)
+pub struct EvolveArgs {
+    /// Enable Evolve mode for the node (enabled by default)
     #[arg(
         long = "ev-reth.enable",
         default_value = "true",
         help = "Enable Evolve integration for transaction processing via Engine API"
     )]
-    pub enable_rollkit: bool,
+    pub enable_evolve: bool,
 }
 
-/// Rollkit payload service builder that integrates with the rollkit payload builder
+/// Evolve payload service builder that integrates with the evolve payload builder
 #[derive(Debug, Clone)]
 #[non_exhaustive]
-pub struct RollkitPayloadBuilderBuilder {
-    config: RollkitPayloadBuilderConfig,
+pub struct EvolvePayloadBuilderBuilder {
+    config: EvolvePayloadBuilderConfig,
 }
 
-impl RollkitPayloadBuilderBuilder {
-    /// Create a new builder with rollkit args
-    pub fn new(_args: &RollkitArgs) -> Self {
-        let config = RollkitPayloadBuilderConfig::new();
-        info!("Created Rollkit payload builder with config: {:?}", config);
+impl EvolvePayloadBuilderBuilder {
+    /// Create a new builder with evolve args
+    pub fn new(_args: &EvolveArgs) -> Self {
+        let config = EvolvePayloadBuilderConfig::new();
+        info!("Created Evolve payload builder with config: {:?}", config);
         Self { config }
     }
 }
 
-impl Default for RollkitPayloadBuilderBuilder {
+impl Default for EvolvePayloadBuilderBuilder {
     fn default() -> Self {
-        Self::new(&RollkitArgs::default())
+        Self::new(&EvolveArgs::default())
     }
 }
 
-/// The rollkit engine payload builder that integrates with the rollkit payload builder
+/// The evolve engine payload builder that integrates with the evolve payload builder
 #[derive(Debug, Clone)]
-pub struct RollkitEnginePayloadBuilder<Pool, Client>
+pub struct EvolveEnginePayloadBuilder<Pool, Client>
 where
     Pool: Clone,
     Client: Clone,
 {
-    pub(crate) rollkit_builder: Arc<RollkitPayloadBuilder<Client>>,
+    pub(crate) evolve_builder: Arc<EvolvePayloadBuilder<Client>>,
     #[allow(dead_code)]
     pub(crate) pool: Pool,
     #[allow(dead_code)]
-    pub(crate) config: RollkitPayloadBuilderConfig,
+    pub(crate) config: EvolvePayloadBuilderConfig,
 }
 
-impl<Node, Pool> PayloadBuilderBuilder<Node, Pool, EthEvmConfig> for RollkitPayloadBuilderBuilder
+impl<Node, Pool> PayloadBuilderBuilder<Node, Pool, EthEvmConfig> for EvolvePayloadBuilderBuilder
 where
     Node: FullNodeTypes<
         Types: NodeTypes<
-            Payload = RollkitEngineTypes,
+            Payload = EvolveEngineTypes,
             ChainSpec = ChainSpec,
             Primitives = reth_ethereum::EthPrimitives,
         >,
@@ -88,7 +88,7 @@ where
         + Unpin
         + 'static,
 {
-    type PayloadBuilder = RollkitEnginePayloadBuilder<Pool, Node::Provider>;
+    type PayloadBuilder = EvolveEnginePayloadBuilder<Pool, Node::Provider>;
 
     async fn build_payload_builder(
         self,
@@ -96,20 +96,20 @@ where
         pool: Pool,
         evm_config: EthEvmConfig,
     ) -> eyre::Result<Self::PayloadBuilder> {
-        let rollkit_builder = Arc::new(RollkitPayloadBuilder::new(
+        let evolve_builder = Arc::new(EvolvePayloadBuilder::new(
             Arc::new(ctx.provider().clone()),
             evm_config,
         ));
 
-        Ok(RollkitEnginePayloadBuilder {
-            rollkit_builder,
+        Ok(EvolveEnginePayloadBuilder {
+            evolve_builder,
             pool,
             config: self.config,
         })
     }
 }
 
-impl<Pool, Client> PayloadBuilder for RollkitEnginePayloadBuilder<Pool, Client>
+impl<Pool, Client> PayloadBuilder for EvolveEnginePayloadBuilder<Pool, Client>
 where
     Client: reth_ethereum::provider::StateProviderFactory
         + ChainSpecProvider<ChainSpec = ChainSpec>
@@ -120,7 +120,7 @@ where
         + 'static,
     Pool: TransactionPool<Transaction: PoolTransaction<Consensus = TransactionSigned>>,
 {
-    type Attributes = RollkitEnginePayloadBuilderAttributes;
+    type Attributes = EvolveEnginePayloadBuilderAttributes;
     type BuiltPayload = EthBuiltPayload;
 
     fn try_build(
@@ -139,17 +139,17 @@ where
         } = config;
 
         info!(
-            "Rollkit engine payload builder: building payload with {} transactions",
+            "Evolve engine payload builder: building payload with {} transactions",
             attributes.transactions.len()
         );
 
-        // Convert Engine API attributes to Rollkit payload attributes
+        // Convert Engine API attributes to Evolve payload attributes
         // If no gas_limit provided, default to the parent header's gas limit (genesis for first block)
         let effective_gas_limit = attributes.gas_limit.unwrap_or(parent_header.gas_limit);
         // Publish effective gas limit for RPC alignment
         set_current_block_gas_limit(effective_gas_limit);
 
-        let rollkit_attrs = RollkitPayloadAttributes::new(
+        let evolve_attrs = EvolvePayloadAttributes::new(
             attributes.transactions.clone(),
             Some(effective_gas_limit),
             attributes.timestamp(),
@@ -159,15 +159,15 @@ where
             parent_header.number + 1,
         );
 
-        // Build the payload using the rollkit payload builder - use spawn_blocking for async work
-        let rollkit_builder = self.rollkit_builder.clone();
+        // Build the payload using the evolve payload builder - use spawn_blocking for async work
+        let evolve_builder = self.evolve_builder.clone();
         let sealed_block = tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(rollkit_builder.build_payload(rollkit_attrs))
+            tokio::runtime::Handle::current().block_on(evolve_builder.build_payload(evolve_attrs))
         })
         .map_err(PayloadBuilderError::other)?;
 
         info!(
-            "Rollkit engine payload builder: built block with {} transactions, gas used: {}",
+            "Evolve engine payload builder: built block with {} transactions, gas used: {}",
             sealed_block.transaction_count(),
             sealed_block.gas_used
         );
@@ -178,7 +178,7 @@ where
             attributes.payload_id(), // Use the proper payload ID from attributes
             Arc::new(sealed_block),
             U256::from(gas_used), // Block gas used
-            None,                 // No blob sidecar for rollkit
+            None,                 // No blob sidecar for evolve
         );
 
         Ok(BuildOutcome::Better {
@@ -196,15 +196,15 @@ where
             attributes,
         } = config;
 
-        info!("Rollkit engine payload builder: building empty payload");
+        info!("Evolve engine payload builder: building empty payload");
 
-        // Create empty rollkit attributes (no transactions)
+        // Create empty evolve attributes (no transactions)
         // If no gas_limit provided, default to the parent header's gas limit (genesis for first block)
         let effective_gas_limit = attributes.gas_limit.unwrap_or(parent_header.gas_limit);
         // Publish effective gas limit for RPC alignment
         set_current_block_gas_limit(effective_gas_limit);
 
-        let rollkit_attrs = RollkitPayloadAttributes::new(
+        let evolve_attrs = EvolvePayloadAttributes::new(
             vec![],
             Some(effective_gas_limit),
             attributes.timestamp(),
@@ -215,9 +215,9 @@ where
         );
 
         // Build empty payload - use spawn_blocking for async work
-        let rollkit_builder = self.rollkit_builder.clone();
+        let evolve_builder = self.evolve_builder.clone();
         let sealed_block = tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(rollkit_builder.build_payload(rollkit_attrs))
+            tokio::runtime::Handle::current().block_on(evolve_builder.build_payload(evolve_attrs))
         })
         .map_err(PayloadBuilderError::other)?;
 

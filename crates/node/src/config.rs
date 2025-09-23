@@ -1,11 +1,11 @@
 use serde::{Deserialize, Serialize};
 
-/// Configuration for the Rollkit payload builder
+/// Configuration for the Evolve payload builder
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct RollkitPayloadBuilderConfig {}
+pub struct EvolvePayloadBuilderConfig {}
 
-impl RollkitPayloadBuilderConfig {
-    /// Creates a new instance of `RollkitPayloadBuilderConfig`
+impl EvolvePayloadBuilderConfig {
+    /// Creates a new instance of `EvolvePayloadBuilderConfig`
     pub const fn new() -> Self {
         Self {}
     }
