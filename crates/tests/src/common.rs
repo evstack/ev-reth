@@ -32,6 +32,8 @@ pub const TEST_TO_ADDRESS: &str = "0x944fDcD1c868E3cC566C78023CcB38A32cDA836E";
 pub const TEST_TIMESTAMP: u64 = 1710338135;
 /// Test gas limit for blocks
 pub const TEST_GAS_LIMIT: u64 = 30_000_000;
+/// Base fee used in mock headers to satisfy post-London/EIP-4844 requirements
+pub const TEST_BASE_FEE: u64 = 0;
 
 /// Shared test fixture for rollkit payload builder tests
 #[derive(Debug)]
@@ -64,6 +66,7 @@ impl RollkitTestFixture {
             number: 0,
             gas_limit: TEST_GAS_LIMIT,
             timestamp: TEST_TIMESTAMP,
+            base_fee_per_gas: Some(TEST_BASE_FEE),
             excess_blob_gas: Some(0),
             blob_gas_used: Some(0),
             parent_beacon_block_root: Some(B256::ZERO),
@@ -126,6 +129,7 @@ impl RollkitTestFixture {
             state_root,
             gas_limit: TEST_GAS_LIMIT,
             timestamp,
+            base_fee_per_gas: Some(TEST_BASE_FEE),
             excess_blob_gas: Some(0),
             blob_gas_used: Some(0),
             parent_beacon_block_root: Some(B256::ZERO),

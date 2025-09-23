@@ -7,15 +7,15 @@ use reth_ethereum::{
     node::{
         api::{
             payload::{EngineApiMessageVersion, EngineObjectValidationError, PayloadOrAttributes},
-            validate_version_specific_fields, AddOnsContext, EngineValidator, FullNodeComponents,
-            InvalidPayloadAttributesError, NewPayloadError, NodeTypes, PayloadTypes,
+            validate_version_specific_fields, AddOnsContext, EngineApiValidator,
+            FullNodeComponents, InvalidPayloadAttributesError, NewPayloadError, NodeTypes,
             PayloadValidator,
         },
-        builder::rpc::EngineValidatorBuilder,
+        builder::rpc::PayloadValidatorBuilder,
     },
-    primitives::RecoveredBlock,
 };
 use reth_ethereum_payload_builder::EthereumExecutionPayloadValidator;
+use reth_primitives_traits::{Block as _, RecoveredBlock};
 use std::sync::Arc;
 use tracing::info;
 
@@ -42,9 +42,8 @@ impl RollkitEngineValidator {
     }
 }
 
-impl PayloadValidator for RollkitEngineValidator {
+impl PayloadValidator<crate::RollkitEngineTypes> for RollkitEngineValidator {
     type Block = reth_ethereum::Block;
-    type ExecutionData = ExecutionData;
 
     fn ensure_well_formed_payload(
         &self,
@@ -68,7 +67,6 @@ impl PayloadValidator for RollkitEngineValidator {
                 if matches!(err, alloy_rpc_types::engine::PayloadError::BlockHash { .. }) {
                     info!("Rollkit engine validator: bypassing block hash mismatch for ev-reth");
                     // For rollkit, we trust the payload builder - just parse the block without hash validation
-                    use reth_primitives_traits::Block;
                     let ExecutionData { payload, sidecar } = payload;
                     let sealed_block = payload.try_into_block_with_sidecar(&sidecar)?.seal_slow();
                     sealed_block
@@ -81,19 +79,22 @@ impl PayloadValidator for RollkitEngineValidator {
             }
         }
     }
+
+    fn validate_payload_attributes_against_header(
+        &self,
+        _attr: &crate::attributes::RollkitEnginePayloadAttributes,
+        _header: &<Self::Block as reth_primitives_traits::Block>::Header,
+    ) -> Result<(), InvalidPayloadAttributesError> {
+        // Skip default timestamp validation for rollkit
+        Ok(())
+    }
 }
 
-impl<T> EngineValidator<T> for RollkitEngineValidator
-where
-    T: PayloadTypes<
-        PayloadAttributes = RollkitEnginePayloadAttributes,
-        ExecutionData = ExecutionData,
-    >,
-{
+impl EngineApiValidator<crate::RollkitEngineTypes> for RollkitEngineValidator {
     fn validate_version_specific_fields(
         &self,
         version: EngineApiMessageVersion,
-        payload_or_attrs: PayloadOrAttributes<'_, Self::ExecutionData, T::PayloadAttributes>,
+        payload_or_attrs: PayloadOrAttributes<'_, ExecutionData, RollkitEnginePayloadAttributes>,
     ) -> Result<(), EngineObjectValidationError> {
         validate_version_specific_fields(self.chain_spec(), version, payload_or_attrs)
     }
@@ -101,12 +102,12 @@ where
     fn ensure_well_formed_attributes(
         &self,
         version: EngineApiMessageVersion,
-        attributes: &T::PayloadAttributes,
+        attributes: &RollkitEnginePayloadAttributes,
     ) -> Result<(), EngineObjectValidationError> {
         validate_version_specific_fields(
             self.chain_spec(),
             version,
-            PayloadOrAttributes::<Self::ExecutionData, T::PayloadAttributes>::PayloadAttributes(
+            PayloadOrAttributes::<ExecutionData, RollkitEnginePayloadAttributes>::PayloadAttributes(
                 attributes,
             ),
         )?;
@@ -121,15 +122,6 @@ where
 
         Ok(())
     }
-
-    fn validate_payload_attributes_against_header(
-        &self,
-        _attr: &<T as PayloadTypes>::PayloadAttributes,
-        _header: &<Self::Block as reth_ethereum::primitives::Block>::Header,
-    ) -> Result<(), InvalidPayloadAttributesError> {
-        // Skip default timestamp validation for rollkit
-        Ok(())
-    }
 }
 
 /// Rollkit engine validator builder
@@ -137,7 +129,7 @@ where
 #[non_exhaustive]
 pub struct RollkitEngineValidatorBuilder;
 
-impl<N> EngineValidatorBuilder<N> for RollkitEngineValidatorBuilder
+impl<N> PayloadValidatorBuilder<N> for RollkitEngineValidatorBuilder
 where
     N: FullNodeComponents<
         Types: NodeTypes<
