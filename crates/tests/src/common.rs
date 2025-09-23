@@ -1,4 +1,4 @@
-//! Common test utilities and fixtures for rollkit tests.
+//! Common test utilities and fixtures for evolve tests.
 //!
 //! This module provides shared test setup, fixtures, and helper functions
 //! to eliminate code duplication across different test files.
@@ -15,8 +15,8 @@ use reth_primitives::{Header, Transaction};
 use reth_provider::test_utils::{ExtendedAccount, MockEthProvider};
 use tempfile::TempDir;
 
-use ev_node::RollkitPayloadBuilder;
-use evolve_ev_reth::RollkitPayloadAttributes;
+use ev_node::EvolvePayloadBuilder;
+use evolve_ev_reth::EvolvePayloadAttributes;
 
 // Test constants
 /// Test chain ID used in tests
@@ -35,11 +35,11 @@ pub const TEST_GAS_LIMIT: u64 = 30_000_000;
 /// Base fee used in mock headers to satisfy post-London/EIP-4844 requirements
 pub const TEST_BASE_FEE: u64 = 0;
 
-/// Shared test fixture for rollkit payload builder tests
+/// Shared test fixture for evolve payload builder tests
 #[derive(Debug)]
-pub struct RollkitTestFixture {
-    /// The rollkit payload builder instance
-    pub builder: RollkitPayloadBuilder<MockEthProvider>,
+pub struct EvolveTestFixture {
+    /// The evolve payload builder instance
+    pub builder: EvolvePayloadBuilder<MockEthProvider>,
     /// Mock Ethereum provider for testing
     pub provider: MockEthProvider,
     /// Genesis block hash
@@ -51,7 +51,7 @@ pub struct RollkitTestFixture {
     pub temp_dir: TempDir,
 }
 
-impl RollkitTestFixture {
+impl EvolveTestFixture {
     /// Creates a new test fixture with mock provider and genesis state
     pub async fn new() -> Result<Self> {
         let temp_dir = tempfile::tempdir()?;
@@ -82,7 +82,7 @@ impl RollkitTestFixture {
             .build();
         let evm_config = EthEvmConfig::new(Arc::new(test_chainspec));
 
-        let builder = RollkitPayloadBuilder::new(Arc::new(provider.clone()), evm_config);
+        let builder = EvolvePayloadBuilder::new(Arc::new(provider.clone()), evm_config);
 
         let fixture = Self {
             builder,
@@ -147,8 +147,8 @@ impl RollkitTestFixture {
         timestamp: u64,
         parent_hash: B256,
         gas_limit: Option<u64>,
-    ) -> RollkitPayloadAttributes {
-        RollkitPayloadAttributes::new(
+    ) -> EvolvePayloadAttributes {
+        EvolvePayloadAttributes::new(
             transactions,
             gas_limit,
             timestamp,

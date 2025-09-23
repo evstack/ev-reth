@@ -1,4 +1,4 @@
-//! Rollkit node binary with standard reth CLI support and rollkit payload builder integration.
+//! Evolve node binary with standard reth CLI support and evolve payload builder integration.
 //!
 //! This node supports all standard reth CLI flags and functionality, with a customized
 //! payload builder that accepts transactions via engine API payload attributes.
@@ -16,9 +16,9 @@ use alloy_rpc_types::engine::{
 };
 use clap::Parser;
 use evolve_ev_reth::{
-    config::RollkitConfig,
-    consensus::RollkitConsensusBuilder,
-    rpc::txpool::{RollkitTxpoolApiImpl, RollkitTxpoolApiServer},
+    config::EvolveConfig,
+    consensus::EvolveConsensusBuilder,
+    rpc::txpool::{EvolveTxpoolApiImpl, EvolveTxpoolApiServer},
 };
 use reth_ethereum::{
     chainspec::ChainSpec,
@@ -41,9 +41,9 @@ use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 use crate::{
-    attributes::{RollkitEnginePayloadAttributes, RollkitEnginePayloadBuilderAttributes},
-    builder::{RollkitArgs, RollkitPayloadBuilderBuilder},
-    validator::RollkitEngineValidatorBuilder,
+    attributes::{EvolveEnginePayloadAttributes, EvolveEnginePayloadBuilderAttributes},
+    builder::{EvolveArgs, EvolvePayloadBuilderBuilder},
+    validator::EvolveEngineValidatorBuilder,
 };
 
 #[global_allocator]
@@ -62,16 +62,16 @@ fn init_otlp_tracing() -> eyre::Result<()> {
     Ok(())
 }
 
-/// Rollkit engine types - uses custom payload attributes that support transactions
+/// Evolve engine types - uses custom payload attributes that support transactions
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[non_exhaustive]
-pub struct RollkitEngineTypes;
+pub struct EvolveEngineTypes;
 
-impl PayloadTypes for RollkitEngineTypes {
+impl PayloadTypes for EvolveEngineTypes {
     type ExecutionData = ExecutionData;
     type BuiltPayload = EthBuiltPayload;
-    type PayloadAttributes = RollkitEnginePayloadAttributes;
-    type PayloadBuilderAttributes = RollkitEnginePayloadBuilderAttributes;
+    type PayloadAttributes = EvolveEnginePayloadAttributes;
+    type PayloadBuilderAttributes = EvolveEnginePayloadBuilderAttributes;
 
     fn block_to_payload(
         block: SealedBlock<
@@ -87,7 +87,7 @@ impl PayloadTypes for RollkitEngineTypes {
     }
 }
 
-impl EngineTypes for RollkitEngineTypes {
+impl EngineTypes for EvolveEngineTypes {
     type ExecutionPayloadEnvelopeV1 = ExecutionPayloadV1;
     type ExecutionPayloadEnvelopeV2 = ExecutionPayloadEnvelopeV2;
     type ExecutionPayloadEnvelopeV3 = ExecutionPayloadEnvelopeV3;
@@ -95,44 +95,44 @@ impl EngineTypes for RollkitEngineTypes {
     type ExecutionPayloadEnvelopeV5 = ExecutionPayloadEnvelopeV5;
 }
 
-/// Rollkit node type
+/// Evolve node type
 #[derive(Debug, Clone, Default)]
 #[non_exhaustive]
-pub struct RollkitNode {
-    /// Rollkit-specific arguments
-    pub args: RollkitArgs,
+pub struct EvolveNode {
+    /// Evolve-specific arguments
+    pub args: EvolveArgs,
 }
 
-impl RollkitNode {
-    /// Create a new rollkit node with the given arguments
-    pub const fn new(args: RollkitArgs) -> Self {
+impl EvolveNode {
+    /// Create a new evolve node with the given arguments
+    pub const fn new(args: EvolveArgs) -> Self {
         Self { args }
     }
 }
 
-impl NodeTypes for RollkitNode {
+impl NodeTypes for EvolveNode {
     type Primitives = reth_ethereum::EthPrimitives;
     type ChainSpec = ChainSpec;
     type Storage = reth_ethereum::provider::EthStorage;
-    type Payload = RollkitEngineTypes;
+    type Payload = EvolveEngineTypes;
 }
 
-/// Rollkit node addons configuring RPC types with custom engine validator
-pub type RollkitNodeAddOns<N> = RpcAddOns<N, EthereumEthApiBuilder, RollkitEngineValidatorBuilder>;
+/// Evolve node addons configuring RPC types with custom engine validator
+pub type EvolveNodeAddOns<N> = RpcAddOns<N, EthereumEthApiBuilder, EvolveEngineValidatorBuilder>;
 
-impl<N> Node<N> for RollkitNode
+impl<N> Node<N> for EvolveNode
 where
     N: FullNodeTypes<Types = Self>,
 {
     type ComponentsBuilder = ComponentsBuilder<
         N,
         EthereumPoolBuilder,
-        BasicPayloadServiceBuilder<RollkitPayloadBuilderBuilder>,
+        BasicPayloadServiceBuilder<EvolvePayloadBuilderBuilder>,
         EthereumNetworkBuilder,
         EthereumExecutorBuilder,
-        RollkitConsensusBuilder,
+        EvolveConsensusBuilder,
     >;
-    type AddOns = RollkitNodeAddOns<NodeAdapter<N>>;
+    type AddOns = EvolveNodeAddOns<NodeAdapter<N>>;
 
     fn components_builder(&self) -> Self::ComponentsBuilder {
         ComponentsBuilder::default()
@@ -140,14 +140,14 @@ where
             .pool(EthereumPoolBuilder::default())
             .executor(EthereumExecutorBuilder::default())
             .payload(BasicPayloadServiceBuilder::new(
-                RollkitPayloadBuilderBuilder::new(&self.args),
+                EvolvePayloadBuilderBuilder::new(&self.args),
             ))
             .network(EthereumNetworkBuilder::default())
-            .consensus(RollkitConsensusBuilder::default())
+            .consensus(EvolveConsensusBuilder::default())
     }
 
     fn add_ons(&self) -> Self::AddOns {
-        RollkitNodeAddOns::default()
+        EvolveNodeAddOns::default()
     }
 }
 
@@ -169,21 +169,21 @@ fn main() {
         }
     }
 
-    if let Err(err) = Cli::<EthereumChainSpecParser, RollkitArgs>::parse().run(
-        async move |builder, rollkit_args| {
-            info!("=== EV-RETH: Starting with args: {:?} ===", rollkit_args);
-            info!("=== EV-RETH: EV-node mode enabled ===");
+    if let Err(err) = Cli::<EthereumChainSpecParser, EvolveArgs>::parse().run(
+        async move |builder, evolve_args| {
+            info!("=== EV-RETH: Starting with args: {:?} ===", evolve_args);
+            info!("=== EV-RETH: Evolve node mode enabled ===");
             info!("=== EV-RETH: Using custom payload builder with transaction support ===");
             let handle = builder
-                .node(RollkitNode::new(rollkit_args))
+                .node(EvolveNode::new(evolve_args))
                 .extend_rpc_modules(move |ctx| {
                     // Build custom txpool RPC with config + optional CLI/env override
-                    let rollkit_cfg = RollkitConfig::default();
-                    let rollkit_txpool =
-                        RollkitTxpoolApiImpl::new(ctx.pool().clone(), rollkit_cfg.max_txpool_bytes);
+                    let evolve_cfg = EvolveConfig::default();
+                    let evolve_txpool =
+                        EvolveTxpoolApiImpl::new(ctx.pool().clone(), evolve_cfg.max_txpool_bytes);
 
                     // Merge into all enabled transports (HTTP / WS)
-                    ctx.modules.merge_configured(rollkit_txpool.into_rpc())?;
+                    ctx.modules.merge_configured(evolve_txpool.into_rpc())?;
                     Ok(())
                 })
                 .launch()

@@ -1,6 +1,6 @@
-//! Tests for Rollkit consensus implementation
+//! Tests for Evolve consensus implementation
 
-use evolve_ev_reth::consensus::RollkitConsensus;
+use evolve_ev_reth::consensus::EvolveConsensus;
 use reth_chainspec::MAINNET;
 use reth_consensus::{ConsensusError, HeaderValidator};
 use reth_primitives::{Header, SealedHeader};
@@ -19,9 +19,9 @@ fn create_test_header(number: u64, parent_hash: [u8; 32], timestamp: u64) -> Sea
 }
 
 #[test]
-fn test_rollkit_consensus_allows_same_timestamp() {
+fn test_evolve_consensus_allows_same_timestamp() {
     let chain_spec = MAINNET.clone();
-    let consensus = RollkitConsensus::new(chain_spec);
+    let consensus = EvolveConsensus::new(chain_spec);
 
     // Create parent block
     let parent = create_test_header(1, [0u8; 32], 1000);
@@ -37,21 +37,21 @@ fn test_rollkit_consensus_allows_same_timestamp() {
     };
     let child = SealedHeader::new(child_header, [1u8; 32].into());
 
-    // This should NOT return an error for Rollkit consensus
+    // This should NOT return an error for Evolve consensus
     let result = consensus.validate_header_against_parent(&child, &parent);
     if let Err(e) = &result {
         eprintln!("Error validating same timestamp: {e:?}");
     }
     assert!(
         result.is_ok(),
-        "Rollkit consensus should allow same timestamp"
+        "Evolve consensus should allow same timestamp"
     );
 }
 
 #[test]
-fn test_rollkit_consensus_rejects_past_timestamp() {
+fn test_evolve_consensus_rejects_past_timestamp() {
     let chain_spec = MAINNET.clone();
-    let consensus = RollkitConsensus::new(chain_spec);
+    let consensus = EvolveConsensus::new(chain_spec);
 
     // Create parent block
     let parent = create_test_header(1, [0u8; 32], 1000);
@@ -71,7 +71,7 @@ fn test_rollkit_consensus_rejects_past_timestamp() {
     let result = consensus.validate_header_against_parent(&child, &parent);
     assert!(
         result.is_err(),
-        "Rollkit consensus should reject past timestamp"
+        "Evolve consensus should reject past timestamp"
     );
 
     match result {
@@ -87,9 +87,9 @@ fn test_rollkit_consensus_rejects_past_timestamp() {
 }
 
 #[test]
-fn test_rollkit_consensus_allows_future_timestamp() {
+fn test_evolve_consensus_allows_future_timestamp() {
     let chain_spec = MAINNET.clone();
-    let consensus = RollkitConsensus::new(chain_spec);
+    let consensus = EvolveConsensus::new(chain_spec);
 
     // Create parent block
     let parent = create_test_header(1, [0u8; 32], 1000);
@@ -112,14 +112,14 @@ fn test_rollkit_consensus_allows_future_timestamp() {
     }
     assert!(
         result.is_ok(),
-        "Rollkit consensus should allow future timestamp"
+        "Evolve consensus should allow future timestamp"
     );
 }
 
 #[test]
-fn test_rollkit_consensus_validates_parent_hash() {
+fn test_evolve_consensus_validates_parent_hash() {
     let chain_spec = MAINNET.clone();
-    let consensus = RollkitConsensus::new(chain_spec);
+    let consensus = EvolveConsensus::new(chain_spec);
 
     // Create parent block
     let parent = create_test_header(1, [0u8; 32], 1000);
@@ -139,14 +139,14 @@ fn test_rollkit_consensus_validates_parent_hash() {
     let result = consensus.validate_header_against_parent(&child, &parent);
     assert!(
         result.is_err(),
-        "Rollkit consensus should validate parent hash"
+        "Evolve consensus should validate parent hash"
     );
 }
 
 #[test]
-fn test_rollkit_consensus_validates_block_number() {
+fn test_evolve_consensus_validates_block_number() {
     let chain_spec = MAINNET.clone();
-    let consensus = RollkitConsensus::new(chain_spec);
+    let consensus = EvolveConsensus::new(chain_spec);
 
     // Create parent block
     let parent = create_test_header(1, [0u8; 32], 1000);
@@ -166,6 +166,6 @@ fn test_rollkit_consensus_validates_block_number() {
     let result = consensus.validate_header_against_parent(&child, &parent);
     assert!(
         result.is_err(),
-        "Rollkit consensus should validate block number"
+        "Evolve consensus should validate block number"
     );
 }

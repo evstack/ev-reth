@@ -1,4 +1,4 @@
-use crate::types::{PayloadAttributesError, RollkitPayloadAttributes};
+use crate::types::{EvolvePayloadAttributes, PayloadAttributesError};
 use alloy_primitives::{Address, B256};
 
 /// Test payload attributes creation and basic field assignment
@@ -12,7 +12,7 @@ fn test_payload_attributes_creation() {
     let parent_hash = B256::random();
     let block_number = 1u64;
 
-    let attrs = RollkitPayloadAttributes::new(
+    let attrs = EvolvePayloadAttributes::new(
         transactions.clone(),
         gas_limit,
         timestamp,
@@ -34,8 +34,8 @@ fn test_payload_attributes_creation() {
 /// Test comprehensive payload attributes validation including gas limits
 #[test]
 fn test_payload_attributes_validation() {
-    // Test valid attributes with empty transactions (allowed for rollkit)
-    let attrs = RollkitPayloadAttributes::new(
+    // Test valid attributes with empty transactions (allowed for evolve)
+    let attrs = EvolvePayloadAttributes::new(
         vec![],
         Some(1000000),
         1234567890,
@@ -50,7 +50,7 @@ fn test_payload_attributes_validation() {
     );
 
     // Test valid attributes with no gas limit (should use default)
-    let attrs = RollkitPayloadAttributes::new(
+    let attrs = EvolvePayloadAttributes::new(
         vec![],
         None,
         1234567890,
@@ -65,7 +65,7 @@ fn test_payload_attributes_validation() {
     );
 
     // Test invalid attributes with zero gas limit
-    let attrs = RollkitPayloadAttributes::new(
+    let attrs = EvolvePayloadAttributes::new(
         vec![],
         Some(0),
         1234567890,
@@ -88,7 +88,7 @@ fn test_payload_attributes_validation() {
 #[test]
 fn test_gas_limit_validation() {
     // Test minimum valid gas limit (1)
-    let attrs = RollkitPayloadAttributes::new(
+    let attrs = EvolvePayloadAttributes::new(
         vec![],
         Some(1),
         1234567890,
@@ -103,7 +103,7 @@ fn test_gas_limit_validation() {
     );
 
     // Test maximum gas limit
-    let attrs = RollkitPayloadAttributes::new(
+    let attrs = EvolvePayloadAttributes::new(
         vec![],
         Some(u64::MAX),
         1234567890,
@@ -119,7 +119,7 @@ fn test_gas_limit_validation() {
 
     // Test typical gas limits
     for gas_limit in [21_000, 1_000_000, 30_000_000, 100_000_000] {
-        let attrs = RollkitPayloadAttributes::new(
+        let attrs = EvolvePayloadAttributes::new(
             vec![],
             Some(gas_limit),
             1234567890,
@@ -138,7 +138,7 @@ fn test_gas_limit_validation() {
 /// Test payload attributes serialization and deserialization
 #[test]
 fn test_payload_attributes_serialization() {
-    let attrs = RollkitPayloadAttributes::new(
+    let attrs = EvolvePayloadAttributes::new(
         vec![],
         Some(1000000),
         1234567890,
@@ -149,7 +149,7 @@ fn test_payload_attributes_serialization() {
     );
 
     let serialized = serde_json::to_string(&attrs).unwrap();
-    let deserialized: RollkitPayloadAttributes = serde_json::from_str(&serialized).unwrap();
+    let deserialized: EvolvePayloadAttributes = serde_json::from_str(&serialized).unwrap();
 
     assert_eq!(attrs.transactions.len(), deserialized.transactions.len());
     assert_eq!(attrs.gas_limit, deserialized.gas_limit);
@@ -184,7 +184,7 @@ fn test_payload_attributes_errors() {
 #[test]
 fn test_payload_attributes_edge_cases() {
     // Test with maximum timestamp
-    let attrs = RollkitPayloadAttributes::new(
+    let attrs = EvolvePayloadAttributes::new(
         vec![],
         Some(u64::MAX),
         u64::MAX,
@@ -196,7 +196,7 @@ fn test_payload_attributes_edge_cases() {
     assert!(attrs.validate().is_ok(), "Maximum values should be valid");
 
     // Test with zero values (except gas limit which must be > 0)
-    let attrs = RollkitPayloadAttributes::new(
+    let attrs = EvolvePayloadAttributes::new(
         vec![],
         Some(1), // Minimum valid gas limit
         0,
@@ -211,7 +211,7 @@ fn test_payload_attributes_edge_cases() {
     );
 
     // Test with empty byte values
-    let attrs = RollkitPayloadAttributes::new(
+    let attrs = EvolvePayloadAttributes::new(
         vec![],
         None, // No gas limit specified
         1234567890,
@@ -228,7 +228,7 @@ fn test_payload_attributes_edge_cases() {
 fn test_validation_consistency() {
     // Test that validation is consistent regardless of other field values
     let base_attrs = |gas_limit| {
-        RollkitPayloadAttributes::new(
+        EvolvePayloadAttributes::new(
             vec![],
             gas_limit,
             1234567890,

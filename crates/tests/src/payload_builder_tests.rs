@@ -1,4 +1,4 @@
-//! Payload builder tests for the Rollkit payload builder.
+//! Payload builder tests for the Evolve payload builder.
 //!
 //! This test suite focuses on the core payload building functionality,
 //! including empty payloads, payloads with transactions, error handling,
@@ -10,12 +10,12 @@ use eyre::Result;
 use std::time::Duration;
 use tokio::time::timeout;
 
-use common::{create_test_transactions, RollkitTestFixture, TEST_GAS_LIMIT, TEST_TIMESTAMP};
+use common::{create_test_transactions, EvolveTestFixture, TEST_GAS_LIMIT, TEST_TIMESTAMP};
 
 /// Tests basic payload building with empty transactions
 #[tokio::test]
 async fn test_empty_payload_building() -> Result<()> {
-    let fixture = RollkitTestFixture::new().await?;
+    let fixture = EvolveTestFixture::new().await?;
 
     let payload_attrs = fixture.create_payload_attributes(
         vec![], // Empty transactions
@@ -43,7 +43,7 @@ async fn test_empty_payload_building() -> Result<()> {
 /// Tests payload building with multiple transactions
 #[tokio::test]
 async fn test_payload_with_transactions() -> Result<()> {
-    let fixture = RollkitTestFixture::new().await?;
+    let fixture = EvolveTestFixture::new().await?;
 
     // Create test transactions
     let transactions = create_test_transactions(3, 0);
@@ -87,7 +87,7 @@ async fn test_payload_with_transactions() -> Result<()> {
 /// Tests payload building with various transaction counts
 #[tokio::test]
 async fn test_variable_transaction_counts() -> Result<()> {
-    let fixture = RollkitTestFixture::new().await?;
+    let fixture = EvolveTestFixture::new().await?;
 
     // Test different transaction counts
     for tx_count in [0, 1, 5, 10, 50] {
@@ -135,7 +135,7 @@ async fn test_variable_transaction_counts() -> Result<()> {
 /// Tests error handling for invalid payload building scenarios
 #[tokio::test]
 async fn test_payload_building_error_handling() -> Result<()> {
-    let fixture = RollkitTestFixture::new().await?;
+    let fixture = EvolveTestFixture::new().await?;
 
     // Test with invalid gas limit (should fail during validation, not building)
     let invalid_attrs = fixture.create_payload_attributes(
@@ -198,7 +198,7 @@ async fn test_payload_building_error_handling() -> Result<()> {
 /// Tests performance with different payload sizes
 #[tokio::test]
 async fn test_payload_building_performance() -> Result<()> {
-    let fixture = RollkitTestFixture::new().await?;
+    let fixture = EvolveTestFixture::new().await?;
 
     // Test different transaction batch sizes
     let batch_sizes = vec![1, 10, 50, 100];
@@ -245,7 +245,7 @@ async fn test_payload_building_performance() -> Result<()> {
 /// Tests payload building with different gas limits
 #[tokio::test]
 async fn test_gas_limit_scenarios() -> Result<()> {
-    let fixture = RollkitTestFixture::new().await?;
+    let fixture = EvolveTestFixture::new().await?;
 
     let transactions = create_test_transactions(2, 0);
 

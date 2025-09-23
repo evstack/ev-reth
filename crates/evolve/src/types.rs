@@ -2,9 +2,9 @@ use alloy_primitives::{Address, B256};
 use reth_primitives::TransactionSigned;
 use serde::{Deserialize, Serialize};
 
-/// Payload attributes for the Rollkit Reth node
+/// Payload attributes for the Evolve Reth node
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RollkitPayloadAttributes {
+pub struct EvolvePayloadAttributes {
     /// List of transactions to be executed in the payload
     pub transactions: Vec<TransactionSigned>,
     /// Optional gas limit for the transactions
@@ -21,8 +21,8 @@ pub struct RollkitPayloadAttributes {
     pub block_number: u64,
 }
 
-impl RollkitPayloadAttributes {
-    /// Creates a new instance of `RollkitPayloadAttributes`
+impl EvolvePayloadAttributes {
+    /// Creates a new instance of `EvolvePayloadAttributes`
     pub const fn new(
         transactions: Vec<TransactionSigned>,
         gas_limit: Option<u64>,
@@ -45,7 +45,7 @@ impl RollkitPayloadAttributes {
 
     /// Validates the payload attributes
     pub const fn validate(&self) -> Result<(), PayloadAttributesError> {
-        // For rollkit, empty transactions are allowed (empty blocks are valid)
+        // For evolve, empty transactions are allowed (empty blocks are valid)
 
         if let Some(gas_limit) = self.gas_limit {
             if gas_limit == 0 {
@@ -60,7 +60,7 @@ impl RollkitPayloadAttributes {
 /// Errors that can occur during payload attributes validation
 ///
 /// This enum represents various validation errors that can occur when processing
-/// payload attributes for the Rollkit payload builder. Each variant corresponds
+/// payload attributes for the Evolve payload builder. Each variant corresponds
 /// to a specific validation failure scenario.
 #[derive(Debug, thiserror::Error)]
 pub enum PayloadAttributesError {

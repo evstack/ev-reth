@@ -105,8 +105,8 @@ build-all:
 test-node:
 	$(CARGO) test -p ev-node
 
-## test-rollkit: Test only the rollkit crate
-test-rollkit:
+## test-evolve: Test only the evolve crate
+test-evolve:
 	$(CARGO) test -p evolve-ev-reth
 
 ## test-common: Test only the common crate

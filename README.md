@@ -20,7 +20,7 @@ Unlike standard Reth, ev-reth accepts transactions directly through the Engine A
 
 ### 2. Custom Payload Builder
 
-The `RollkitPayloadBuilder` handles:
+The `EvolvePayloadBuilder` handles:
 
 - Transaction decoding from Engine API attributes
 - Block construction with proper gas limits
@@ -36,7 +36,7 @@ Modified Engine API validator that:
 
 ### 4. Custom Consensus for Equal Timestamps
 
-ev-reth includes a custom consensus implementation (`RollkitConsensus`) that:
+ev-reth includes a custom consensus implementation (`EvolveConsensus`) that:
 
 - Allows multiple blocks to have the same timestamp
 - Wraps the standard Ethereum beacon consensus for most validation
@@ -168,16 +168,16 @@ This modular design allows for:
 
 ### Components
 
-1. **RollkitPayloadBuilder** (`crates/node/src/builder.rs`)
+1. **EvolvePayloadBuilder** (`crates/node/src/builder.rs`)
    - Handles payload construction with transactions from Engine API
    - Manages state execution and block assembly
 
-2. **RollkitEngineTypes** (`bin/ev-reth/src/main.rs`)
+2. **EvolveEngineTypes** (`bin/ev-reth/src/main.rs`)
    - Custom Engine API types supporting transaction attributes
    - Payload validation and attribute processing
 
-3. **RollkitEngineValidator** (`bin/ev-reth/src/main.rs`)
-   - Modified validator for Rollkit-specific requirements
+3. **EvolveEngineValidator** (`bin/ev-reth/src/main.rs`)
+   - Modified validator for Evolve-specific requirements
    - Bypasses certain validations while maintaining security
 
 4. **Payload Builder Missing Payload Handling** (`bin/ev-reth/src/builder.rs`)
@@ -185,25 +185,25 @@ This modular design allows for:
    - Prevents race conditions when multiple requests are made for the same payload
    - Ensures deterministic payload generation without redundant builds
 
-5. **RollkitConsensus** (`crates/rollkit/src/consensus.rs`)
-   - Custom consensus implementation for Rollkit
+5. **EvolveConsensus** (`crates/evolve/src/consensus.rs`)
+   - Custom consensus implementation for Evolve
    - Allows blocks with equal timestamps (parent.timestamp <= header.timestamp)
    - Wraps standard Ethereum beacon consensus for other validations
 
-6. **Rollkit Types** (`crates/rollkit/src/types.rs`)
-   - Rollkit-specific payload attributes and types
+6. **Evolve Types** (`crates/evolve/src/types.rs`)
+   - Evolve-specific payload attributes and types
    - Transaction encoding/decoding utilities
 
-7. **Rollkit Txpool RPC** (`crates/rollkit/src/rpc/txpool.rs`)
+7. **Evolve Txpool RPC** (`crates/evolve/src/rpc/txpool.rs`)
    - Custom RPC implementation for transaction pool queries
    - Efficient transaction retrieval with size-based limits
-   - Returns RLP-encoded transaction bytes for Rollkit consumption
+   - Returns RLP-encoded transaction bytes for Evolve consumption
 
 ### Transaction Flow
 
 1. Evolve submits transactions via Engine API payload attributes
-2. `RollkitEnginePayloadAttributes` decodes and validates transactions
-3. `RollkitPayloadBuilder` executes transactions and builds block
+2. `EvolveEnginePayloadAttributes` decodes and validates transactions
+3. `EvolvePayloadBuilder` executes transactions and builds block
 4. Block is returned via standard Engine API response
 
 ## Configuration
@@ -241,7 +241,7 @@ Changing limits on a running chain:
 
 ### Node Configuration
 
-All standard Reth configuration options are supported. Key options for Rollkit integration:
+All standard Reth configuration options are supported. Key options for Evolve integration:
 
 - `--http`: Enable HTTP-RPC server
 - `--ws`: Enable WebSocket-RPC server
@@ -361,4 +361,4 @@ This project is dual-licensed under:
 This project builds upon the excellent work of:
 
 - [Reth](https://github.com/paradigmxyz/reth) - The Rust Ethereum client
-- [Rollkit](https://rollkit.dev/) - The modular rollup framework
+- [Evolve](https://ev.xyz/) - The modular rollup framework

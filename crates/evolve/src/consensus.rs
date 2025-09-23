@@ -1,4 +1,4 @@
-//! Rollkit custom consensus implementation that allows same timestamps across blocks.
+//! Evolve custom consensus implementation that allows same timestamps across blocks.
 
 use reth_chainspec::ChainSpec;
 use reth_consensus::{Consensus, ConsensusError, FullConsensus, HeaderValidator};
@@ -11,24 +11,24 @@ use reth_node_api::{FullNodeTypes, NodeTypes};
 use reth_primitives::{RecoveredBlock, SealedBlock, SealedHeader};
 use std::sync::Arc;
 
-/// Builder for `RollkitConsensus`
+/// Builder for `EvolveConsensus`
 #[derive(Debug, Default, Clone)]
 #[non_exhaustive]
-pub struct RollkitConsensusBuilder;
+pub struct EvolveConsensusBuilder;
 
-impl RollkitConsensusBuilder {
-    /// Create a new `RollkitConsensusBuilder`
+impl EvolveConsensusBuilder {
+    /// Create a new `EvolveConsensusBuilder`
     pub const fn new() -> Self {
         Self
     }
 
     /// Build the consensus implementation
-    pub fn build(chain_spec: Arc<ChainSpec>) -> Arc<RollkitConsensus> {
-        Arc::new(RollkitConsensus::new(chain_spec))
+    pub fn build(chain_spec: Arc<ChainSpec>) -> Arc<EvolveConsensus> {
+        Arc::new(EvolveConsensus::new(chain_spec))
     }
 }
 
-impl<Node> ConsensusBuilder<Node> for RollkitConsensusBuilder
+impl<Node> ConsensusBuilder<Node> for EvolveConsensusBuilder
 where
     Node: FullNodeTypes,
     Node::Types: NodeTypes<ChainSpec = ChainSpec, Primitives = EthPrimitives>,
@@ -36,30 +36,30 @@ where
     type Consensus = Arc<dyn FullConsensus<EthPrimitives, Error = ConsensusError>>;
 
     async fn build_consensus(self, ctx: &BuilderContext<Node>) -> eyre::Result<Self::Consensus> {
-        Ok(Arc::new(RollkitConsensus::new(ctx.chain_spec())) as Self::Consensus)
+        Ok(Arc::new(EvolveConsensus::new(ctx.chain_spec())) as Self::Consensus)
     }
 }
 
-/// Rollkit consensus implementation that allows blocks with the same timestamp.
+/// Evolve consensus implementation that allows blocks with the same timestamp.
 ///
 /// This consensus implementation wraps the standard Ethereum beacon consensus
 /// but modifies the timestamp validation to allow multiple blocks to have the
-/// same timestamp, which is required for Rollkit's operation.
+/// same timestamp, which is required for Evolve's operation.
 #[derive(Debug, Clone)]
-pub struct RollkitConsensus {
+pub struct EvolveConsensus {
     /// Inner Ethereum beacon consensus for standard validation
     inner: EthBeaconConsensus<ChainSpec>,
 }
 
-impl RollkitConsensus {
-    /// Create a new Rollkit consensus instance
+impl EvolveConsensus {
+    /// Create a new Evolve consensus instance
     pub const fn new(chain_spec: Arc<ChainSpec>) -> Self {
         let inner = EthBeaconConsensus::new(chain_spec);
         Self { inner }
     }
 }
 
-impl HeaderValidator for RollkitConsensus {
+impl HeaderValidator for EvolveConsensus {
     fn validate_header(&self, header: &SealedHeader) -> Result<(), ConsensusError> {
         // Use inner consensus for basic header validation
         self.inner.validate_header(header)
@@ -90,7 +90,7 @@ impl HeaderValidator for RollkitConsensus {
     }
 }
 
-impl Consensus<Block> for RollkitConsensus {
+impl Consensus<Block> for EvolveConsensus {
     type Error = ConsensusError;
 
     fn validate_body_against_header(
@@ -107,7 +107,7 @@ impl Consensus<Block> for RollkitConsensus {
     }
 }
 
-impl FullConsensus<EthPrimitives> for RollkitConsensus {
+impl FullConsensus<EthPrimitives> for EvolveConsensus {
     fn validate_block_post_execution(
         &self,
         block: &RecoveredBlock<Block>,
