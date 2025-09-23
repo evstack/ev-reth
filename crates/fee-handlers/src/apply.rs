@@ -1,5 +1,5 @@
-use alloy_primitives::Address;
 use crate::types::{FeeHandlersConfig, FeeTotals};
+use alloy_primitives::Address;
 
 /// Produce the balance credits to apply for this block.
 /// The node/builder should apply these as post-block state deltas.
@@ -18,4 +18,3 @@ pub fn credit_plan(cfg: &FeeHandlersConfig, totals: &FeeTotals) -> Vec<(Address,
     }
     v
 }
-

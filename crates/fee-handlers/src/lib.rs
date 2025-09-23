@@ -1,10 +1,9 @@
-pub mod types;
-pub mod config;
-pub mod compute;
 pub mod apply;
+pub mod compute;
+pub mod config;
+pub mod types;
 
-pub use types::*;
-pub use config::*;
-pub use compute::*;
 pub use apply::*;
-
+pub use compute::*;
+pub use config::*;
+pub use types::*;

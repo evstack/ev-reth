@@ -68,6 +68,12 @@ pub struct FeeTotals {
     pub operator_fee_wei: u128,
 }
 
-const fn default_decimals() -> u32 { 6 }
-const fn default_share_size() -> u32 { 512 }
-const fn default_blob_price_scalar() -> u64 { 1_000_000 }
+const fn default_decimals() -> u32 {
+    6
+}
+const fn default_share_size() -> u32 {
+    512
+}
+const fn default_blob_price_scalar() -> u64 {
+    1_000_000
+}

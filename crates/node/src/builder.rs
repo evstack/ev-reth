@@ -1,5 +1,4 @@
 use alloy_consensus::transaction::Transaction;
-
 use evolve_ev_reth::EvolvePayloadAttributes;
 use fee_handlers::{
     compute_totals, credit_plan,
@@ -13,8 +12,11 @@ use reth_evm::{
 use reth_evm_ethereum::EthEvmConfig;
 use reth_payload_builder_primitives::PayloadBuilderError;
 use reth_primitives::{transaction::SignedTransaction, Header, SealedBlock, SealedHeader};
+use reth_primitives_traits::Block as _;
 use reth_provider::{HeaderProvider, StateProviderFactory};
-use reth_revm::{database::StateProviderDatabase, State};
+use reth_revm::{
+    database::StateProviderDatabase, revm::database::states::bundle_state::BundleRetention, State,
+};
 use std::sync::Arc;
 use tracing::debug;
 
@@ -172,19 +174,16 @@ where
             .finish(&state_provider)
             .map_err(PayloadBuilderError::other)?;
 
-        let sealed_block = block.sealed_block().clone();
+        let mut sealed_block = block.sealed_block().clone();
 
-        // If fee-handlers config is present, compute totals and log/apply credits.
         if let Some(fee_cfg) = fee_cfg_env {
             let base_fee = sealed_block.header().base_fee_per_gas.unwrap_or(0);
             let gas_used = sealed_block.gas_used;
 
-            // Use total RLP tx bytes as DA size proxy.
             let tx_bytes_acc = TxBytesAcc {
                 total_size: total_tx_bytes,
             };
             let l1_base_fee_wei: u128 = 0;
-            // Allow an env override until a Celestia feed is wired.
             let l1_blob_base_fee_wei: u128 = std::env::var("EV_RETH_CELESTIA_BLOB_BASE_FEE_WEI")
                 .ok()
                 .and_then(|v| v.parse::<u128>().ok())
@@ -201,10 +200,28 @@ where
 
             let credits = credit_plan(&fee_cfg, &totals);
             if !credits.is_empty() {
-                // TODO(ev-reth): apply these to state before finish() to reflect in the state root.
-                // Currently we just log the plan.
+                state_db
+                    .increment_balances(credits.iter().copied())
+                    .map_err(|err| {
+                        PayloadBuilderError::Internal(RethError::Other(Box::new(err)))
+                    })?;
+
+                state_db.merge_transitions(BundleRetention::Reverts);
+
+                let hashed_state = state_provider.hashed_post_state(&state_db.bundle_state);
+                let (state_root, _) = state_provider
+                    .state_root_with_updates(hashed_state.clone())
+                    .map_err(PayloadBuilderError::other)?;
+
+                let (block_without_hash, _) = sealed_block.clone().split();
+                let body = block_without_hash.body().clone();
+                let mut header = block_without_hash.header().clone();
+                header.state_root = state_root;
+                let rebuilt_block = body.into_block(header);
+                sealed_block = SealedBlock::seal_slow(rebuilt_block);
+
                 for (addr, amount) in &credits {
-                    debug!(target: "ev-reth", ?addr, amount, "fee-handlers credit plan");
+                    debug!(target: "ev-reth", ?addr, amount, "fee-handlers credit applied");
                 }
             }
         }
