@@ -52,6 +52,10 @@ clap = { workspace = true, features = ["derive", "env"] }
 serde = { workspace = true, features = ["derive"] }
 thiserror.workspace = true
 
+# Reth OTLP tracing
+reth-tracing-otlp.workspace = true
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
 [lints]
 workspace = true
 

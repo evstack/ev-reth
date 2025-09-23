@@ -20,7 +20,7 @@ Unlike standard Reth, ev-reth accepts transactions directly through the Engine A
 
 ### 2. Custom Payload Builder
 
-The `RollkitPayloadBuilder` handles:
+The `EvolvePayloadBuilder` handles:
 
 - Transaction decoding from Engine API attributes
 - Block construction with proper gas limits
@@ -36,7 +36,7 @@ Modified Engine API validator that:
 
 ### 4. Custom Consensus for Equal Timestamps
 
-ev-reth includes a custom consensus implementation (`RollkitConsensus`) that:
+ev-reth includes a custom consensus implementation (`EvolveConsensus`) that:
 
 - Allows multiple blocks to have the same timestamp
 - Wraps the standard Ethereum beacon consensus for most validation
@@ -114,7 +114,7 @@ When using the Engine API, you can include transactions in the payload attribute
       "withdrawals": [],
       "parentBeaconBlockRoot": "0x...",
       "transactions": ["0x...", "0x..."],  // RLP-encoded transactions
-      "gasLimit": "0x1c9c380"  // Optional custom gas limit
+      "gasLimit": "0x1c9c380"  // Optional; defaults to parent header gas limit
     }
   ]
 }
@@ -168,16 +168,16 @@ This modular design allows for:
 
 ### Components
 
-1. **RollkitPayloadBuilder** (`crates/node/src/builder.rs`)
+1. **EvolvePayloadBuilder** (`crates/node/src/builder.rs`)
    - Handles payload construction with transactions from Engine API
    - Manages state execution and block assembly
 
-2. **RollkitEngineTypes** (`bin/ev-reth/src/main.rs`)
+2. **EvolveEngineTypes** (`bin/ev-reth/src/main.rs`)
    - Custom Engine API types supporting transaction attributes
    - Payload validation and attribute processing
 
-3. **RollkitEngineValidator** (`bin/ev-reth/src/main.rs`)
-   - Modified validator for Rollkit-specific requirements
+3. **EvolveEngineValidator** (`bin/ev-reth/src/main.rs`)
+   - Modified validator for Evolve-specific requirements
    - Bypasses certain validations while maintaining security
 
 4. **Payload Builder Missing Payload Handling** (`bin/ev-reth/src/builder.rs`)
@@ -185,19 +185,19 @@ This modular design allows for:
    - Prevents race conditions when multiple requests are made for the same payload
    - Ensures deterministic payload generation without redundant builds
 
-5. **RollkitConsensus** (`crates/rollkit/src/consensus.rs`)
-   - Custom consensus implementation for Rollkit
+5. **EvolveConsensus** (`crates/evolve/src/consensus.rs`)
+   - Custom consensus implementation for Evolve
    - Allows blocks with equal timestamps (parent.timestamp <= header.timestamp)
    - Wraps standard Ethereum beacon consensus for other validations
 
-6. **Rollkit Types** (`crates/rollkit/src/types.rs`)
-   - Rollkit-specific payload attributes and types
+6. **Evolve Types** (`crates/evolve/src/types.rs`)
+   - Evolve-specific payload attributes and types
    - Transaction encoding/decoding utilities
 
-7. **Rollkit Txpool RPC** (`crates/rollkit/src/rpc/txpool.rs`)
+7. **Evolve Txpool RPC** (`crates/evolve/src/rpc/txpool.rs`)
    - Custom RPC implementation for transaction pool queries
    - Efficient transaction retrieval with size-based limits
-   - Returns RLP-encoded transaction bytes for Rollkit consumption
+   - Returns RLP-encoded transaction bytes for Evolve consumption
 
 ## Fee Handling (Vaults)
 
@@ -213,8 +213,8 @@ Note: current integration reads config from `EV_RETH_FEE_HANDLERS_JSON` if provi
 ### Transaction Flow
 
 1. Evolve submits transactions via Engine API payload attributes
-2. `RollkitEnginePayloadAttributes` decodes and validates transactions
-3. `RollkitPayloadBuilder` executes transactions and builds block
+2. `EvolveEnginePayloadAttributes` decodes and validates transactions
+3. `EvolvePayloadBuilder` executes transactions and builds block
 4. Block is returned via standard Engine API response
 
 ## Configuration
@@ -251,14 +251,32 @@ The payload builder can be configured with:
 
 The txpool RPC extension can be configured with:
 
-- `max_txpool_bytes`: Maximum bytes of transactions to return (default: 1.98 MB)
+- `max_txpool_bytes`: Maximum bytes of transactions to return (default: 1.85 MB)
+- `max_txpool_gas`: Maximum cumulative gas for transactions to return (default: 30,000,000)
+
+Notes:
+- Both limits apply together. Selection stops when either cap is reached.
+- Set a limit to `0` to disable that constraint.
+
+CLI/env overrides:
+- None for txpool gas. The RPC follows the current block gas automatically.
+
+### Gas Limits: Block vs Txpool
+
+- Block gas limit (per-block): Can be passed via Engine API payload attributes `gasLimit`. If omitted, ev-reth now defaults to the parent header’s gas limit (which is the genesis gas limit for the first block). The payload builder enforces this during execution and requires it to be > 0.
+- Txpool gas cap (RPC selection): `txpoolExt_getTxs` follows the current block gas limit automatically. There is no CLI/env override; this keeps txpool selection aligned with execution gas by default.
+- Relationship: These limits are aligned by default. Overriding the txpool cap makes them independent again; exact packing still depends on real execution.
+
+Changing limits on a running chain:
+- Per-block gas: Set `gasLimit` in Engine API payload attributes to change the block’s gas limit for that payload. Subsequent payloads will default to that new parent header gas limit unless overridden again.
+- Txpool gas cap: Follows the head block’s gas limit automatically. There is no fixed-cap override; change your block gas and the RPC alignment follows.
 
 ### Node Configuration
 
-All standard Reth configuration options are supported. Key options for Rollkit integration:
+All standard Reth configuration options are supported. Key options for Evolve integration:
 
 - `--http`: Enable HTTP-RPC server
-- `--ws`: Enable WebSocket-RPC server  
+- `--ws`: Enable WebSocket-RPC server
 - `--authrpc.port`: Engine API port (default: 8551)
 - `--authrpc.jwtsecret`: Path to JWT secret for Engine API authentication
 
@@ -375,4 +393,4 @@ This project is dual-licensed under:
 This project builds upon the excellent work of:
 
 - [Reth](https://github.com/paradigmxyz/reth) - The Rust Ethereum client
-- [Rollkit](https://rollkit.dev/) - The modular rollup framework
+- [Evolve](https://ev.xyz/) - The modular rollup framework

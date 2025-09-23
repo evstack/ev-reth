@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
-- Add missing payload attribute extraction in `RollkitPayloadBuilder` to properly handle transactions submitted via Engine API ([#33](https://github.com/evstack/ev-reth/pull/33))
+- Add missing payload attribute extraction in `EvolvePayloadBuilder` to properly handle transactions submitted via Engine API ([#33](https://github.com/evstack/ev-reth/pull/33))
 - Remove unused configuration parameters to clean up codebase ([#32](https://github.com/evstack/ev-reth/pull/32))
 
 ### Changed

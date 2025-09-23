@@ -39,7 +39,7 @@ fn test_ev_reth_help() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    // Should contain rollkit-specific options or at least show it's a rollkit-enabled build
+    // Should contain evolve-specific options or at least show it's a evolve-enabled build
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     let full_output = format!("{stdout} {stderr}");
@@ -56,10 +56,10 @@ fn test_ev_reth_help() {
     println!("✓ ev-reth help test passed");
 }
 
-/// Tests that rollkit-specific CLI arguments are recognized
+/// Tests that evolve-specific CLI arguments are recognized
 #[test]
-fn test_rollkit_cli_arguments() {
-    // Test that rollkit-specific arguments are parsed correctly
+fn test_evolve_cli_arguments() {
+    // Test that evolve-specific arguments are parsed correctly
     let output = Command::new("cargo")
         .args(["run", "-p", "ev-reth", "--bin", "ev-reth", "--", "--help"])
         .output()
@@ -67,7 +67,7 @@ fn test_rollkit_cli_arguments() {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    // Check for rollkit-specific arguments or ev-reth branding
+    // Check for evolve-specific arguments or ev-reth branding
     let stderr = String::from_utf8_lossy(&output.stderr);
     let full_output = format!("{stdout} {stderr}");
     assert!(
@@ -84,7 +84,7 @@ fn test_rollkit_cli_arguments() {
         || stdout.contains("datadir");
     assert!(has_basic_options, "Should show basic node options");
 
-    println!("✓ rollkit CLI arguments test passed");
+    println!("✓ evolve CLI arguments test passed");
 }
 
 /// Tests that the binary exits gracefully with invalid arguments
@@ -103,7 +103,7 @@ fn test_ev_reth_invalid_arguments() {
         .stderr(Stdio::piped())
         .stdout(Stdio::piped())
         .output()
-        .expect("Failed to execute rollkit-reth with invalid args");
+        .expect("Failed to execute evolve-reth with invalid args");
 
     // Should fail with non-zero exit code
     assert!(
@@ -123,7 +123,7 @@ fn test_ev_reth_invalid_arguments() {
 
 /// Tests that the Engine API integration tests run successfully
 #[test]
-fn test_rollkit_engine_api_tests_run() {
+fn test_evolve_engine_api_tests_run() {
     let output = Command::new("cargo")
         .args(["test", "test_engine_api", "--lib"])
         .output()
@@ -148,7 +148,7 @@ fn test_rollkit_engine_api_tests_run() {
 
 /// Tests library compilation and basic exports
 #[test]
-fn test_rollkit_library_compilation() {
+fn test_evolve_library_compilation() {
     let output = Command::new("cargo")
         .args(["build", "--lib"])
         .output()
@@ -166,7 +166,7 @@ fn test_rollkit_library_compilation() {
 
 /// Tests that documentation can be generated successfully
 #[test]
-fn test_rollkit_documentation_generation() {
+fn test_evolve_documentation_generation() {
     let output = Command::new("cargo")
         .args(["doc", "--no-deps", "--lib"])
         .env("RUSTDOCFLAGS", "-D warnings") // Treat doc warnings as errors
@@ -186,7 +186,7 @@ fn test_rollkit_documentation_generation() {
 /// Tests basic workspace integration
 #[test]
 fn test_workspace_integration() {
-    // Test that the rollkit crate is properly integrated into the workspace
+    // Test that the evolve crate is properly integrated into the workspace
     let output = Command::new("cargo")
         .args(["metadata", "--format-version", "1"])
         .output()

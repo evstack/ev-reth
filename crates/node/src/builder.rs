@@ -1,5 +1,6 @@
 use alloy_consensus::transaction::Transaction;
-use evolve_ev_reth::RollkitPayloadAttributes;
+
+use evolve_ev_reth::EvolvePayloadAttributes;
 use fee_handlers::{
     compute_totals, credit_plan,
     types::{FeeHandlersConfig, TxBytesAcc},
@@ -31,20 +32,20 @@ fn fee_handlers_config_from_env() -> Option<FeeHandlersConfig> {
         .and_then(|x| serde_json::from_value::<FeeHandlersConfig>(x).ok())
 }
 
-/// Payload builder for Rollkit Reth node
+/// Payload builder for Evolve Reth node
 #[derive(Debug)]
-pub struct RollkitPayloadBuilder<Client> {
+pub struct EvolvePayloadBuilder<Client> {
     /// The client for state access
     pub client: Arc<Client>,
     /// EVM configuration
     pub evm_config: EthEvmConfig,
 }
 
-impl<Client> RollkitPayloadBuilder<Client>
+impl<Client> EvolvePayloadBuilder<Client>
 where
     Client: StateProviderFactory + HeaderProvider<Header = Header> + Send + Sync + 'static,
 {
-    /// Creates a new instance of `RollkitPayloadBuilder`
+    /// Creates a new instance of `EvolvePayloadBuilder`
     pub const fn new(client: Arc<Client>, evm_config: EthEvmConfig) -> Self {
         Self { client, evm_config }
     }
@@ -52,7 +53,7 @@ where
     /// Builds a payload using the provided attributes
     pub async fn build_payload(
         &self,
-        attributes: RollkitPayloadAttributes,
+        attributes: EvolvePayloadAttributes,
     ) -> Result<SealedBlock, PayloadBuilderError> {
         // Validate attributes
         attributes
@@ -82,7 +83,7 @@ where
         // Create next block environment attributes
         let gas_limit = attributes.gas_limit.ok_or_else(|| {
             PayloadBuilderError::Internal(RethError::Other(
-                "Gas limit is required for rollkit payloads".into(),
+                "Gas limit is required for evolve payloads".into(),
             ))
         })?;
 
@@ -98,8 +99,10 @@ where
             suggested_fee_recipient,
             prev_randao: attributes.prev_randao,
             gas_limit,
-            parent_beacon_block_root: Some(alloy_primitives::B256::ZERO), // Set to zero for rollkit blocks
-            withdrawals: None,
+            parent_beacon_block_root: Some(alloy_primitives::B256::ZERO), // Set to zero for evolve blocks
+            // For post-Shanghai/Cancun chains, an empty withdrawals list is valid
+            // and ensures version-specific fields are initialized.
+            withdrawals: Some(Default::default()),
         };
 
         // Create block builder using the EVM config
@@ -116,7 +119,7 @@ where
         // Execute transactions
         tracing::info!(
             transaction_count = attributes.transactions.len(),
-            "Rollkit payload builder: executing transactions"
+            "Evolve payload builder: executing transactions"
         );
         let mut total_tx_bytes: u64 = 0;
         for (i, tx) in attributes.transactions.iter().enumerate() {
@@ -143,10 +146,18 @@ where
                     let this_len = alloy_rlp::encode(tx).len() as u64;
                     total_tx_bytes = total_tx_bytes.saturating_add(this_len);
                     tracing::debug!(index = i, gas_used, "Transaction executed successfully");
+                    debug!(
+                        "[debug] execute_transaction ok: index={}, gas_used={}",
+                        i, gas_used
+                    );
                 }
                 Err(err) => {
                     // Log the error but continue with other transactions
                     tracing::warn!(index = i, error = ?err, "Transaction execution failed");
+                    debug!(
+                        "[debug] execute_transaction err: index={}, err={:?}",
+                        i, err
+                    );
                 }
             }
         }
@@ -169,7 +180,9 @@ where
             let gas_used = sealed_block.gas_used;
 
             // Use total RLP tx bytes as DA size proxy.
-            let tx_bytes_acc = TxBytesAcc { total_size: total_tx_bytes };
+            let tx_bytes_acc = TxBytesAcc {
+                total_size: total_tx_bytes,
+            };
             let l1_base_fee_wei: u128 = 0;
             // Allow an env override until a Celestia feed is wired.
             let l1_blob_base_fee_wei: u128 = std::env::var("EV_RETH_CELESTIA_BLOB_BASE_FEE_WEI")
@@ -200,7 +213,7 @@ where
                     block_hash = ?sealed_block.hash(),
                     transaction_count = sealed_block.transaction_count(),
                     gas_used = sealed_block.gas_used,
-                    "Rollkit payload builder: built block"
+                    "Evolve payload builder: built block"
         );
 
         // Return the sealed block
@@ -223,9 +236,9 @@ mod tests {
 pub const fn create_payload_builder_service<Client>(
     client: Arc<Client>,
     evm_config: EthEvmConfig,
-) -> Option<RollkitPayloadBuilder<Client>>
+) -> Option<EvolvePayloadBuilder<Client>>
 where
     Client: StateProviderFactory + HeaderProvider<Header = Header> + Send + Sync + 'static,
 {
-    Some(RollkitPayloadBuilder::new(client, evm_config))
+    Some(EvolvePayloadBuilder::new(client, evm_config))
 }

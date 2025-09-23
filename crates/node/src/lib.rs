@@ -7,9 +7,9 @@
 
 /// Builder module for payload construction and related utilities.
 pub mod builder;
-/// Configuration types and validation for the Rollkit payload builder
+/// Configuration types and validation for the Evolve payload builder
 pub mod config;
 
 // Re-export public types
-pub use builder::{create_payload_builder_service, RollkitPayloadBuilder};
-pub use config::{ConfigError, RollkitPayloadBuilderConfig};
+pub use builder::{create_payload_builder_service, EvolvePayloadBuilder};
+pub use config::{ConfigError, EvolvePayloadBuilderConfig};
