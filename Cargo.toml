@@ -2,10 +2,11 @@
 resolver = "2"
 members = [
   "bin/ev-reth",
-  "crates/common",
-  "crates/node",
-  "crates/evolve",
-  "crates/tests",
+    "crates/common",
+    "crates/evolve",
+    "crates/node",
+    "crates/tests",
+    "crates/ev-precompiles",
 ]
 
 [workspace.package]

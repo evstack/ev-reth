@@ -1,0 +1,21 @@
+
+[package]
+name = "ev-precompiles"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+# Reth
+reth-primitives = { workspace = true }
+
+# Revm
+revm = { workspace = true, features = ["ethersdb", "optimism"] }
+
+# EVM
+alloy-primitives = { workspace = true }
+bytes = "1.5.0"
+
+# Tooling
+eyre = "0.6.11"
+thiserror = "1.0.58"
