@@ -2744,12 +2744,14 @@ version = "0.1.0"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
+ "alloy-evm",
  "alloy-genesis",
  "alloy-primitives",
  "alloy-rpc-types",
  "alloy-rpc-types-engine",
  "async-trait",
  "ev-common",
+ "ev-revm",
  "evolve-ev-reth",
  "eyre",
  "futures",
@@ -2829,6 +2831,19 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber 0.3.19",
+]
+
+[[package]]
+name = "ev-revm"
+version = "0.1.0"
+dependencies = [
+ "alloy-evm",
+ "alloy-primitives",
+ "reth-evm",
+ "reth-evm-ethereum",
+ "reth-revm",
+ "revm-inspector",
+ "thiserror 2.0.12",
 ]
 
 [[package]]
