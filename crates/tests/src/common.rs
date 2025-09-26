@@ -15,7 +15,7 @@ use reth_primitives::{Header, Transaction};
 use reth_provider::test_utils::{ExtendedAccount, MockEthProvider};
 use tempfile::TempDir;
 
-use ev_node::EvolvePayloadBuilder;
+use ev_node::{EvolvePayloadBuilder, EvolvePayloadBuilderConfig};
 use evolve_ev_reth::EvolvePayloadAttributes;
 
 // Test constants
@@ -76,13 +76,16 @@ impl EvolveTestFixture {
         provider.add_header(genesis_hash, genesis_header);
 
         // Create a test chain spec with our test chain ID
-        let test_chainspec = ChainSpecBuilder::from(&*MAINNET)
-            .chain(reth_chainspec::Chain::from_id(TEST_CHAIN_ID))
-            .cancun_activated()
-            .build();
-        let evm_config = EthEvmConfig::new(Arc::new(test_chainspec));
+        let test_chainspec = Arc::new(
+            ChainSpecBuilder::from(&*MAINNET)
+                .chain(reth_chainspec::Chain::from_id(TEST_CHAIN_ID))
+                .cancun_activated()
+                .build(),
+        );
+        let evm_config = EthEvmConfig::new(test_chainspec.clone());
+        let config = EvolvePayloadBuilderConfig::from_chain_spec(test_chainspec.as_ref()).unwrap();
 
-        let builder = EvolvePayloadBuilder::new(Arc::new(provider.clone()), evm_config);
+        let builder = EvolvePayloadBuilder::new(Arc::new(provider.clone()), evm_config, config);
 
         let fixture = Self {
             builder,

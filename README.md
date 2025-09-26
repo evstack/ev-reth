@@ -213,12 +213,21 @@ This modular design allows for:
 On vanilla Ethereum, EIP-1559 burns the base fee. If you're running a custom network and want that
 amount to be paid to a designated address instead, `ev-reth` can redirect it during transaction execution.
 
-Set an environment variable before starting the node:
+Add an `ev_reth` stanza to your chainspec under the `config` section:
 
-```bash
-export EV_RETH_BASEFEE_RECIPIENT=0xYourRecipientAddressHere
-./target/release/ev-reth node ...
+```json
+"config": {
+  ...,
+  "ev_reth": {
+    "baseFeeSink": "0xYourRecipientAddressHere"
+  }
+}
 ```
+
+Rebuild (or restart) the node with the updated chainspec so the payload builder picks up the change.
+
+You can see a working example in `etc/ev-reth-genesis.json`, which routes the base fee to
+`0x00000000000000000000000000000000000000fe` by default.
 
 What it does:
 - Intercepts the base fee during EVM execution (via the ev-revm handler)
@@ -229,7 +238,7 @@ What it does:
 Implementation details:
 - Uses the `ev-revm` crate to wrap the EVM with a custom handler
 - The handler intercepts the `reward_beneficiary` hook to redirect base fees
-- No changes to chainspec or consensus are required for your custom network
+- No runtime environment variables are required; the chainspec carries the policy alongside other fork settings
 - When not configured, the EVM operates normally with standard fee burning
 
 ### Payload Builder Configuration

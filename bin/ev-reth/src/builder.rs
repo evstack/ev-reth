@@ -96,15 +96,25 @@ where
         pool: Pool,
         evm_config: EthEvmConfig,
     ) -> eyre::Result<Self::PayloadBuilder> {
+        let chain_spec = ctx.chain_spec();
+        let mut config = EvolvePayloadBuilderConfig::from_chain_spec(&chain_spec)?;
+
+        if self.config.base_fee_sink.is_some() {
+            config.base_fee_sink = self.config.base_fee_sink;
+        }
+
+        config.validate()?;
+
         let evolve_builder = Arc::new(EvolvePayloadBuilder::new(
             Arc::new(ctx.provider().clone()),
             evm_config,
+            config.clone(),
         ));
 
         Ok(EvolveEnginePayloadBuilder {
             evolve_builder,
             pool,
-            config: self.config,
+            config,
         })
     }
 }

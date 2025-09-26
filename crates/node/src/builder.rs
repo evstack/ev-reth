@@ -1,6 +1,7 @@
+use crate::config::EvolvePayloadBuilderConfig;
 use alloy_consensus::transaction::Transaction;
 use alloy_evm::eth::EthEvmFactory;
-use ev_revm::{with_ev_handler, BaseFeeConfig, BaseFeeRedirect, EvEvmFactory};
+use ev_revm::{with_ev_handler, BaseFeeRedirect, EvEvmFactory};
 use evolve_ev_reth::EvolvePayloadAttributes;
 use reth_chainspec::{ChainSpec, ChainSpecProvider};
 use reth_errors::RethError;
@@ -14,7 +15,7 @@ use reth_primitives::{transaction::SignedTransaction, Header, SealedBlock, Seale
 use reth_provider::{HeaderProvider, StateProviderFactory};
 use reth_revm::{database::StateProviderDatabase, State};
 use std::sync::Arc;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 type WrappedEthEvmConfig = EthEvmConfig<ChainSpec, EvEvmFactory<EthEvmFactory>>;
 
@@ -25,8 +26,10 @@ pub struct EvolvePayloadBuilder<Client> {
     pub client: Arc<Client>,
     /// EVM configuration (potentially wrapped with base fee redirect)
     pub evm_config: WrappedEthEvmConfig,
-    /// Optional base fee redirect configuration from environment variable
+    /// Optional base fee redirect configuration derived from the chainspec
     pub base_fee_redirect: Option<BaseFeeRedirect>,
+    /// Parsed Evolve-specific configuration
+    pub config: EvolvePayloadBuilderConfig,
 }
 
 impl<Client> EvolvePayloadBuilder<Client>
@@ -39,25 +42,15 @@ where
         + 'static,
 {
     /// Creates a new instance of `EvolvePayloadBuilder`
-    pub fn new(client: Arc<Client>, evm_config: EthEvmConfig) -> Self {
-        // Check for base fee redirect configuration from environment variable
-        let base_fee_redirect = match BaseFeeConfig::from_env("EV_RETH_BASEFEE_RECIPIENT") {
-            Ok(config) => {
-                let redirect = BaseFeeRedirect::from(config.fee_reciever());
-                info!(target: "ev-reth", fee_sink = ?config.fee_reciever(), "Base fee redirect enabled");
-
-                Some(redirect)
-            }
-            Err(ev_revm::ConfigError::MissingEnv { .. }) => {
-                // Environment variable not set, base fee redirect disabled
-                debug!(target: "ev-reth", "Base fee redirect not configured (EV_RETH_BASEFEE_RECIPIENT not set)");
-                None
-            }
-            Err(err) => {
-                warn!(target: "ev-reth", error = ?err, "Failed to parse base fee redirect configuration");
-                None
-            }
-        };
+    pub fn new(
+        client: Arc<Client>,
+        evm_config: EthEvmConfig,
+        config: EvolvePayloadBuilderConfig,
+    ) -> Self {
+        let base_fee_redirect = config.base_fee_sink.map(|sink| {
+            info!(target: "ev-reth", fee_sink = ?sink, "Base fee redirect enabled via chainspec");
+            BaseFeeRedirect::new(sink)
+        });
 
         let evm_config = with_ev_handler(evm_config, base_fee_redirect);
 
@@ -65,6 +58,7 @@ where
             client,
             evm_config,
             base_fee_redirect,
+            config,
         }
     }
 
@@ -209,5 +203,20 @@ where
         + Sync
         + 'static,
 {
-    Some(EvolvePayloadBuilder::new(client, evm_config))
+    let chain_spec = client.chain_spec();
+
+    let config = match EvolvePayloadBuilderConfig::from_chain_spec(&chain_spec) {
+        Ok(config) => config,
+        Err(err) => {
+            tracing::warn!(target: "ev-reth", error = ?err, "Failed to parse chainspec extras");
+            return None;
+        }
+    };
+
+    if let Err(err) = config.validate() {
+        tracing::warn!(target: "ev-reth", error = ?err, "Invalid evolve payload builder configuration");
+        return None;
+    }
+
+    Some(EvolvePayloadBuilder::new(client, evm_config, config))
 }
