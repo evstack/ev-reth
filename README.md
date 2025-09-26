@@ -199,17 +199,6 @@ This modular design allows for:
    - Efficient transaction retrieval with size-based limits
    - Returns RLP-encoded transaction bytes for Evolve consumption
 
-## Fee Handling (Vaults)
-
-ev-reth can route and credit fees to vaults configured in genesis:
-
-- Predeploy vaults: SequencerFeeVault (coinbase), BaseFeeVault, L1FeeVault, and optional OperatorFeeVault.
-- Add `ev_reth.feeHandlers` to chainspec extras (see `etc/ev-reth-genesis.json` and [docs/fee-handlers.md](docs/fee-handlers.md) for field descriptions).
-- L1 fee model (V1) uses a Celestia shares-based formula: shares = ceil(compressed_size / 512) + overhead_shares; l1_fee_wei = shares × (blob_price_scalar × l1_blob_base_fee) / 10^decimals.
-- Runtime: coinbase points to SequencerFeeVault; after execution, base fee, L1 fee, and optional operator fee are computed and credited to their vaults.
-
-Note: the node loads fee handler parameters from the chainspec extras. To activate Celestia fees, supply `l1_blob_base_fee` per block (from your Celestia header feed) or wire a default in the builder; then apply credits before finalization so they reflect in the state root.
-
 ### Transaction Flow
 
 1. Evolve submits transactions via Engine API payload attributes
@@ -221,8 +210,8 @@ Note: the node loads fee handler parameters from the chainspec extras. To activa
 
 ### Redirecting the Base Fee (Custom Networks Only)
 
-On vanilla Ethereum, EIP-1559 burns the base fee. If you’re running a custom network and want that
-amount to be paid to a designated address instead, `ev-reth` can credit it at block build time.
+On vanilla Ethereum, EIP-1559 burns the base fee. If you're running a custom network and want that
+amount to be paid to a designated address instead, `ev-reth` can redirect it during transaction execution.
 
 Set an environment variable before starting the node:
 
@@ -232,13 +221,16 @@ export EV_RETH_BASEFEE_RECIPIENT=0xYourRecipientAddressHere
 ```
 
 What it does:
-- Computes `base_fee_per_gas * gas_used` from the block header and increments the recipient’s
-  balance by that amount inside the block state. This effectively “unburns” the base fee on your
-  network. (Ethereum mainnet keeps burning the base fee by protocol design.)  
+- Intercepts the base fee during EVM execution (via the ev-revm handler)
+- Credits `base_fee_per_gas * gas_used` to the specified recipient for each transaction
+- The redirect happens at the EVM handler level, ensuring the state root reflects the credited balance
+- This effectively "unburns" the base fee on your network (Ethereum mainnet keeps burning the base fee by protocol design)
 
 Implementation details:
-- Uses `reth_revm::State::increment_balances` to apply the balance increment during payload build.
-- No changes to chainspec or consensus are required for your custom network.
+- Uses the `ev-revm` crate to wrap the EVM with a custom handler
+- The handler intercepts the `reward_beneficiary` hook to redirect base fees
+- No changes to chainspec or consensus are required for your custom network
+- When not configured, the EVM operates normally with standard fee burning
 
 ### Payload Builder Configuration
 

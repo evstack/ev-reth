@@ -5,8 +5,8 @@ members = [
   "crates/common",
   "crates/node",
   "crates/evolve",
+  "crates/ev-revm",
   "crates/tests",
-  "crates/fee-handlers",
 ]
 
 [workspace.package]
@@ -67,6 +67,8 @@ reth-rpc-api = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.7.0"
 reth-rpc-builder = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.7.0" }
 reth-rpc-engine-api = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.7.0" }
 
+ev-revm = { path = "crates/ev-revm" }
+
 
 # Consensus dependencies
 reth-consensus = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.7.0", default-features = false }
@@ -86,7 +88,7 @@ alloy = { version = "1.0.30", features = [
   "signers",
   "reqwest-rustls-tls",
 ], default-features = false }
-# Alloy family versions aligned to 1.0.30 compatibility
+alloy-evm = { version = "0.20.1", default-features = false }
 alloy-eips = { version = "1.0.30", default-features = false }
 alloy-network = { version = "1.0.30", default-features = false }
 alloy-provider = { version = "1.0.30", default-features = false }
@@ -101,6 +103,7 @@ alloy-consensus = { version = "1.0.30", default-features = false }
 alloy-genesis = { version = "1.0.30", default-features = false }
 alloy-rpc-types-txpool = { version = "1.0.30", default-features = false }
 
+revm-inspector = { version = "10.0.0" }
 # Core dependencies
 eyre = "0.6"
 tracing = "0.1"

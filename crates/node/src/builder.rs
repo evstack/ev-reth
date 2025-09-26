@@ -1,11 +1,7 @@
 use alloy_consensus::transaction::Transaction;
+use alloy_evm::eth::EthEvmFactory;
+use ev_revm::{with_ev_handler, BaseFeeConfig, BaseFeeRedirect, EvEvmFactory};
 use evolve_ev_reth::EvolvePayloadAttributes;
-use fee_handlers::{
-    compute_totals,
-    config::{parse_fee_handlers_config, ConfigError},
-    credit_plan,
-    types::{FeeHandlersConfig, TxBytesAcc},
-};
 use reth_chainspec::{ChainSpec, ChainSpecProvider};
 use reth_errors::RethError;
 use reth_evm::{
@@ -15,35 +11,22 @@ use reth_evm::{
 use reth_evm_ethereum::EthEvmConfig;
 use reth_payload_builder_primitives::PayloadBuilderError;
 use reth_primitives::{transaction::SignedTransaction, Header, SealedBlock, SealedHeader};
-use reth_primitives_traits::Block as _;
 use reth_provider::{HeaderProvider, StateProviderFactory};
-use reth_revm::{
-    database::StateProviderDatabase, revm::database::states::bundle_state::BundleRetention, State,
-};
+use reth_revm::{database::StateProviderDatabase, State};
 use std::sync::Arc;
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 
-fn fee_handlers_config_from_chain_spec(
-    chain_spec: &ChainSpec,
-) -> Result<Option<FeeHandlersConfig>, ConfigError> {
-    let extras_map = chain_spec.genesis.config.extra_fields.as_ref();
-    if extras_map.is_empty() {
-        return Ok(None);
-    }
-
-    let extras_value = serde_json::Value::Object(extras_map.clone().into_iter().collect());
-    parse_fee_handlers_config(&extras_value).map(Some)
-}
+type WrappedEthEvmConfig = EthEvmConfig<ChainSpec, EvEvmFactory<EthEvmFactory>>;
 
 /// Payload builder for Evolve Reth node
 #[derive(Debug)]
 pub struct EvolvePayloadBuilder<Client> {
     /// The client for state access
     pub client: Arc<Client>,
-    /// EVM configuration
-    pub evm_config: EthEvmConfig,
-    /// Optional fee handler configuration sourced from chainspec or overrides.
-    pub fee_config: Option<Arc<FeeHandlersConfig>>,
+    /// EVM configuration (potentially wrapped with base fee redirect)
+    pub evm_config: WrappedEthEvmConfig,
+    /// Optional base fee redirect configuration from environment variable
+    pub base_fee_redirect: Option<BaseFeeRedirect>,
 }
 
 impl<Client> EvolvePayloadBuilder<Client>
@@ -57,20 +40,31 @@ where
 {
     /// Creates a new instance of `EvolvePayloadBuilder`
     pub fn new(client: Arc<Client>, evm_config: EthEvmConfig) -> Self {
-        let chain_spec = client.chain_spec();
-        let fee_config = match fee_handlers_config_from_chain_spec(&chain_spec) {
-            Ok(Some(cfg)) => Some(Arc::new(cfg)),
-            Ok(None) => None,
+        // Check for base fee redirect configuration from environment variable
+        let base_fee_redirect = match BaseFeeConfig::from_env("EV_RETH_BASEFEE_RECIPIENT") {
+            Ok(config) => {
+                let redirect = BaseFeeRedirect::from(config.fee_reciever());
+                info!(target: "ev-reth", fee_sink = ?config.fee_reciever(), "Base fee redirect enabled");
+
+                Some(redirect)
+            }
+            Err(ev_revm::ConfigError::MissingEnv { .. }) => {
+                // Environment variable not set, base fee redirect disabled
+                debug!(target: "ev-reth", "Base fee redirect not configured (EV_RETH_BASEFEE_RECIPIENT not set)");
+                None
+            }
             Err(err) => {
-                warn!(target: "ev-reth", error = %err, "Failed to parse fee-handlers config from chainspec extras");
+                warn!(target: "ev-reth", error = ?err, "Failed to parse base fee redirect configuration");
                 None
             }
         };
 
+        let evm_config = with_ev_handler(evm_config, base_fee_redirect);
+
         Self {
             client,
             evm_config,
-            fee_config,
+            base_fee_redirect,
         }
     }
 
@@ -111,12 +105,8 @@ where
             ))
         })?;
 
-        // Set coinbase/beneficiary: prefer SequencerFeeVault from configured fee handlers.
-        let suggested_fee_recipient = self
-            .fee_config
-            .as_ref()
-            .map(|c| c.vaults.sequencer_fee_vault)
-            .unwrap_or(attributes.suggested_fee_recipient);
+        // Set coinbase/beneficiary from attributes
+        let suggested_fee_recipient = attributes.suggested_fee_recipient;
 
         let next_block_attrs = NextBlockEnvAttributes {
             timestamp: attributes.timestamp,
@@ -129,7 +119,6 @@ where
             withdrawals: Some(Default::default()),
         };
 
-        // Create block builder using the EVM config
         let mut builder = self
             .evm_config
             .builder_for_next_block(&mut state_db, &sealed_parent, next_block_attrs)
@@ -145,7 +134,6 @@ where
             transaction_count = attributes.transactions.len(),
             "Evolve payload builder: executing transactions"
         );
-        let mut total_tx_bytes: u64 = 0;
         for (i, tx) in attributes.transactions.iter().enumerate() {
             tracing::debug!(
             index = i,
@@ -166,9 +154,6 @@ where
             // Execute the transaction
             match builder.execute_transaction(recovered_tx) {
                 Ok(gas_used) => {
-                    // Count the RLP-encoded tx bytes as DA size proxy using alloy-rlp.
-                    let this_len = alloy_rlp::encode(tx).len() as u64;
-                    total_tx_bytes = total_tx_bytes.saturating_add(this_len);
                     tracing::debug!(index = i, gas_used, "Transaction executed successfully");
                     debug!(
                         "[debug] execute_transaction ok: index={}, gas_used={}",
@@ -196,58 +181,8 @@ where
             .finish(&state_provider)
             .map_err(PayloadBuilderError::other)?;
 
-        let mut sealed_block = block.sealed_block().clone();
+        let sealed_block = block.sealed_block().clone();
 
-        if let Some(fee_cfg_arc) = self.fee_config.as_ref() {
-            let fee_cfg = fee_cfg_arc.as_ref();
-            let base_fee = sealed_block.header().base_fee_per_gas.unwrap_or(0);
-            let gas_used = sealed_block.gas_used;
-
-            let tx_bytes_acc = TxBytesAcc {
-                total_size: total_tx_bytes,
-            };
-            let l1_base_fee_wei: u128 = 0;
-            let l1_blob_base_fee_wei: u128 = std::env::var("EV_RETH_CELESTIA_BLOB_BASE_FEE_WEI")
-                .ok()
-                .and_then(|v| v.parse::<u128>().ok())
-                .unwrap_or(0);
-
-            let totals = compute_totals(
-                fee_cfg,
-                base_fee,
-                gas_used,
-                &tx_bytes_acc,
-                l1_base_fee_wei,
-                l1_blob_base_fee_wei,
-            );
-
-            let credits = credit_plan(fee_cfg, &totals);
-            if !credits.is_empty() {
-                state_db
-                    .increment_balances(credits.iter().copied())
-                    .map_err(|err| {
-                        PayloadBuilderError::Internal(RethError::Other(Box::new(err)))
-                    })?;
-
-                state_db.merge_transitions(BundleRetention::Reverts);
-
-                let hashed_state = state_provider.hashed_post_state(&state_db.bundle_state);
-                let (state_root, _) = state_provider
-                    .state_root_with_updates(hashed_state.clone())
-                    .map_err(PayloadBuilderError::other)?;
-
-                let (block_without_hash, _) = sealed_block.clone().split();
-                let body = block_without_hash.body().clone();
-                let mut header = block_without_hash.header().clone();
-                header.state_root = state_root;
-                let rebuilt_block = body.into_block(header);
-                sealed_block = SealedBlock::seal_slow(rebuilt_block);
-
-                for (addr, amount) in &credits {
-                    debug!(target: "ev-reth", ?addr, amount, "fee-handlers credit applied");
-                }
-            }
-        }
         tracing::info!(
                     block_number = sealed_block.number,
                     block_hash = ?sealed_block.hash(),
@@ -258,17 +193,6 @@ where
 
         // Return the sealed block
         Ok(sealed_block)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use fee_handlers::compute::compute_base_fee_wei;
-    #[test]
-    fn test_basefee_redirect_math() {
-        // 30,000,000 gas used * 1 gwei basefee = 3e16 wei
-        let wei = compute_base_fee_wei(1_000_000_000u64, 30_000_000u64);
-        assert_eq!(wei, 30_000_000u128 * 1_000_000_000u128);
     }
 }
 
