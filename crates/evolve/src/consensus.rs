@@ -2,7 +2,10 @@
 
 use reth_chainspec::ChainSpec;
 use reth_consensus::{Consensus, ConsensusError, FullConsensus, HeaderValidator};
-use reth_consensus_common::validation::validate_body_against_header;
+use reth_consensus_common::validation::{
+    validate_against_parent_eip1559_base_fee, validate_against_parent_gas_limit,
+    validate_against_parent_hash_number, validate_body_against_header,
+};
 use reth_ethereum::node::builder::{components::ConsensusBuilder, BuilderContext};
 use reth_ethereum_consensus::EthBeaconConsensus;
 use reth_ethereum_primitives::{Block, BlockBody, EthPrimitives, Receipt};
@@ -70,23 +73,26 @@ impl HeaderValidator for EvolveConsensus {
         header: &SealedHeader,
         parent: &SealedHeader,
     ) -> Result<(), ConsensusError> {
-        match self.inner.validate_header_against_parent(header, parent) {
-            Ok(()) => Ok(()),
-            // upstream the check is that its greater than the parent's timestamp, if not we get
-            // TimestampIsInPast we check if the timestamp is equal to the parent's timestamp, if so we
-            // allow it
-            Err(ConsensusError::TimestampIsInPast { .. }) => {
-                if header.timestamp == parent.timestamp {
-                    Ok(())
-                } else {
-                    Err(ConsensusError::TimestampIsInPast {
-                        parent_timestamp: parent.timestamp,
-                        timestamp: header.timestamp,
-                    })
-                }
-            }
-            Err(e) => Err(e),
+        validate_against_parent_hash_number(header.header(), parent)?;
+
+        let h = header.header();
+        let ph = parent.header();
+        if h.timestamp < ph.timestamp {
+            return Err(ConsensusError::TimestampIsInPast {
+                parent_timestamp: ph.timestamp,
+                timestamp: h.timestamp,
+            });
         }
+
+        validate_against_parent_gas_limit(header, parent, &self.inner.chain_spec())?;
+
+        validate_against_parent_eip1559_base_fee(
+            header.header(),
+            parent.header(),
+            &self.inner.chain_spec(),
+        )?;
+
+        Ok(())
     }
 }
 
