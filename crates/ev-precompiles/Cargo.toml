@@ -8,9 +8,10 @@ license = "MIT"
 [dependencies]
 # Reth
 reth-primitives = { workspace = true }
+reth-revm = { workspace = true }
 
 # Revm
-revm = { workspace = true, features = ["ethersdb", "optimism"] }
+revm = { workspace = true }
 
 # EVM
 alloy-primitives = { workspace = true }

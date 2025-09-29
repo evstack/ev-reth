@@ -1,95 +1,105 @@
-use crate::mint_precompile::NATIVE_MINT_PRECOMPILE_ADDRESS;
+use crate::config::MintConfig;
 use alloy_primitives::{Address, U256};
-use bytes::Bytes;
-use revm::db::Database;
-use revm::primitives::{
-    AccountInfo, CallInputs, CallOutcome, ExecutionResult, Output, TransactTo, B160,
+use revm::{
+    context_interface::{ContextTr, JournalTr},
+    inspector::Inspector,
+    interpreter::{CallInputs, CallOutcome, Gas, InstructionResult, InterpreterResult},
 };
-use revm::{DatabaseCommit, Evm, Inspector, JournaledState};
-use std::collections::HashSet;
 
-/// An inspector that gates calls to the native mint precompile.
-///
-/// This inspector enforces an allowlist and various limits on the minting of the native token.
-/// It also performs the state mutation (crediting the balance) when the precompile call is
-/// successful.
 #[derive(Clone, Debug)]
 pub struct MintInspector {
-    /// The address of the native mint precompile.
     precompile: Address,
-    /// A static list of addresses that are allowed to call the precompile.
-    allow: HashSet<Address>,
-    /// The maximum amount that can be minted in a single call.
+    allow: std::collections::HashSet<Address>,
     per_call_cap: U256,
-    /// The maximum amount that can be minted in a single block.
     per_block_cap: Option<U256>,
-    /// The total amount minted in the current block.
     minted_this_block: U256,
 }
 
-impl<DB: Database> Inspector<DB> for MintInspector {
-    fn call(
-        &mut self,
-        context: &mut revm::InnerEvmContext<DB>,
-        inputs: &mut CallInputs,
-    ) -> Option<CallOutcome> {
-        // Intercept calls to the native mint precompile.
-        if inputs.contract != self.precompile {
+impl MintInspector {
+    pub fn new(config: MintConfig) -> Self {
+        Self {
+            precompile: config.precompile_address,
+            allow: config.allow_list,
+            per_call_cap: config.per_call_cap,
+            per_block_cap: config.per_block_cap,
+            minted_this_block: U256::ZERO,
+        }
+    }
+
+    const MINT_CALLDATA_LEN: usize = 20 + 32;
+
+    fn revert_outcome(message: &str, inputs: &CallInputs) -> CallOutcome {
+        CallOutcome::new(
+            Self::revert_result(message),
+            inputs.return_memory_offset.clone(),
+        )
+    }
+
+    fn revert_result(message: &str) -> InterpreterResult {
+        InterpreterResult {
+            result: InstructionResult::Revert,
+            output: message.as_bytes().to_vec().into(),
+            gas: Gas::new(0),
+        }
+    }
+}
+
+impl<CTX> Inspector<CTX> for MintInspector
+where
+    CTX: ContextTr,
+{
+    fn call(&mut self, context: &mut CTX, inputs: &mut CallInputs) -> Option<CallOutcome> {
+        if inputs.target_address != self.precompile {
             return None;
         }
 
-        // Check if the caller is authorized.
         if !self.allow.contains(&inputs.caller) {
-            // Return a revert outcome if the caller is not authorized.
-            let outcome = CallOutcome::new().with_revert(Bytes::from_static(b"unauthorized"));
-            return Some(outcome);
+            return Some(Self::revert_outcome("unauthorized", inputs));
         }
 
-        // Decode the amount from the input.
-        let amount = U256::from_be_slice(&inputs.input[20..52]);
+        let calldata = inputs.input.bytes(context);
+        if calldata.len() != Self::MINT_CALLDATA_LEN {
+            return Some(Self::revert_outcome("invalid input length", inputs));
+        }
 
-        // Check if the amount exceeds the per-call cap.
+        let amount = U256::from_be_slice(&calldata[20..Self::MINT_CALLDATA_LEN]);
         if amount > self.per_call_cap {
-            let outcome = CallOutcome::new().with_revert(Bytes::from_static(b"over per-call cap"));
-            return Some(outcome);
+            return Some(Self::revert_outcome("over per-call cap", inputs));
         }
 
-        // Check if the amount exceeds the per-block cap.
-        if let Some(per_block_cap) = self.per_block_cap {
-            if self.minted_this_block + amount > per_block_cap {
-                let outcome =
-                    CallOutcome::new().with_revert(Bytes::from_static(b"over per-block cap"));
-                return Some(outcome);
+        if let Some(cap) = self.per_block_cap {
+            if self.minted_this_block + amount > cap {
+                return Some(Self::revert_outcome("over per-block cap", inputs));
             }
         }
 
         None
     }
 
-    fn call_end(
-        &mut self,
-        context: &mut revm::InnerEvmContext<DB>,
-        inputs: &CallInputs,
-        outcome: CallOutcome,
-    ) -> CallOutcome {
-        // Only handle successful calls to the native mint precompile.
-        if inputs.contract != self.precompile || outcome.is_revert() {
-            return outcome;
+    fn call_end(&mut self, context: &mut CTX, inputs: &CallInputs, outcome: &mut CallOutcome) {
+        if inputs.target_address != self.precompile || !outcome.result.is_ok() {
+            return;
         }
 
-        // Decode the recipient and amount from the input.
-        let to = Address::from_slice(&inputs.input[0..20]);
-        let amount = U256::from_be_slice(&inputs.input[20..52]);
+        let calldata = inputs.input.bytes(context);
+        if calldata.len() != Self::MINT_CALLDATA_LEN {
+            outcome.result = Self::revert_result("invalid input length");
+            return;
+        }
 
-        // Credit the recipient's balance.
-        // This is the core state mutation logic.
-        let (account, _) = context.journaled_state.load_account(to, context.db).unwrap();
-        account.info.balance += amount;
+        let to = Address::from_slice(&calldata[..20]);
+        let amount = U256::from_be_slice(&calldata[20..Self::MINT_CALLDATA_LEN]);
+
+        match context.journal_mut().load_account(to) {
+            Ok(mut account_load) => {
+                account_load.info.balance += amount;
+            }
+            Err(_) => {
+                outcome.result = Self::revert_result("account load failed");
+                return;
+            }
+        }
+
         self.minted_this_block += amount;
-
-        // Mark the account as touched so the state change is persisted.
-        context.journaled_state.touch(&to);
-
-        outcome
     }
 }
