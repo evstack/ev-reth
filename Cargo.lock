@@ -2794,6 +2794,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "ev-precompiles"
+version = "0.1.0"
+dependencies = [
+ "alloy-primitives",
+ "bytes",
+ "eyre",
+ "reth-primitives",
+ "reth-revm",
+ "revm",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "ev-reth"
 version = "0.1.0"
 dependencies = [
@@ -2804,6 +2817,7 @@ dependencies = [
  "clap",
  "ev-common",
  "ev-node",
+ "ev-precompiles",
  "evolve-ev-reth",
  "eyre",
  "reth-basic-payload-builder",
