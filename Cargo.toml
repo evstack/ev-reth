@@ -89,6 +89,7 @@ alloy = { version = "1.0.30", features = [
   "reqwest-rustls-tls",
 ], default-features = false }
 # Alloy family versions aligned to 1.0.30 compatibility
+alloy-evm = { version = "0.20.1", default-features = false }
 alloy-eips = { version = "1.0.30", default-features = false }
 alloy-network = { version = "1.0.30", default-features = false }
 alloy-provider = { version = "1.0.30", default-features = false }
