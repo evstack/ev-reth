@@ -11,8 +11,8 @@ use std::sync::OnceLock;
 
 sol! {
     interface INativeToken {
-        function mint(address to, uint256 amount) external returns (bool ok);
-        function burn(address from, uint256 amount) external returns (bool ok);
+        function mint(address to, uint256 amount);
+        function burn(address from, uint256 amount);
     }
 }
 
@@ -20,7 +20,9 @@ pub const MINT_PRECOMPILE_ADDR: Address = address!("0x00000000000000000000000000
 
 /// A custom precompile that mints the native token
 #[derive(Clone, Debug, Default)]
-pub struct MintPrecompile;
+pub struct MintPrecompile{
+    admin: Address,
+};
 
 impl MintPrecompile {
     // Use a lazily-initialized static for the ID since `custom` is not const.
@@ -29,8 +31,16 @@ impl MintPrecompile {
         ID.get_or_init(|| PrecompileId::custom("native_mint"))
     }
 
-    pub fn new() -> Self {
-        Self
+    pub fn new(admin:Address ) -> Self {
+        Self {
+            admin,
+        }
+    }
+
+
+
+    fn is_authorized(&self, caller: Address) -> bool {
+        caller == self.admin
     }
 }
 
@@ -41,6 +51,12 @@ impl Precompile for MintPrecompile {
 
     /// Execute the precompile with the given input data, gas limit, and caller address.
     fn call(&self, input: PrecompileInput<'_>) -> PrecompileResult {
+        let caller: Address = input.caller;
+
+        // Enforce access control.
+        if !self.is_authorized(caller) {
+            return Err(PrecompileError::Other("unauthorized caller".to_string()));
+        }
         // 1) Decode by ABI — this inspects the 4-byte selector and picks the right variant.
         let decoded = match INativeToken::INativeTokenCalls::abi_decode(input.data) {
             Ok(v) => v,
@@ -63,6 +79,6 @@ impl Precompile for MintPrecompile {
     }
 
     fn is_pure(&self) -> bool {
-        true
+        false
     }
 }
