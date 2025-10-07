@@ -17,7 +17,7 @@ use reth_revm::{database::StateProviderDatabase, State};
 use std::sync::Arc;
 use tracing::{debug, info};
 
-type WrappedEthEvmConfig = EthEvmConfig<ChainSpec, EvEvmFactory<EthEvmFactory>>;
+type EvolveEthEvmConfig = EthEvmConfig<ChainSpec, EvEvmFactory<EthEvmFactory>>;
 
 /// Payload builder for Evolve Reth node
 #[derive(Debug)]
@@ -25,7 +25,7 @@ pub struct EvolvePayloadBuilder<Client> {
     /// The client for state access
     pub client: Arc<Client>,
     /// EVM configuration (potentially wrapped with base fee redirect)
-    pub evm_config: WrappedEthEvmConfig,
+    pub evm_config: EvolveEthEvmConfig,
     /// Optional base fee redirect configuration derived from the chainspec
     pub base_fee_redirect: Option<BaseFeeRedirect>,
     /// Parsed Evolve-specific configuration
