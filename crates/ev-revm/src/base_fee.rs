@@ -67,7 +67,7 @@ impl From<Address> for BaseFeeRedirect {
 
 /// Errors that can occur when crediting the base-fee sink account.
 #[derive(Debug, Error)]
-pub enum BaseFeeRedirectError<DbError: std::error::Error> {
+pub enum BaseFeeRedirectError<DbError> {
     /// Underlying database error propagated from the journal/state.
     #[error("failed to update fee sink account: {0}")]
     Database(#[from] DbError),

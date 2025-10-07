@@ -74,9 +74,9 @@ pub fn with_ev_handler<ChainSpec>(
         executor_factory,
         block_assembler,
     } = config;
-    let wrapped_factory = EvEvmFactory::new(executor_factory.evm_factory().clone(), redirect);
+    let wrapped_factory = EvEvmFactory::new(*executor_factory.evm_factory(), redirect);
     let new_executor_factory = EthBlockExecutorFactory::new(
-        executor_factory.receipt_builder().clone(),
+        *executor_factory.receipt_builder(),
         executor_factory.spec().clone(),
         wrapped_factory,
     );
@@ -90,16 +90,17 @@ pub fn with_ev_handler<ChainSpec>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::factory::SpecId;
+    use alloy_evm::{Evm, EvmEnv};
     use alloy_primitives::{address, Bytes, TxKind, U256};
     use reth_revm::{
         revm::{
             context_interface::result::ExecutionResult,
             database::{CacheDB, EmptyDB},
-            primitives::{spec::SpecId, AccountInfo, KECCAK_EMPTY},
-            state::EvmState,
-            State,
+            primitives::KECCAK_EMPTY,
+            state::{AccountInfo, EvmState},
         },
-        EvmEnv,
+        State,
     };
 
     #[test]
@@ -126,9 +127,9 @@ mod tests {
 
         let mut evm_env = EvmEnv::default();
         evm_env.cfg_env.chain_id = 1;
-        evm_env.cfg_env.spec_id = SpecId::CANCUN;
+        evm_env.cfg_env.spec = SpecId::CANCUN;
         evm_env.block_env.basefee = 100;
-        evm_env.block_env.number = 1;
+        evm_env.block_env.number = U256::from(1);
         evm_env.block_env.beneficiary = beneficiary;
         evm_env.block_env.gas_limit = 30_000_000;
 
@@ -136,13 +137,18 @@ mod tests {
         let mut evm = EvEvmFactory::new(alloy_evm::eth::EthEvmFactory::default(), Some(redirect))
             .create_evm(state, evm_env.clone());
 
-        let mut tx = reth_revm::revm::primitives::TxEnv::default();
-        tx.caller = caller;
-        tx.kind = TxKind::Call(target);
-        tx.gas_limit = 21_000;
-        tx.gas_price = 200;
-        tx.value = U256::ZERO;
-        tx.data = Bytes::new();
+        let tx = crate::factory::TxEnv {
+            caller,
+            kind: TxKind::Call(target),
+            gas_limit: 21_000,
+            gas_price: 200,
+            value: U256::ZERO,
+            data: Bytes::new(),
+            ..Default::default()
+        };
+
+        // Save gas_price before tx is moved
+        let gas_price = tx.gas_price;
 
         let result_and_state = evm
             .transact_raw(tx)
@@ -159,7 +165,7 @@ mod tests {
         let expected_redirect = U256::from(evm_env.block_env.basefee) * U256::from(gas_used);
         assert_eq!(sink_account.info.balance, expected_redirect);
 
-        let tip_per_gas = U256::from((tx.gas_price - evm_env.block_env.basefee as u128) as u128);
+        let tip_per_gas = U256::from(gas_price - evm_env.block_env.basefee as u128);
         let expected_tip = tip_per_gas * U256::from(gas_used);
         let beneficiary_account = state
             .get(&beneficiary)

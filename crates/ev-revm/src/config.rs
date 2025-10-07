@@ -8,23 +8,18 @@ use thiserror::Error;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BaseFeeConfig {
     /// Address receiving the base-fee proceeds.
-    pub fee_reciever: Address,
+    pub fee_receiver: Address,
 }
 
 impl BaseFeeConfig {
     /// Constructs a new configuration from the provided sink address.
-    pub const fn new(fee_reciever: Address) -> Self {
-        Self { fee_reciever }
+    pub const fn new(fee_receiver: Address) -> Self {
+        Self { fee_receiver }
     }
 
     /// Returns the configured sink address.
-    pub const fn fee_reciever(&self) -> Address {
-        self.fee_reciever
-    }
-
-    /// Parses a configuration from a string representation of an address.
-    pub fn from_str(value: &str) -> Result<Self, ConfigError> {
-        parse_address(value).map(Self::new)
+    pub const fn fee_receiver(&self) -> Address {
+        self.fee_receiver
     }
 
     /// Loads the configuration from an environment variable.
@@ -35,7 +30,15 @@ impl BaseFeeConfig {
         if raw.trim().is_empty() {
             return Err(ConfigError::EmptyEnv { var: var.into() });
         }
-        Self::from_str(raw.trim())
+        raw.trim().parse()
+    }
+}
+
+impl FromStr for BaseFeeConfig {
+    type Err = ConfigError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        parse_address(value).map(Self::new)
     }
 }
 
@@ -89,7 +92,7 @@ mod tests {
     fn parses_address_from_str() {
         let cfg = BaseFeeConfig::from_str("0x00000000000000000000000000000000000000aa").unwrap();
         assert_eq!(
-            cfg.fee_reciever,
+            cfg.fee_receiver,
             address!("0x00000000000000000000000000000000000000aa")
         );
     }

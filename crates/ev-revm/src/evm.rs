@@ -125,10 +125,7 @@ pub trait IntoRevmEvm<CTX, INSP, PRECOMP> {
 impl<CTX, INSP, PRECOMP> IntoRevmEvm<CTX, INSP, PRECOMP>
     for Evm<CTX, INSP, EthInstructions<EthInterpreter, CTX>, PRECOMP, EthFrame<EthInterpreter>>
 {
-    fn into_revm_evm(
-        self,
-    ) -> Evm<CTX, INSP, EthInstructions<EthInterpreter, CTX>, PRECOMP, EthFrame<EthInterpreter>>
-    {
+    fn into_revm_evm(self) -> Self {
         self
     }
 }
@@ -328,7 +325,7 @@ where
     }
 
     fn finish(self) -> (Self::DB, EvmEnv<Self::Spec>) {
-        let EvEvm { inner, .. } = self;
+        let Self { inner, .. } = self;
         let Context {
             block,
             cfg,

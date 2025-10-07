@@ -2841,6 +2841,7 @@ dependencies = [
  "alloy-primitives",
  "reth-evm",
  "reth-evm-ethereum",
+ "reth-primitives",
  "reth-revm",
  "revm-inspector",
  "thiserror 2.0.12",

@@ -13,6 +13,7 @@ alloy-evm.workspace = true
 alloy-primitives.workspace = true
 reth-revm.workspace = true
 reth-evm.workspace = true
+reth-primitives.workspace = true
 reth-evm-ethereum.workspace = true
 revm-inspector.workspace = true
 thiserror.workspace = true
