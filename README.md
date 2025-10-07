@@ -28,11 +28,15 @@ The `EvolvePayloadBuilder` handles:
 
 ### 3. Flexible Block Validation
 
-Modified Engine API validator that:
+Evolve's block production model has a unique characteristic: the block header contains the `apphash` of the *previous* block (height N-1), not the hash of the current block (height N). This design choice is fundamental to how Evolve links blocks together.
 
-- Bypasses block hash validation for Evolve blocks
-- Supports custom gas limits per payload
-- Maintains compatibility with standard Ethereum validation where possible
+However, a standard Ethereum node, following the Engine API specification, expects the block hash to match the hash of the current block's contents. When a new block from Evolve is received, this results in a `BlockHashMismatch` error during validation, which would normally cause the block to be rejected.
+
+To address this, ev-reth includes a modified Engine API validator (`EvolveEngineValidator`) that:
+
+- **Bypasses the block hash mismatch error**: It specifically catches the `BlockHashMismatch` error and allows the block to be processed without this check. This is the key modification that enables compatibility with Evolve.
+- Supports custom gas limits per payload.
+- Maintains compatibility with standard Ethereum validation for all other checks.
 
 ### 4. Custom Consensus for Equal Timestamps
 
