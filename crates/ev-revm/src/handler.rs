@@ -160,3 +160,109 @@ where
 {
     type IT = EthInterpreter;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::EvEvm;
+    use alloy_primitives::{address, Address, Bytes, U256};
+    use reth_revm::{
+        inspector::NoOpInspector,
+        revm::{
+            context::Context,
+            database::EmptyDB,
+            handler::{EthFrame, FrameResult},
+            interpreter::{CallOutcome, Gas, InstructionResult, InterpreterResult},
+            primitives::hardfork::SpecId,
+        },
+        MainContext,
+    };
+    use std::convert::Infallible;
+
+    use reth_revm::revm::context_interface::result::{EVMError, InvalidTransaction};
+
+    type TestContext = Context<BlockEnv, TxEnv, CfgEnv<SpecId>, EmptyDB>;
+    type TestEvm = EvEvm<TestContext, NoOpInspector>;
+    type TestError = EVMError<Infallible, InvalidTransaction>;
+    type TestHandler = EvHandler<TestEvm, TestError, EthFrame<EthInterpreter>>;
+
+    use reth_revm::revm::context::{BlockEnv, CfgEnv, TxEnv};
+
+    const BASE_FEE: u64 = 100;
+    const GAS_PRICE: u128 = 200;
+
+    #[test]
+    fn reward_beneficiary_redirects_base_fee_sink() {
+        let sink = address!("0x00000000000000000000000000000000000000fe");
+        let beneficiary = address!("0x00000000000000000000000000000000000000be");
+        let redirect = BaseFeeRedirect::new(sink);
+
+        let (mut evm, handler) = setup_evm(redirect, beneficiary);
+        let gas_used = 21_000u64;
+        let mut frame_result = make_call_frame(gas_used);
+
+        handler
+            .reward_beneficiary(&mut evm, &mut frame_result)
+            .expect("reward succeeds");
+
+        let ctx_ref = evm.ctx();
+        let journal = ctx_ref.journal();
+        let sink_account = journal.account(sink);
+        let expected_redirect = U256::from(BASE_FEE) * U256::from(gas_used);
+        assert_eq!(sink_account.info.balance, expected_redirect);
+
+        let beneficiary_account = journal.account(beneficiary);
+        let tip_per_gas = GAS_PRICE - BASE_FEE as u128;
+        let expected_tip = U256::from(tip_per_gas) * U256::from(gas_used);
+        assert_eq!(beneficiary_account.info.balance, expected_tip);
+    }
+
+    #[test]
+    fn reward_beneficiary_skips_redirect_when_no_gas_spent() {
+        let sink = address!("0x00000000000000000000000000000000000000fd");
+        let beneficiary = address!("0x00000000000000000000000000000000000000bf");
+        let redirect = BaseFeeRedirect::new(sink);
+
+        let (mut evm, handler) = setup_evm(redirect, beneficiary);
+        let mut frame_result = make_call_frame(0);
+
+        handler
+            .reward_beneficiary(&mut evm, &mut frame_result)
+            .expect("reward succeeds with zero gas");
+
+        let ctx_ref = evm.ctx();
+        let journal = ctx_ref.journal();
+        let sink_balance = journal.account(sink).info.balance;
+        assert!(sink_balance.is_zero());
+
+        let beneficiary_balance = journal.account(beneficiary).info.balance;
+        assert!(beneficiary_balance.is_zero());
+    }
+
+    fn setup_evm(redirect: BaseFeeRedirect, beneficiary: Address) -> (TestEvm, TestHandler) {
+        let mut ctx = Context::mainnet().with_db(EmptyDB::default());
+        ctx.block.basefee = BASE_FEE;
+        ctx.block.beneficiary = beneficiary;
+        ctx.block.gas_limit = 30_000_000;
+        ctx.cfg.spec = SpecId::CANCUN;
+        ctx.tx.gas_price = GAS_PRICE;
+        ctx.tx.gas_limit = 1_000_000;
+
+        let mut evm = EvEvm::new(ctx, NoOpInspector, Some(redirect));
+        {
+            let journal = evm.ctx_mut().journal_mut();
+            journal.load_account(redirect.fee_sink()).unwrap();
+            journal.load_account(beneficiary).unwrap();
+        }
+
+        let handler: TestHandler = EvHandler::new(Some(redirect));
+        (evm, handler)
+    }
+
+    fn make_call_frame(gas_used: u64) -> FrameResult {
+        let gas = Gas::new_spent(gas_used);
+        let interpreter_result =
+            InterpreterResult::new(InstructionResult::Return, Bytes::new(), gas);
+        FrameResult::Call(CallOutcome::new(interpreter_result, 0..0))
+    }
+}

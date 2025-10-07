@@ -92,7 +92,7 @@ mod tests {
     use super::*;
     use crate::factory::SpecId;
     use alloy_evm::{Evm, EvmEnv};
-    use alloy_primitives::{address, Bytes, TxKind, U256};
+    use alloy_primitives::{address, Address, Bytes, TxKind, U256};
     use reth_revm::{
         revm::{
             context_interface::result::ExecutionResult,
@@ -109,6 +109,7 @@ mod tests {
         let beneficiary = address!("0x00000000000000000000000000000000000000be");
         let caller = address!("0x00000000000000000000000000000000000000ca");
         let target = address!("0x00000000000000000000000000000000000000aa");
+        let burn_address = Address::ZERO;
 
         let mut state = State::builder()
             .with_database(CacheDB::<EmptyDB>::default())
@@ -171,5 +172,11 @@ mod tests {
             .get(&beneficiary)
             .expect("beneficiary receives priority fee");
         assert_eq!(beneficiary_account.info.balance, expected_tip);
+
+        let burn_balance_intact = state
+            .get(&burn_address)
+            .map(|account| account.info.balance.is_zero())
+            .unwrap_or(true);
+        assert!(burn_balance_intact, "burn address balance must remain zero");
     }
 }
