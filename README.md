@@ -217,12 +217,12 @@ This modular design allows for:
 On vanilla Ethereum, EIP-1559 burns the base fee. If you're running a custom network and want that
 amount to be paid to a designated address instead, `ev-reth` can redirect it during transaction execution.
 
-Add an `ev_reth` stanza to your chainspec under the `config` section:
+Add an `evReth` stanza to your chainspec under the `config` section:
 
 ```json
 "config": {
   ...,
-  "ev_reth": {
+  "evReth": {
     "baseFeeSink": "0xYourRecipientAddressHere"
   }
 }

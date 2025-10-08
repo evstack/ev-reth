@@ -75,4 +75,3 @@ Configuration remains opt-in: operators add an `ev_reth` block under the chainsp
 * `crates/ev-revm/src/evm.rs`
 * `crates/ev-revm/src/factory.rs`
 * `crates/node/src/builder.rs`
-* `docs/fee-handlers.md`
