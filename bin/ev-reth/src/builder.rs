@@ -20,15 +20,13 @@ use reth_ethereum::{
 use reth_payload_builder::{EthBuiltPayload, PayloadBuilderError};
 use reth_provider::HeaderProvider;
 use reth_revm::cached::CachedReads;
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::info;
 
 use crate::{attributes::EvolveEnginePayloadBuilderAttributes, EvolveEngineTypes};
 use evolve_ev_reth::config::set_current_block_gas_limit;
 
-/// Evolve-specific command line arguments
-#[derive(Debug, Clone, Parser, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Default, Parser)]
 pub struct EvolveArgs {
     /// Enable Evolve mode for the node (enabled by default)
     #[arg(
@@ -37,6 +35,10 @@ pub struct EvolveArgs {
         help = "Enable Evolve integration for transaction processing via Engine API"
     )]
     pub enable_evolve: bool,
+
+    /// Enable the native mint precompile.
+    #[arg(long)]
+    pub enable_mint_precompile: bool,
 }
 
 /// Evolve payload service builder that integrates with the evolve payload builder

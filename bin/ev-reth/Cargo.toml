@@ -18,6 +18,8 @@ ev-node = { path = "../../crates/node" }
 ev-common = { path = "../../crates/common" }
 evolve-ev-reth = { path = "../../crates/evolve" }
 
+ev-precompiles = { path = "../../crates/ev-precompiles" }
+
 # Reth CLI and core dependencies
 reth-cli-util.workspace = true
 reth-ethereum-cli.workspace = true
