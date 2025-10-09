@@ -31,7 +31,7 @@ impl EvolvePayloadBuilderConfig {
             .genesis
             .config
             .extra_fields
-            .get_deserialized::<ChainspecEvolveConfig>("evReth")
+            .get_deserialized::<ChainspecEvolveConfig>("evolve")
         {
             let extras = extra.map_err(ConfigError::InvalidExtras)?;
             config.base_fee_sink = extras.base_fee_sink;
@@ -52,7 +52,7 @@ pub enum ConfigError {
     #[error("Invalid config")]
     InvalidConfig,
     /// Chainspec extras contained invalid values
-    #[error("Invalid evReth extras in chainspec: {0}")]
+    #[error("Invalid evolve extras in chainspec: {0}")]
     InvalidExtras(#[from] serde_json::Error),
 }
 
@@ -68,12 +68,12 @@ mod tests {
         let mut builder = ChainSpecBuilder::mainnet();
 
         if let Some(extras_value) = extras {
-            // Create a genesis with evReth extras
+            // Create a genesis with evolve extras
             let mut genesis = Genesis::default();
             genesis
                 .config
                 .extra_fields
-                .insert("evReth".to_string(), extras_value);
+                .insert("evolve".to_string(), extras_value);
             builder = builder.genesis(genesis);
         }
 
@@ -107,7 +107,7 @@ mod tests {
 
     #[test]
     fn test_no_ev_reth_extras() {
-        // Test case when no evReth extras are present at all
+        // Test case when no evolve extras are present at all
         let chainspec = create_test_chainspec_with_extras(None);
         let config = EvolvePayloadBuilderConfig::from_chain_spec(&chainspec).unwrap();
 

@@ -16,7 +16,7 @@
     "cancunTime": 0,
     "terminalTotalDifficulty": 0,
     "terminalTotalDifficultyPassed": true,
-    "ev_reth": {
+    "evolve": {
       "baseFeeSink": "0x00000000000000000000000000000000000000fe"
     }
   },
