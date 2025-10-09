@@ -9,6 +9,8 @@ on:
       - main
     tags:
       - v*
+  pull_request:
+    types: [opened, synchronize, reopened]
 
 env:
   REPO_NAME: ${{ github.repository_owner }}/ev-reth
@@ -50,6 +52,16 @@ jobs:
         run: |
           docker run --privileged --rm tonistiigi/binfmt --install arm64,amd64
           docker buildx create --use --name cross-builder
+      - name: Set Docker tag
+        id: set-tag
+        run: |
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            echo "DOCKER_TAG=pr-${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "DOCKER_TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          else
+            echo "DOCKER_TAG=latest" >> $GITHUB_OUTPUT
+          fi
       - name: Build and push image
         run: |
           export LIBCLANG_PATH=/usr/lib/llvm-18/lib
@@ -61,4 +73,5 @@ jobs:
           export CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++
           export AR_aarch64_unknown_linux_gnu=aarch64-linux-gnu-ar
           export PKG_CONFIG_ALLOW_CROSS=1
+          export DOCKER_TAG=${{ steps.set-tag.outputs.DOCKER_TAG }}
           make docker-build-push

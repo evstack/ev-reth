@@ -46,8 +46,12 @@ alloy-genesis.workspace = true
 alloy-rpc-types.workspace = true
 alloy-rpc-types-engine.workspace = true
 alloy-primitives.workspace = true
+alloy-network.workspace = true
 alloy-eips.workspace = true
-alloy-consensus.workspace = true
+alloy-signer.workspace = true
+alloy-signer-local.workspace = true
+alloy-consensus= {workspace = true, features= ['serde']}
+alloy-sol-types.workspace = true
 
 # Core dependencies
 tempfile.workspace = true
@@ -55,7 +59,7 @@ hex = "0.4"
 reqwest = { version = "0.11", features = ["json"] }
 chrono = { version = "0.4", features = ["serde"] }
 rand = "0.8"
-tokio = { workspace = true, features = ["full"] }
+tokio = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 async-trait.workspace = true
