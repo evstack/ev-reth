@@ -8,6 +8,7 @@
 pub mod attributes;
 pub mod builder;
 pub mod error;
+pub mod executor;
 pub mod validator;
 
 use alloy_rpc_types::engine::{
@@ -29,7 +30,7 @@ use reth_ethereum::{
             rpc::RpcAddOns,
             Node, NodeAdapter,
         },
-        node::{EthereumExecutorBuilder, EthereumNetworkBuilder, EthereumPoolBuilder},
+        node::{EthereumNetworkBuilder, EthereumPoolBuilder},
         EthereumEthApiBuilder,
     },
     primitives::SealedBlock,
@@ -43,6 +44,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilte
 use crate::{
     attributes::{EvolveEnginePayloadAttributes, EvolveEnginePayloadBuilderAttributes},
     builder::{EvolveArgs, EvolvePayloadBuilderBuilder},
+    executor::EvolveExecutorBuilder,
     validator::EvolveEngineValidatorBuilder,
 };
 
@@ -129,7 +131,7 @@ where
         EthereumPoolBuilder,
         BasicPayloadServiceBuilder<EvolvePayloadBuilderBuilder>,
         EthereumNetworkBuilder,
-        EthereumExecutorBuilder,
+        EvolveExecutorBuilder,
         EvolveConsensusBuilder,
     >;
     type AddOns = EvolveNodeAddOns<NodeAdapter<N>>;
@@ -138,7 +140,7 @@ where
         ComponentsBuilder::default()
             .node_types::<N>()
             .pool(EthereumPoolBuilder::default())
-            .executor(EthereumExecutorBuilder::default())
+            .executor(EvolveExecutorBuilder::default())
             .payload(BasicPayloadServiceBuilder::new(
                 EvolvePayloadBuilderBuilder::new(&self.args),
             ))

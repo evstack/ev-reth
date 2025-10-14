@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use alloy_consensus::{transaction::SignerRecoverable, TxLegacy, TypedTransaction};
 use alloy_primitives::{Address, Bytes, ChainId, Signature, TxKind, B256, U256};
+use ev_revm::{with_ev_handler, BaseFeeRedirect};
 use eyre::Result;
 use reth_chainspec::{ChainSpecBuilder, MAINNET};
 use reth_ethereum_primitives::TransactionSigned;
@@ -84,8 +85,13 @@ impl EvolveTestFixture {
         );
         let evm_config = EthEvmConfig::new(test_chainspec.clone());
         let config = EvolvePayloadBuilderConfig::from_chain_spec(test_chainspec.as_ref()).unwrap();
+        config.validate().unwrap();
 
-        let builder = EvolvePayloadBuilder::new(Arc::new(provider.clone()), evm_config, config);
+        let base_fee_redirect = config.base_fee_sink.map(BaseFeeRedirect::new);
+        let wrapped_evm = with_ev_handler(evm_config, base_fee_redirect);
+
+        let builder =
+            EvolvePayloadBuilder::new(Arc::new(provider.clone()), wrapped_evm, config.clone());
 
         let fixture = Self {
             builder,

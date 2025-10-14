@@ -62,6 +62,7 @@ reth-payload-builder = { git = "https://github.com/paradigmxyz/reth.git", tag = 
 reth-payload-builder-primitives = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.7.0" }
 reth-payload-primitives = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.7.0" }
 reth-primitives = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.7.0" }
+reth-ethereum-forks = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.7.0" }
 reth-revm = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.7.0" }
 reth-rpc-api = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.7.0" }
 reth-rpc-builder = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.7.0" }

@@ -16,6 +16,7 @@ path = "src/main.rs"
 # Core evolve crates
 ev-node = { path = "../../crates/node" }
 ev-common = { path = "../../crates/common" }
+ev-revm.workspace = true
 evolve-ev-reth = { path = "../../crates/evolve" }
 
 # Reth CLI and core dependencies
@@ -36,12 +37,14 @@ reth-provider.workspace = true
 reth-trie-db.workspace = true
 reth-consensus.workspace = true
 reth-ethereum-primitives.workspace = true
+reth-ethereum-forks.workspace = true
 
 # Alloy dependencies
 alloy-network.workspace = true
 alloy-rpc-types.workspace = true
 alloy-primitives.workspace = true
 alloy-eips.workspace = true
+alloy-evm.workspace = true
 
 
 # Core dependencies

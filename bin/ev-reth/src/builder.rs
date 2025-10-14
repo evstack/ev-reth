@@ -11,7 +11,6 @@ use reth_ethereum::{
     node::{
         api::{payload::PayloadBuilderAttributes, FullNodeTypes, NodeTypes},
         builder::{components::PayloadBuilderBuilder, BuilderContext},
-        EthEvmConfig,
     },
     pool::{PoolTransaction, TransactionPool},
     primitives::Header,
@@ -24,7 +23,9 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::info;
 
-use crate::{attributes::EvolveEnginePayloadBuilderAttributes, EvolveEngineTypes};
+use crate::{
+    attributes::EvolveEnginePayloadBuilderAttributes, executor::EvolveEvmConfig, EvolveEngineTypes,
+};
 use evolve_ev_reth::config::set_current_block_gas_limit;
 
 /// Evolve-specific command line arguments
@@ -75,7 +76,7 @@ where
     pub(crate) config: EvolvePayloadBuilderConfig,
 }
 
-impl<Node, Pool> PayloadBuilderBuilder<Node, Pool, EthEvmConfig> for EvolvePayloadBuilderBuilder
+impl<Node, Pool> PayloadBuilderBuilder<Node, Pool, EvolveEvmConfig> for EvolvePayloadBuilderBuilder
 where
     Node: FullNodeTypes<
         Types: NodeTypes<
@@ -94,7 +95,7 @@ where
         self,
         ctx: &BuilderContext<Node>,
         pool: Pool,
-        evm_config: EthEvmConfig,
+        evm_config: EvolveEvmConfig,
     ) -> eyre::Result<Self::PayloadBuilder> {
         let chain_spec = ctx.chain_spec();
         let mut config = EvolvePayloadBuilderConfig::from_chain_spec(&chain_spec)?;

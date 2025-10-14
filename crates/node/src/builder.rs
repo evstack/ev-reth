@@ -1,7 +1,7 @@
 use crate::config::EvolvePayloadBuilderConfig;
 use alloy_consensus::transaction::Transaction;
 use alloy_evm::eth::EthEvmFactory;
-use ev_revm::{with_ev_handler, BaseFeeRedirect, EvEvmFactory};
+use ev_revm::EvEvmFactory;
 use evolve_ev_reth::EvolvePayloadAttributes;
 use reth_chainspec::{ChainSpec, ChainSpecProvider};
 use reth_errors::RethError;
@@ -26,8 +26,6 @@ pub struct EvolvePayloadBuilder<Client> {
     pub client: Arc<Client>,
     /// EVM configuration (potentially wrapped with base fee redirect)
     pub evm_config: EvolveEthEvmConfig,
-    /// Optional base fee redirect configuration derived from the chainspec
-    pub base_fee_redirect: Option<BaseFeeRedirect>,
     /// Parsed Evolve-specific configuration
     pub config: EvolvePayloadBuilderConfig,
 }
@@ -44,20 +42,16 @@ where
     /// Creates a new instance of `EvolvePayloadBuilder`
     pub fn new(
         client: Arc<Client>,
-        evm_config: EthEvmConfig,
+        evm_config: EvolveEthEvmConfig,
         config: EvolvePayloadBuilderConfig,
     ) -> Self {
-        let base_fee_redirect = config.base_fee_sink.map(|sink| {
+        if let Some(sink) = config.base_fee_sink {
             info!(target: "ev-reth", fee_sink = ?sink, "Base fee redirect enabled via chainspec");
-            BaseFeeRedirect::new(sink)
-        });
-
-        let evm_config = with_ev_handler(evm_config, base_fee_redirect);
+        }
 
         Self {
             client,
             evm_config,
-            base_fee_redirect,
             config,
         }
     }
@@ -193,7 +187,7 @@ where
 /// Creates a new payload builder service
 pub fn create_payload_builder_service<Client>(
     client: Arc<Client>,
-    evm_config: EthEvmConfig,
+    evm_config: EvolveEthEvmConfig,
 ) -> Option<EvolvePayloadBuilder<Client>>
 where
     Client: StateProviderFactory

@@ -14,6 +14,7 @@ publish = false
 evolve-ev-reth = { path = "../evolve" }
 ev-node = { path = "../node" }
 ev-common = { path = "../common" }
+ev-revm.workspace = true
 
 # Reth dependencies
 reth-testing-utils.workspace = true
