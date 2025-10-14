@@ -1,4 +1,4 @@
-use alloy_primitives::U256;
+use alloy_primitives::{Address, U256};
 use clap::Parser;
 use ev_node::{EvolvePayloadBuilder, EvolvePayloadBuilderConfig};
 use evolve_ev_reth::EvolvePayloadAttributes;
@@ -160,12 +160,24 @@ where
         // Publish effective gas limit for RPC alignment
         set_current_block_gas_limit(effective_gas_limit);
 
+        let mut fee_recipient = attributes.suggested_fee_recipient();
+        if fee_recipient == Address::ZERO {
+            if let Some(sink) = self.config.base_fee_sink {
+                info!(
+                    target: "ev-reth",
+                    fee_sink = ?sink,
+                    "Suggested fee recipient missing; defaulting to base-fee sink"
+                );
+                fee_recipient = sink;
+            }
+        }
+
         let evolve_attrs = EvolvePayloadAttributes::new(
             attributes.transactions.clone(),
             Some(effective_gas_limit),
             attributes.timestamp(),
             attributes.prev_randao(),
-            attributes.suggested_fee_recipient(),
+            fee_recipient,
             attributes.parent(),
             parent_header.number + 1,
         );
@@ -215,12 +227,24 @@ where
         // Publish effective gas limit for RPC alignment
         set_current_block_gas_limit(effective_gas_limit);
 
+        let mut fee_recipient = attributes.suggested_fee_recipient();
+        if fee_recipient == Address::ZERO {
+            if let Some(sink) = self.config.base_fee_sink {
+                info!(
+                    target: "ev-reth",
+                    fee_sink = ?sink,
+                    "Suggested fee recipient missing; defaulting to base-fee sink"
+                );
+                fee_recipient = sink;
+            }
+        }
+
         let evolve_attrs = EvolvePayloadAttributes::new(
             vec![],
             Some(effective_gas_limit),
             attributes.timestamp(),
             attributes.prev_randao(),
-            attributes.suggested_fee_recipient(),
+            fee_recipient,
             attributes.parent(),
             parent_header.number + 1,
         );

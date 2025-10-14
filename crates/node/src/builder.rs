@@ -1,6 +1,7 @@
 use crate::config::EvolvePayloadBuilderConfig;
 use alloy_consensus::transaction::Transaction;
 use alloy_evm::eth::EthEvmFactory;
+use alloy_primitives::Address;
 use ev_revm::EvEvmFactory;
 use evolve_ev_reth::EvolvePayloadAttributes;
 use reth_chainspec::{ChainSpec, ChainSpecProvider};
@@ -93,8 +94,18 @@ where
             ))
         })?;
 
-        // Set coinbase/beneficiary from attributes
-        let suggested_fee_recipient = attributes.suggested_fee_recipient;
+        // Set coinbase/beneficiary from attributes, defaulting to sink when unset.
+        let mut suggested_fee_recipient = attributes.suggested_fee_recipient;
+        if suggested_fee_recipient == Address::ZERO {
+            if let Some(sink) = self.config.base_fee_sink {
+                suggested_fee_recipient = sink;
+                info!(
+                    target: "ev-reth",
+                    fee_sink = ?sink,
+                    "Suggested fee recipient missing; defaulting to base-fee sink"
+                );
+            }
+        }
 
         let next_block_attrs = NextBlockEnvAttributes {
             timestamp: attributes.timestamp,
