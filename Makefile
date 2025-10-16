@@ -117,6 +117,8 @@ test-common:
 
 # Docker configuration
 GIT_TAG ?= $(shell git describe --tags --abbrev=0 || echo "latest")
+GIT_COMMIT ?= $(shell git rev-parse --short HEAD || echo "unknown")
+DOCKER_TAG ?= $(GIT_COMMIT)
 BIN_DIR = dist/bin
 DOCKER_IMAGE_NAME ?= ghcr.io/$(shell git config --get remote.origin.url | sed 's/.*github.com[:/]\(.*\)\.git/\1/' | cut -d'/' -f1)/ev-reth
 PROFILE ?= release
@@ -124,13 +126,14 @@ PROFILE ?= release
 # List of features to use when building
 FEATURES ?= jemalloc
 
-## docker-build: Build Docker image
+## docker-build: Build Docker image (tagged with git commit hash by default)
 docker-build:
-	docker build -t $(DOCKER_IMAGE_NAME):$(GIT_TAG) .
+	@echo "Building Docker image: $(DOCKER_IMAGE_NAME):$(DOCKER_TAG)"
+	docker build -t $(DOCKER_IMAGE_NAME):$(DOCKER_TAG) .
 
 ## docker-build-push: Build and push a cross-arch Docker image
 docker-build-push:
-	$(call docker_build_push,$(GIT_TAG),$(GIT_TAG))
+	$(call docker_build_push,$(DOCKER_TAG),$(DOCKER_TAG))
 
 ## docker-build-push-latest: Build and push a cross-arch Docker image tagged with latest
 docker-build-push-latest:

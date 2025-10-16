@@ -9,11 +9,10 @@ RUN apt-get update && \
     build-essential \
     pkg-config \
     libssl-dev \
-    clang-14 \
-    libclang-14-dev \
-    llvm-14-dev \
+    clang \
+    libclang-dev \
     libc6-dev \
-    && ln -sf /usr/lib/llvm-14/lib/libclang.so /usr/lib/libclang.so
+    && rm -rf /var/lib/apt/lists/*
 
 FROM chef AS planner
 COPY . .

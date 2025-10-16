@@ -1,4 +1,4 @@
-use alloy_primitives::U256;
+use alloy_primitives::{Address, U256};
 use clap::Parser;
 use ev_node::{EvolvePayloadBuilder, EvolvePayloadBuilderConfig};
 use evolve_ev_reth::EvolvePayloadAttributes;
@@ -11,7 +11,6 @@ use reth_ethereum::{
     node::{
         api::{payload::PayloadBuilderAttributes, FullNodeTypes, NodeTypes},
         builder::{components::PayloadBuilderBuilder, BuilderContext},
-        EthEvmConfig,
     },
     pool::{PoolTransaction, TransactionPool},
     primitives::Header,
@@ -24,7 +23,9 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::info;
 
-use crate::{attributes::EvolveEnginePayloadBuilderAttributes, EvolveEngineTypes};
+use crate::{
+    attributes::EvolveEnginePayloadBuilderAttributes, executor::EvolveEvmConfig, EvolveEngineTypes,
+};
 use evolve_ev_reth::config::set_current_block_gas_limit;
 
 /// Evolve-specific command line arguments
@@ -75,7 +76,7 @@ where
     pub(crate) config: EvolvePayloadBuilderConfig,
 }
 
-impl<Node, Pool> PayloadBuilderBuilder<Node, Pool, EthEvmConfig> for EvolvePayloadBuilderBuilder
+impl<Node, Pool> PayloadBuilderBuilder<Node, Pool, EvolveEvmConfig> for EvolvePayloadBuilderBuilder
 where
     Node: FullNodeTypes<
         Types: NodeTypes<
@@ -94,17 +95,27 @@ where
         self,
         ctx: &BuilderContext<Node>,
         pool: Pool,
-        evm_config: EthEvmConfig,
+        evm_config: EvolveEvmConfig,
     ) -> eyre::Result<Self::PayloadBuilder> {
+        let chain_spec = ctx.chain_spec();
+        let mut config = EvolvePayloadBuilderConfig::from_chain_spec(&chain_spec)?;
+
+        if self.config.base_fee_sink.is_some() {
+            config.base_fee_sink = self.config.base_fee_sink;
+        }
+
+        config.validate()?;
+
         let evolve_builder = Arc::new(EvolvePayloadBuilder::new(
             Arc::new(ctx.provider().clone()),
             evm_config,
+            config.clone(),
         ));
 
         Ok(EvolveEnginePayloadBuilder {
             evolve_builder,
             pool,
-            config: self.config,
+            config,
         })
     }
 }
@@ -149,12 +160,24 @@ where
         // Publish effective gas limit for RPC alignment
         set_current_block_gas_limit(effective_gas_limit);
 
+        let mut fee_recipient = attributes.suggested_fee_recipient();
+        if fee_recipient == Address::ZERO {
+            if let Some(sink) = self.config.base_fee_sink {
+                info!(
+                    target: "ev-reth",
+                    fee_sink = ?sink,
+                    "Suggested fee recipient missing; defaulting to base-fee sink"
+                );
+                fee_recipient = sink;
+            }
+        }
+
         let evolve_attrs = EvolvePayloadAttributes::new(
             attributes.transactions.clone(),
             Some(effective_gas_limit),
             attributes.timestamp(),
             attributes.prev_randao(),
-            attributes.suggested_fee_recipient(),
+            fee_recipient,
             attributes.parent(),
             parent_header.number + 1,
         );
@@ -204,12 +227,24 @@ where
         // Publish effective gas limit for RPC alignment
         set_current_block_gas_limit(effective_gas_limit);
 
+        let mut fee_recipient = attributes.suggested_fee_recipient();
+        if fee_recipient == Address::ZERO {
+            if let Some(sink) = self.config.base_fee_sink {
+                info!(
+                    target: "ev-reth",
+                    fee_sink = ?sink,
+                    "Suggested fee recipient missing; defaulting to base-fee sink"
+                );
+                fee_recipient = sink;
+            }
+        }
+
         let evolve_attrs = EvolvePayloadAttributes::new(
             vec![],
             Some(effective_gas_limit),
             attributes.timestamp(),
             attributes.prev_randao(),
-            attributes.suggested_fee_recipient(),
+            fee_recipient,
             attributes.parent(),
             parent_header.number + 1,
         );

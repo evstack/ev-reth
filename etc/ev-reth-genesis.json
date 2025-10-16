@@ -15,7 +15,10 @@
     "shanghaiTime": 0,
     "cancunTime": 0,
     "terminalTotalDifficulty": 0,
-    "terminalTotalDifficultyPassed": true
+    "terminalTotalDifficultyPassed": true,
+    "evolve": {
+      "baseFeeSink": "0x00000000000000000000000000000000000000fe"
+    }
   },
   "difficulty": "0x1",
   "gasLimit": "0x1c9c380",

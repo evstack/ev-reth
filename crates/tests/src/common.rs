@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use alloy_consensus::{transaction::SignerRecoverable, TxLegacy, TypedTransaction};
 use alloy_primitives::{Address, Bytes, ChainId, Signature, TxKind, B256, U256};
+use ev_revm::{with_ev_handler, BaseFeeRedirect};
 use eyre::Result;
 use reth_chainspec::{ChainSpecBuilder, MAINNET};
 use reth_ethereum_primitives::TransactionSigned;
@@ -15,7 +16,7 @@ use reth_primitives::{Header, Transaction};
 use reth_provider::test_utils::{ExtendedAccount, MockEthProvider};
 use tempfile::TempDir;
 
-use ev_node::EvolvePayloadBuilder;
+use ev_node::{EvolvePayloadBuilder, EvolvePayloadBuilderConfig};
 use evolve_ev_reth::EvolvePayloadAttributes;
 
 // Test constants
@@ -76,13 +77,20 @@ impl EvolveTestFixture {
         provider.add_header(genesis_hash, genesis_header);
 
         // Create a test chain spec with our test chain ID
-        let test_chainspec = ChainSpecBuilder::from(&*MAINNET)
-            .chain(reth_chainspec::Chain::from_id(TEST_CHAIN_ID))
-            .cancun_activated()
-            .build();
-        let evm_config = EthEvmConfig::new(Arc::new(test_chainspec));
+        let test_chainspec = Arc::new(
+            ChainSpecBuilder::from(&*MAINNET)
+                .chain(reth_chainspec::Chain::from_id(TEST_CHAIN_ID))
+                .cancun_activated()
+                .build(),
+        );
+        let evm_config = EthEvmConfig::new(test_chainspec.clone());
+        let config = EvolvePayloadBuilderConfig::from_chain_spec(test_chainspec.as_ref()).unwrap();
+        config.validate().unwrap();
 
-        let builder = EvolvePayloadBuilder::new(Arc::new(provider.clone()), evm_config);
+        let base_fee_redirect = config.base_fee_sink.map(BaseFeeRedirect::new);
+        let wrapped_evm = with_ev_handler(evm_config, base_fee_redirect);
+
+        let builder = EvolvePayloadBuilder::new(Arc::new(provider.clone()), wrapped_evm, config);
 
         let fixture = Self {
             builder,
