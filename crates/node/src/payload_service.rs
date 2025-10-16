@@ -20,8 +20,6 @@ use reth_ethereum::{
 use reth_payload_builder::{EthBuiltPayload, PayloadBuilderError};
 use reth_provider::HeaderProvider;
 use reth_revm::cached::CachedReads;
-use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use tokio::runtime::Handle;
 use tracing::info;
 
