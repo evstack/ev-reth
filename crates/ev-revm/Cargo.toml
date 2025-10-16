@@ -17,6 +17,7 @@ reth-primitives.workspace = true
 reth-evm-ethereum.workspace = true
 revm-inspector.workspace = true
 thiserror.workspace = true
+ev-precompiles = { path = "../ev-precompiles" }
 
 [lints]
 workspace = true

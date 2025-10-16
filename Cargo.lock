@@ -2978,6 +2978,7 @@ version = "0.1.0"
 dependencies = [
  "alloy-evm",
  "alloy-primitives",
+ "ev-precompiles",
  "reth-evm",
  "reth-evm-ethereum",
  "reth-primitives",

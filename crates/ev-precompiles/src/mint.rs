@@ -147,3 +147,159 @@ impl Precompile for MintPrecompile {
         false
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloy::sol_types::SolCall;
+    use alloy_primitives::address;
+    use revm::{
+        context::{journal::{Journal, JournalInner}, BlockEnv},
+        database::{CacheDB, EmptyDB},
+        primitives::hardfork::SpecId,
+    };
+
+    type TestJournal = Journal<CacheDB<EmptyDB>>;
+
+    const GAS_LIMIT: u64 = 1_000_000;
+
+    fn setup_context() -> (TestJournal, BlockEnv) {
+        let mut journal = Journal::new_with_inner(CacheDB::default(), JournalInner::new());
+        journal.inner.set_spec_id(SpecId::PRAGUE);
+        let block_env = BlockEnv::default();
+        (journal, block_env)
+    }
+
+    fn run_call<'a>(
+        journal: &'a mut TestJournal,
+        block_env: &'a BlockEnv,
+        precompile: &MintPrecompile,
+        caller: Address,
+        data: &'a [u8],
+    ) -> PrecompileResult {
+        let input = PrecompileInput {
+            data,
+            gas: GAS_LIMIT,
+            caller,
+            value: U256::ZERO,
+            target_address: MINT_PRECOMPILE_ADDR,
+            bytecode_address: MINT_PRECOMPILE_ADDR,
+            internals: EvmInternals::new(journal, block_env),
+        };
+
+        precompile.call(input)
+    }
+
+    fn account_balance(journal: &TestJournal, address: Address) -> Option<U256> {
+        journal.inner.state.get(&address).map(|account| account.info.balance)
+    }
+
+    #[test]
+    fn mint_increases_balance() {
+        let admin = address!("0x00000000000000000000000000000000000000a1");
+        let recipient = address!("0x00000000000000000000000000000000000000b1");
+        let amount = U256::from(42u64);
+        let precompile = MintPrecompile::new(admin);
+
+        let (mut journal, block_env) = setup_context();
+        let calldata =
+            INativeToken::mintCall { to: recipient, amount }.abi_encode();
+
+        let result = run_call(
+            &mut journal,
+            &block_env,
+            &precompile,
+            admin,
+            &calldata,
+        );
+
+        assert!(result.is_ok(), "mint call should succeed");
+        let balance = account_balance(&journal, recipient).expect("recipient account exists");
+        assert_eq!(balance, amount, "recipient balance must increase by minted amount");
+
+        let account = journal.inner.state.get(&recipient).unwrap();
+        assert!(account.is_touched(), "recipient account should be marked touched");
+        assert!(account.is_created(), "recipient account should be marked created");
+    }
+
+    #[test]
+    fn burn_decreases_balance() {
+        let admin = address!("0x00000000000000000000000000000000000000a2");
+        let holder = address!("0x00000000000000000000000000000000000000b2");
+        let mint_amount = U256::from(100u64);
+        let burn_amount = U256::from(60u64);
+        let precompile = MintPrecompile::new(admin);
+
+        let (mut journal, block_env) = setup_context();
+        let mint_calldata =
+            INativeToken::mintCall { to: holder, amount: mint_amount }.abi_encode();
+        run_call(&mut journal, &block_env, &precompile, admin, &mint_calldata)
+            .expect("mint call should succeed");
+        let burn_calldata =
+            INativeToken::burnCall { from: holder, amount: burn_amount }.abi_encode();
+
+        let result =
+            run_call(&mut journal, &block_env, &precompile, admin, &burn_calldata);
+
+        assert!(result.is_ok(), "burn call should succeed");
+        let balance = account_balance(&journal, holder).expect("holder account exists");
+        assert_eq!(balance, mint_amount - burn_amount, "holder balance must decrease");
+    }
+
+    #[test]
+    fn burn_underflow_is_rejected() {
+        let admin = address!("0x00000000000000000000000000000000000000a3");
+        let holder = address!("0x00000000000000000000000000000000000000b3");
+        let initial_amount = U256::from(25u64);
+        let burn_amount = U256::from(50u64);
+        let precompile = MintPrecompile::new(admin);
+
+        let (mut journal, block_env) = setup_context();
+        let mint_calldata =
+            INativeToken::mintCall { to: holder, amount: initial_amount }.abi_encode();
+        run_call(&mut journal, &block_env, &precompile, admin, &mint_calldata)
+            .expect("mint call should succeed");
+        let burn_calldata =
+            INativeToken::burnCall { from: holder, amount: burn_amount }.abi_encode();
+
+        let result =
+            run_call(&mut journal, &block_env, &precompile, admin, &burn_calldata);
+
+        match result {
+            Err(PrecompileError::Other(msg)) => {
+                assert_eq!(msg, "insufficient balance", "expected insufficient balance error")
+            }
+            other => panic!("expected underflow error, got {other:?}"),
+        }
+
+        let balance = account_balance(&journal, holder).expect("holder account exists");
+        assert_eq!(balance, initial_amount, "balance should remain unchanged on underflow");
+    }
+
+    #[test]
+    fn unauthorized_caller_is_denied() {
+        let admin = address!("0x00000000000000000000000000000000000000a4");
+        let caller = address!("0x00000000000000000000000000000000000000ff");
+        let recipient = address!("0x00000000000000000000000000000000000000cc");
+        let amount = U256::from(10u64);
+        let precompile = MintPrecompile::new(admin);
+
+        let (mut journal, block_env) = setup_context();
+        let calldata =
+            INativeToken::mintCall { to: recipient, amount }.abi_encode();
+
+        let result = run_call(&mut journal, &block_env, &precompile, caller, &calldata);
+
+        match result {
+            Err(PrecompileError::Other(msg)) => {
+                assert_eq!(msg, "unauthorized caller", "expected unauthorized caller error")
+            }
+            other => panic!("expected unauthorized error, got {other:?}"),
+        }
+
+        assert!(
+            journal.inner.state.get(&recipient).is_none(),
+            "unauthorized call must not create new accounts"
+        );
+    }
+}

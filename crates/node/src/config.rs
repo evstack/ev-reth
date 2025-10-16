@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 struct ChainspecEvolveConfig {
     #[serde(default, rename = "baseFeeSink")]
     pub base_fee_sink: Option<Address>,
+    #[serde(default, rename = "mintAdmin")]
+    pub mint_admin: Option<Address>,
 }
 
 /// Configuration for the Evolve payload builder
@@ -14,6 +16,9 @@ pub struct EvolvePayloadBuilderConfig {
     /// Optional chainspec-configured recipient for redirected base fees.
     #[serde(default)]
     pub base_fee_sink: Option<Address>,
+    /// Optional mint precompile admin address sourced from the chainspec.
+    #[serde(default)]
+    pub mint_admin: Option<Address>,
 }
 
 impl EvolvePayloadBuilderConfig {
@@ -21,6 +26,7 @@ impl EvolvePayloadBuilderConfig {
     pub const fn new() -> Self {
         Self {
             base_fee_sink: None,
+            mint_admin: None,
         }
     }
 
@@ -35,6 +41,7 @@ impl EvolvePayloadBuilderConfig {
         {
             let extras = extra.map_err(ConfigError::InvalidExtras)?;
             config.base_fee_sink = extras.base_fee_sink;
+            config.mint_admin = extras.mint_admin.and_then(|addr| if addr.is_zero() { None } else { Some(addr) });
         }
         Ok(config)
     }
@@ -92,6 +99,33 @@ mod tests {
         let config = EvolvePayloadBuilderConfig::from_chain_spec(&chainspec).unwrap();
 
         assert_eq!(config.base_fee_sink, Some(test_address));
+        assert_eq!(config.mint_admin, None);
+    }
+
+    #[test]
+    fn test_mint_admin_some_address() {
+        let mint_admin = address!("00000000000000000000000000000000000000aa");
+        let extras = json!({
+            "mintAdmin": mint_admin
+        });
+
+        let chainspec = create_test_chainspec_with_extras(Some(extras));
+        let config = EvolvePayloadBuilderConfig::from_chain_spec(&chainspec).unwrap();
+
+        assert_eq!(config.base_fee_sink, None);
+        assert_eq!(config.mint_admin, Some(mint_admin));
+    }
+
+    #[test]
+    fn test_mint_admin_zero_disables() {
+        let extras = json!({
+            "mintAdmin": "0x0000000000000000000000000000000000000000"
+        });
+
+        let chainspec = create_test_chainspec_with_extras(Some(extras));
+        let config = EvolvePayloadBuilderConfig::from_chain_spec(&chainspec).unwrap();
+
+        assert_eq!(config.mint_admin, None);
     }
 
     #[test]
@@ -112,6 +146,7 @@ mod tests {
         let config = EvolvePayloadBuilderConfig::from_chain_spec(&chainspec).unwrap();
 
         assert_eq!(config.base_fee_sink, None);
+        assert_eq!(config.mint_admin, None);
     }
 
     #[test]
@@ -147,6 +182,7 @@ mod tests {
         // Test default configuration
         let config = EvolvePayloadBuilderConfig::default();
         assert_eq!(config.base_fee_sink, None);
+        assert_eq!(config.mint_admin, None);
     }
 
     #[test]
@@ -154,6 +190,7 @@ mod tests {
         // Test new() constructor
         let config = EvolvePayloadBuilderConfig::new();
         assert_eq!(config.base_fee_sink, None);
+        assert_eq!(config.mint_admin, None);
     }
 
     #[test]
@@ -164,6 +201,7 @@ mod tests {
 
         let config_with_sink = EvolvePayloadBuilderConfig {
             base_fee_sink: Some(address!("0000000000000000000000000000000000000001")),
+            mint_admin: Some(address!("00000000000000000000000000000000000000aa")),
         };
         assert!(config_with_sink.validate().is_ok());
     }
@@ -172,7 +210,8 @@ mod tests {
     fn test_chainspec_evolve_config_deserialization() {
         // Test direct deserialization of ChainspecEvolveConfig
         let json_with_sink = json!({
-            "baseFeeSink": "0x0000000000000000000000000000000000000001"
+            "baseFeeSink": "0x0000000000000000000000000000000000000001",
+            "mintAdmin": "0x00000000000000000000000000000000000000aa"
         });
 
         let config: ChainspecEvolveConfig = serde_json::from_value(json_with_sink).unwrap();
@@ -180,9 +219,14 @@ mod tests {
             config.base_fee_sink,
             Some(address!("0000000000000000000000000000000000000001"))
         );
+        assert_eq!(
+            config.mint_admin,
+            Some(address!("00000000000000000000000000000000000000aa"))
+        );
 
         let json_without_sink = json!({});
         let config: ChainspecEvolveConfig = serde_json::from_value(json_without_sink).unwrap();
         assert_eq!(config.base_fee_sink, None);
+        assert_eq!(config.mint_admin, None);
     }
 }

@@ -88,7 +88,7 @@ impl EvolveTestFixture {
         config.validate().unwrap();
 
         let base_fee_redirect = config.base_fee_sink.map(BaseFeeRedirect::new);
-        let wrapped_evm = with_ev_handler(evm_config, base_fee_redirect);
+        let wrapped_evm = with_ev_handler(evm_config, base_fee_redirect, config.mint_admin);
 
         let builder = EvolvePayloadBuilder::new(Arc::new(provider.clone()), wrapped_evm, config);
 

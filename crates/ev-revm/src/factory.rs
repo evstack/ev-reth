@@ -3,9 +3,11 @@
 use crate::{base_fee::BaseFeeRedirect, evm::EvEvm};
 use alloy_evm::{
     eth::{EthBlockExecutorFactory, EthEvmContext, EthEvmFactory},
-    precompiles::PrecompilesMap,
+    precompiles::{DynPrecompile, Precompile, PrecompilesMap},
     Database, EvmEnv, EvmFactory,
 };
+use alloy_primitives::Address;
+use ev_precompiles::mint::{MintPrecompile, MINT_PRECOMPILE_ADDR};
 use reth_evm_ethereum::EthEvmConfig;
 use reth_revm::{
     inspector::NoOpInspector,
@@ -19,18 +21,43 @@ use reth_revm::{
         Inspector,
     },
 };
+use std::sync::Arc;
 
 /// Wrapper around an existing `EvmFactory` that produces [`EvEvm`] instances.
 #[derive(Debug, Clone)]
 pub struct EvEvmFactory<F> {
     inner: F,
     redirect: Option<BaseFeeRedirect>,
+    mint_admin: Option<Address>,
 }
 
 impl<F> EvEvmFactory<F> {
     /// Creates a new factory wrapper with the given redirect policy.
-    pub const fn new(inner: F, redirect: Option<BaseFeeRedirect>) -> Self {
-        Self { inner, redirect }
+    pub const fn new(
+        inner: F,
+        redirect: Option<BaseFeeRedirect>,
+        mint_admin: Option<Address>,
+    ) -> Self {
+        Self {
+            inner,
+            redirect,
+            mint_admin,
+        }
+    }
+
+    fn install_mint_precompile(&self, precompiles: &mut PrecompilesMap) {
+        let Some(admin) = self.mint_admin else { return };
+
+        let mint = Arc::new(MintPrecompile::new(admin));
+        let id = MintPrecompile::id().clone();
+
+        precompiles.apply_precompile(&MINT_PRECOMPILE_ADDR, move |_| {
+            let mint_for_call = Arc::clone(&mint);
+            let id_for_call = id.clone();
+            Some(DynPrecompile::new_stateful(id_for_call, move |input| {
+                mint_for_call.call(input)
+            }))
+        });
     }
 }
 
@@ -51,7 +78,12 @@ impl EvmFactory for EvEvmFactory<EthEvmFactory> {
         evm_env: EvmEnv<Self::Spec>,
     ) -> Self::Evm<DB, NoOpInspector> {
         let inner = self.inner.create_evm(db, evm_env);
-        EvEvm::from_inner(inner, self.redirect, false)
+        let mut evm = EvEvm::from_inner(inner, self.redirect, false);
+        {
+            let inner = evm.inner_mut();
+            self.install_mint_precompile(&mut inner.precompiles);
+        }
+        evm
     }
 
     fn create_evm_with_inspector<DB: Database, I: Inspector<Self::Context<DB>>>(
@@ -61,7 +93,12 @@ impl EvmFactory for EvEvmFactory<EthEvmFactory> {
         inspector: I,
     ) -> Self::Evm<DB, I> {
         let inner = self.inner.create_evm_with_inspector(db, input, inspector);
-        EvEvm::from_inner(inner, self.redirect, true)
+        let mut evm = EvEvm::from_inner(inner, self.redirect, true);
+        {
+            let inner = evm.inner_mut();
+            self.install_mint_precompile(&mut inner.precompiles);
+        }
+        evm
     }
 }
 
@@ -69,12 +106,13 @@ impl EvmFactory for EvEvmFactory<EthEvmFactory> {
 pub fn with_ev_handler<ChainSpec>(
     config: EthEvmConfig<ChainSpec, EthEvmFactory>,
     redirect: Option<BaseFeeRedirect>,
+    mint_admin: Option<Address>,
 ) -> EthEvmConfig<ChainSpec, EvEvmFactory<EthEvmFactory>> {
     let EthEvmConfig {
         executor_factory,
         block_assembler,
     } = config;
-    let wrapped_factory = EvEvmFactory::new(*executor_factory.evm_factory(), redirect);
+    let wrapped_factory = EvEvmFactory::new(*executor_factory.evm_factory(), redirect, mint_admin);
     let new_executor_factory = EthBlockExecutorFactory::new(
         *executor_factory.receipt_builder(),
         executor_factory.spec().clone(),
@@ -135,8 +173,12 @@ mod tests {
         evm_env.block_env.gas_limit = 30_000_000;
 
         let redirect = BaseFeeRedirect::new(sink);
-        let mut evm = EvEvmFactory::new(alloy_evm::eth::EthEvmFactory::default(), Some(redirect))
-            .create_evm(state, evm_env.clone());
+        let mut evm = EvEvmFactory::new(
+            alloy_evm::eth::EthEvmFactory::default(),
+            Some(redirect),
+            None,
+        )
+        .create_evm(state, evm_env.clone());
 
         let tx = crate::factory::TxEnv {
             caller,
