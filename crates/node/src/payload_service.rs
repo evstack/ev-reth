@@ -20,14 +20,9 @@ use reth_ethereum::{
 use reth_payload_builder::{EthBuiltPayload, PayloadBuilderError};
 use reth_provider::HeaderProvider;
 use reth_revm::cached::CachedReads;
-<<<<<<< HEAD:bin/ev-reth/src/builder.rs
-use std::sync::Arc;
-||||||| f176ff1:bin/ev-reth/src/builder.rs
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-=======
 use tokio::runtime::Handle;
->>>>>>> main:crates/node/src/payload_service.rs
 use tracing::info;
 
 use crate::{
@@ -37,40 +32,7 @@ use crate::{
 
 use evolve_ev_reth::config::set_current_block_gas_limit;
 
-<<<<<<< HEAD:bin/ev-reth/src/builder.rs
-#[derive(Debug, Clone, Default, Parser)]
-pub struct EvolveArgs {
-    /// Enable Evolve mode for the node (enabled by default)
-    #[arg(
-        long = "ev-reth.enable",
-        default_value = "true",
-        help = "Enable Evolve integration for transaction processing via Engine API"
-    )]
-    pub enable_evolve: bool,
-
-    /// Enable the native mint precompile.
-    #[arg(long)]
-    pub enable_mint_precompile: bool,
-}
-
-/// Evolve payload service builder that integrates with the evolve payload builder
-||||||| f176ff1:bin/ev-reth/src/builder.rs
-/// Evolve-specific command line arguments
-#[derive(Debug, Clone, Parser, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub struct EvolveArgs {
-    /// Enable Evolve mode for the node (enabled by default)
-    #[arg(
-        long = "ev-reth.enable",
-        default_value = "true",
-        help = "Enable Evolve integration for transaction processing via Engine API"
-    )]
-    pub enable_evolve: bool,
-}
-
-/// Evolve payload service builder that integrates with the evolve payload builder
-=======
 /// Evolve payload service builder that integrates with the evolve payload builder.
->>>>>>> main:crates/node/src/payload_service.rs
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct EvolvePayloadBuilderBuilder {
