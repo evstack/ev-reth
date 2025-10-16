@@ -50,8 +50,8 @@ fn main() {
         }
     }
 
-    if let Err(err) = Cli::<EthereumChainSpecParser, EvolveArgs>::parse()
-        .run(|builder, _evolve_args| async move {
+    if let Err(err) = Cli::<EthereumChainSpecParser, EvolveArgs>::parse().run(
+        |builder, _evolve_args| async move {
             log_startup();
             let handle = builder
                 .node(EvolveNode::new())
@@ -70,8 +70,8 @@ fn main() {
 
             info!("=== EV-RETH: Node launched successfully with ev-reth payload builder ===");
             handle.node_exit_future.await
-        })
-    {
+        },
+    ) {
         eprintln!("Error: {err:?}");
         std::process::exit(1);
     }
