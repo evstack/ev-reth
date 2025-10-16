@@ -13,15 +13,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::EvolveEngineError;
 
-/// Evolve payload attributes that support passing transactions via Engine API
+/// Evolve payload attributes that support passing transactions via Engine API.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EvolveEnginePayloadAttributes {
-    /// Standard Ethereum payload attributes
+    /// Standard Ethereum payload attributes.
     #[serde(flatten)]
     pub inner: EthPayloadAttributes,
-    /// Transactions to be included in the payload (passed via Engine API)
+    /// Transactions to be included in the payload (passed via Engine API).
     pub transactions: Option<Vec<Bytes>>,
-    /// Optional gas limit for the payload
+    /// Optional gas limit for the payload.
     #[serde(rename = "gasLimit")]
     pub gas_limit: Option<u64>,
 }
@@ -40,14 +40,14 @@ impl PayloadAttributes for EvolveEnginePayloadAttributes {
     }
 }
 
-/// Evolve payload builder attributes
+/// Evolve payload builder attributes.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EvolveEnginePayloadBuilderAttributes {
-    /// Ethereum payload builder attributes
+    /// Ethereum payload builder attributes.
     pub ethereum_attributes: EthPayloadBuilderAttributes,
-    /// Decoded transactions from the Engine API
+    /// Decoded transactions from the Engine API.
     pub transactions: Vec<TransactionSigned>,
-    /// Gas limit for the payload
+    /// Gas limit for the payload.
     pub gas_limit: Option<u64>,
 }
 
@@ -62,7 +62,7 @@ impl PayloadBuilderAttributes for EvolveEnginePayloadBuilderAttributes {
     ) -> Result<Self, Self::Error> {
         let ethereum_attributes = EthPayloadBuilderAttributes::new(parent, attributes.inner);
 
-        // Decode transactions from bytes if provided
+        // Decode transactions from bytes if provided.
         let transactions = attributes
             .transactions
             .unwrap_or_default()

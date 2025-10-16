@@ -1,7 +1,6 @@
 //! Helpers to build the ev-reth executor with EV-specific hooks applied.
 
 use alloy_evm::eth::{spec::EthExecutorSpec, EthEvmFactory};
-use ev_node::EvolvePayloadBuilderConfig;
 use ev_revm::{with_ev_handler, BaseFeeRedirect, EvEvmFactory};
 use reth_chainspec::ChainSpec;
 use reth_ethereum::{
@@ -16,13 +15,15 @@ use reth_ethereum_forks::Hardforks;
 use reth_node_builder::PayloadBuilderConfig;
 use tracing::info;
 
+use crate::{config::EvolvePayloadBuilderConfig, EvolveNode};
+
 /// Type alias for the EV-aware EVM config we install into the node.
 pub type EvolveEvmConfig = EthEvmConfig<ChainSpec, EvEvmFactory<EthEvmFactory>>;
 
 /// Builds the EV-aware EVM configuration by wrapping the default config with the EV handler.
 pub fn build_evm_config<Node>(ctx: &BuilderContext<Node>) -> eyre::Result<EvolveEvmConfig>
 where
-    Node: FullNodeTypes<Types = crate::EvolveNode>,
+    Node: FullNodeTypes<Types = EvolveNode>,
     ChainSpec: Hardforks + EthExecutorSpec + EthereumHardforks,
 {
     let chain_spec = ctx.chain_spec();
@@ -51,7 +52,7 @@ pub struct EvolveExecutorBuilder;
 
 impl<Node> RethExecutorBuilder<Node> for EvolveExecutorBuilder
 where
-    Node: FullNodeTypes<Types = crate::EvolveNode>,
+    Node: FullNodeTypes<Types = EvolveNode>,
     ChainSpec: Hardforks + EthExecutorSpec + EthereumHardforks,
 {
     type EVM = EvolveEvmConfig;
