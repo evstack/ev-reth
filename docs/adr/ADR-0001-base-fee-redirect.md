@@ -7,7 +7,7 @@
 
 ## Status
 
-DRAFT Implemented
+Implemented & Verified
 
 > Please have a look at the [PROCESS](./PROCESS.md#adr-status) page.
 > Use DRAFT if the ADR is in a draft stage (draft PR) or PROPOSED if it's in review.
@@ -64,6 +64,18 @@ Configuration remains opt-in: operators add an `ev_reth` block under the chainsp
 * Extend `BaseFeeRedirect` to support weighted splits or alternative fee sinks (e.g., contracts) once requirements solidify.
 * Add telemetry hooks so operators can monitor credited wei per block.
 * Document guardrails for inspectors or custom factories to ensure they propagate the redirect when composing with `EvEvm`.
+
+## Security and Economic Integrity
+
+A security audit of this design was performed to verify its economic integrity, specifically to ensure that tokens cannot be created or destroyed improperly. The audit confirms the design is sound.
+
+The entire fee-handling process operates as a **closed-loop accounting system**:
+
+1.  **Upfront Debit**: Before execution, the sender's account is debited for the maximum possible transaction cost (`gas_limit * gas_price`). This action secures all the funds that will be distributed later.
+2.  **Post-Execution Settlement**: After execution, these secured funds are settled. The `BaseFeeRedirect::apply` function calculates the base fee portion (`base_fee * gas_used`) and credits it to the configured `fee_sink`. This is a **transfer of existing value**, not the creation of new value.
+3.  **Zero-Sum Outcome**: The remainder of the fee is settled by crediting the tip to the block beneficiary and refunding unused gas to the sender. The sum of all credits (to sink, beneficiary, and sender) exactly equals the amount debited from the sender.
+
+This confirms that no tokens are minted from thin air. The mechanism is exclusively a **redirection** of funds already present in the system.
 
 ## Test Cases
 
