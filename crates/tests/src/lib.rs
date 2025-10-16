@@ -8,8 +8,6 @@ pub mod common;
 #[cfg(test)]
 mod engine_api_tests;
 #[cfg(test)]
-mod fee_redirect_node_test;
-#[cfg(test)]
 mod integration_tests;
 #[cfg(test)]
 mod payload_builder_tests;

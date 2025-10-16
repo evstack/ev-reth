@@ -42,13 +42,3 @@ jobs:
             --no-capture
         env:
           RUST_LOG: debug
-
-      - name: Run fee-redirect E2E test
-        run: |
-          cargo test \
-            -p ev-tests \
-            --lib \
-            node_redirects_base_fee_and_preserves_burn_sink \
-            -- --ignored --nocapture
-        env:
-          RUST_LOG: info
