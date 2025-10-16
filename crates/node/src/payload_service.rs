@@ -1,7 +1,8 @@
+use std::sync::Arc;
+
 use alloy_primitives::{Address, U256};
-use clap::Parser;
-use ev_node::{EvolvePayloadBuilder, EvolvePayloadBuilderConfig};
 use evolve_ev_reth::EvolvePayloadAttributes;
+use eyre::WrapErr;
 use reth_basic_payload_builder::{
     BuildArguments, BuildOutcome, HeaderForPayload, MissingPayloadBehaviour, PayloadBuilder,
     PayloadConfig,
@@ -19,28 +20,18 @@ use reth_ethereum::{
 use reth_payload_builder::{EthBuiltPayload, PayloadBuilderError};
 use reth_provider::HeaderProvider;
 use reth_revm::cached::CachedReads;
-use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use tokio::runtime::Handle;
 use tracing::info;
 
 use crate::{
-    attributes::EvolveEnginePayloadBuilderAttributes, executor::EvolveEvmConfig, EvolveEngineTypes,
+    args::EvolveArgs, attributes::EvolveEnginePayloadBuilderAttributes,
+    builder::EvolvePayloadBuilder, config::EvolvePayloadBuilderConfig, executor::EvolveEvmConfig,
+    node::EvolveEngineTypes,
 };
+
 use evolve_ev_reth::config::set_current_block_gas_limit;
 
-/// Evolve-specific command line arguments
-#[derive(Debug, Clone, Parser, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub struct EvolveArgs {
-    /// Enable Evolve mode for the node (enabled by default)
-    #[arg(
-        long = "ev-reth.enable",
-        default_value = "true",
-        help = "Enable Evolve integration for transaction processing via Engine API"
-    )]
-    pub enable_evolve: bool,
-}
-
-/// Evolve payload service builder that integrates with the evolve payload builder
+/// Evolve payload service builder that integrates with the evolve payload builder.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct EvolvePayloadBuilderBuilder {
@@ -48,7 +39,7 @@ pub struct EvolvePayloadBuilderBuilder {
 }
 
 impl EvolvePayloadBuilderBuilder {
-    /// Create a new builder with evolve args
+    /// Create a new builder with evolve args.
     pub fn new(_args: &EvolveArgs) -> Self {
         let config = EvolvePayloadBuilderConfig::new();
         info!("Created Evolve payload builder with config: {:?}", config);
@@ -62,7 +53,7 @@ impl Default for EvolvePayloadBuilderBuilder {
     }
 }
 
-/// The evolve engine payload builder that integrates with the evolve payload builder
+/// The evolve engine payload builder that integrates with the evolve payload builder.
 #[derive(Debug, Clone)]
 pub struct EvolveEnginePayloadBuilder<Pool, Client>
 where
@@ -98,7 +89,8 @@ where
         evm_config: EvolveEvmConfig,
     ) -> eyre::Result<Self::PayloadBuilder> {
         let chain_spec = ctx.chain_spec();
-        let mut config = EvolvePayloadBuilderConfig::from_chain_spec(&chain_spec)?;
+        let mut config = EvolvePayloadBuilderConfig::from_chain_spec(&chain_spec)
+            .wrap_err("failed to load evolve config from chain spec")?;
 
         if self.config.base_fee_sink.is_some() {
             config.base_fee_sink = self.config.base_fee_sink;
@@ -154,10 +146,10 @@ where
             attributes.transactions.len()
         );
 
-        // Convert Engine API attributes to Evolve payload attributes
-        // If no gas_limit provided, default to the parent header's gas limit (genesis for first block)
+        // Convert Engine API attributes to Evolve payload attributes.
+        // If no gas_limit provided, default to the parent header's gas limit (genesis for first block).
         let effective_gas_limit = attributes.gas_limit.unwrap_or(parent_header.gas_limit);
-        // Publish effective gas limit for RPC alignment
+        // Publish effective gas limit for RPC alignment.
         set_current_block_gas_limit(effective_gas_limit);
 
         let mut fee_recipient = attributes.suggested_fee_recipient();
@@ -182,10 +174,10 @@ where
             parent_header.number + 1,
         );
 
-        // Build the payload using the evolve payload builder - use spawn_blocking for async work
+        // Build the payload using the evolve payload builder - use spawn_blocking for async work.
         let evolve_builder = self.evolve_builder.clone();
         let sealed_block = tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(evolve_builder.build_payload(evolve_attrs))
+            Handle::current().block_on(evolve_builder.build_payload(evolve_attrs))
         })
         .map_err(PayloadBuilderError::other)?;
 
@@ -195,13 +187,13 @@ where
             sealed_block.gas_used
         );
 
-        // Convert to EthBuiltPayload
+        // Convert to EthBuiltPayload.
         let gas_used = sealed_block.gas_used;
         let built_payload = EthBuiltPayload::new(
-            attributes.payload_id(), // Use the proper payload ID from attributes
+            attributes.payload_id(), // Use the proper payload ID from attributes.
             Arc::new(sealed_block),
-            U256::from(gas_used), // Block gas used
-            None,                 // No blob sidecar for evolve
+            U256::from(gas_used), // Block gas used.
+            None,                 // No blob sidecar for evolve.
         );
 
         Ok(BuildOutcome::Better {
@@ -221,10 +213,10 @@ where
 
         info!("Evolve engine payload builder: building empty payload");
 
-        // Create empty evolve attributes (no transactions)
-        // If no gas_limit provided, default to the parent header's gas limit (genesis for first block)
+        // Create empty evolve attributes (no transactions).
+        // If no gas_limit provided, default to the parent header's gas limit (genesis for first block).
         let effective_gas_limit = attributes.gas_limit.unwrap_or(parent_header.gas_limit);
-        // Publish effective gas limit for RPC alignment
+        // Publish effective gas limit for RPC alignment.
         set_current_block_gas_limit(effective_gas_limit);
 
         let mut fee_recipient = attributes.suggested_fee_recipient();
@@ -249,10 +241,10 @@ where
             parent_header.number + 1,
         );
 
-        // Build empty payload - use spawn_blocking for async work
+        // Build empty payload - use spawn_blocking for async work.
         let evolve_builder = self.evolve_builder.clone();
         let sealed_block = tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(evolve_builder.build_payload(evolve_attrs))
+            Handle::current().block_on(evolve_builder.build_payload(evolve_attrs))
         })
         .map_err(PayloadBuilderError::other)?;
 
@@ -268,7 +260,7 @@ where
     /// Determines how to handle a request for a payload that is currently being built.
     ///
     /// This will always await the in-progress job, preventing a race with a new build.
-    /// This is the recommended behavior to prevent redundant payload builds
+    /// This is the recommended behavior to prevent redundant payload builds.
     fn on_missing_payload(
         &self,
         _args: BuildArguments<Self::Attributes, Self::BuiltPayload>,

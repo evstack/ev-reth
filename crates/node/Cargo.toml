@@ -17,6 +17,8 @@ ev-revm = { path = "../ev-revm" }
 # Reth dependencies
 reth-node-builder.workspace = true
 reth-chainspec.workspace = true
+reth-ethereum = { workspace = true, features = ["node", "cli", "pool"] }
+reth-ethereum-forks.workspace = true
 reth-ethereum-payload-builder.workspace = true
 reth-payload-primitives.workspace = true
 reth-primitives.workspace = true
@@ -60,6 +62,7 @@ serde_json.workspace = true
 thiserror.workspace = true
 async-trait.workspace = true
 futures.workspace = true
+clap.workspace = true
 
 [dev-dependencies]
 # Test dependencies
