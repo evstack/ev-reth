@@ -12,6 +12,8 @@ description = "Evolve node implementation"
 # Evolve dependencies
 ev-common = { path = "../common" }
 evolve-ev-reth = { path = "../evolve" }
+ev-revm = { path = "../ev-revm" }
+
 # Reth dependencies
 reth-node-builder.workspace = true
 reth-chainspec.workspace = true
@@ -47,6 +49,7 @@ alloy-rpc-types-engine.workspace = true
 alloy-primitives.workspace = true
 alloy-eips.workspace = true
 alloy-consensus.workspace = true
+alloy-evm.workspace = true
 
 # Core dependencies
 eyre.workspace = true

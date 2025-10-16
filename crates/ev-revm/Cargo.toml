@@ -1,0 +1,22 @@
+[package]
+name = "ev-revm"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+description = "Base-fee redirect adapters for revm"
+
+[dependencies]
+alloy-evm.workspace = true
+alloy-primitives.workspace = true
+reth-revm.workspace = true
+reth-evm.workspace = true
+reth-primitives.workspace = true
+reth-evm-ethereum.workspace = true
+revm-inspector.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

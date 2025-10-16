@@ -28,11 +28,15 @@ The `EvolvePayloadBuilder` handles:
 
 ### 3. Flexible Block Validation
 
-Modified Engine API validator that:
+Evolve's block production model has a unique characteristic: the block header contains the `apphash` of the *previous* block (height N-1), not the hash of the current block (height N). This design choice is fundamental to how Evolve links blocks together.
 
-- Bypasses block hash validation for Evolve blocks
-- Supports custom gas limits per payload
-- Maintains compatibility with standard Ethereum validation where possible
+However, a standard Ethereum node, following the Engine API specification, expects the block hash to match the hash of the current block's contents. When a new block from Evolve is received, this results in a `BlockHashMismatch` error during validation, which would normally cause the block to be rejected.
+
+To address this, ev-reth includes a modified Engine API validator (`EvolveEngineValidator`) that:
+
+- **Bypasses the block hash mismatch error**: It specifically catches the `BlockHashMismatch` error and allows the block to be processed without this check. This is the key modification that enables compatibility with Evolve.
+- Supports custom gas limits per payload.
+- Maintains compatibility with standard Ethereum validation for all other checks.
 
 ### 4. Custom Consensus for Equal Timestamps
 
@@ -207,6 +211,39 @@ This modular design allows for:
 4. Block is returned via standard Engine API response
 
 ## Configuration
+
+### Redirecting the Base Fee (Custom Networks Only)
+
+On vanilla Ethereum, EIP-1559 burns the base fee. If you're running a custom network and want that
+amount to be paid to a designated address instead, `ev-reth` can redirect it during transaction execution.
+
+Add an `evolve` stanza to your chainspec under the `config` section:
+
+```json
+"config": {
+  ...,
+  "evolve": {
+    "baseFeeSink": "0xYourRecipientAddressHere"
+  }
+}
+```
+
+Rebuild (or restart) the node with the updated chainspec so the payload builder picks up the change.
+
+You can see a working example in `etc/ev-reth-genesis.json`, which routes the base fee to
+`0x00000000000000000000000000000000000000fe` by default.
+
+What it does:
+- Intercepts the base fee during EVM execution (via the ev-revm handler)
+- Credits `base_fee_per_gas * gas_used` to the specified recipient for each transaction
+- The redirect happens at the EVM handler level, ensuring the state root reflects the credited balance
+- This effectively "unburns" the base fee on your network (Ethereum mainnet keeps burning the base fee by protocol design)
+
+Implementation details:
+- Uses the `ev-revm` crate to wrap the EVM with a custom handler
+- The handler intercepts the `reward_beneficiary` hook to redirect base fees
+- No runtime environment variables are required; the chainspec carries the policy alongside other fork settings
+- When not configured, the EVM operates normally with standard fee burning
 
 ### Payload Builder Configuration
 

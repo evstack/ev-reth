@@ -1,5 +1,10 @@
+use crate::config::EvolvePayloadBuilderConfig;
 use alloy_consensus::transaction::Transaction;
+use alloy_evm::eth::EthEvmFactory;
+use alloy_primitives::Address;
+use ev_revm::EvEvmFactory;
 use evolve_ev_reth::EvolvePayloadAttributes;
+use reth_chainspec::{ChainSpec, ChainSpecProvider};
 use reth_errors::RethError;
 use reth_evm::{
     execute::{BlockBuilder, BlockBuilderOutcome},
@@ -11,24 +16,45 @@ use reth_primitives::{transaction::SignedTransaction, Header, SealedBlock, Seale
 use reth_provider::{HeaderProvider, StateProviderFactory};
 use reth_revm::{database::StateProviderDatabase, State};
 use std::sync::Arc;
-use tracing::debug;
+use tracing::{debug, info};
+
+type EvolveEthEvmConfig = EthEvmConfig<ChainSpec, EvEvmFactory<EthEvmFactory>>;
 
 /// Payload builder for Evolve Reth node
 #[derive(Debug)]
 pub struct EvolvePayloadBuilder<Client> {
     /// The client for state access
     pub client: Arc<Client>,
-    /// EVM configuration
-    pub evm_config: EthEvmConfig,
+    /// EVM configuration (potentially wrapped with base fee redirect)
+    pub evm_config: EvolveEthEvmConfig,
+    /// Parsed Evolve-specific configuration
+    pub config: EvolvePayloadBuilderConfig,
 }
 
 impl<Client> EvolvePayloadBuilder<Client>
 where
-    Client: StateProviderFactory + HeaderProvider<Header = Header> + Send + Sync + 'static,
+    Client: StateProviderFactory
+        + HeaderProvider<Header = Header>
+        + ChainSpecProvider<ChainSpec = ChainSpec>
+        + Send
+        + Sync
+        + 'static,
 {
     /// Creates a new instance of `EvolvePayloadBuilder`
-    pub const fn new(client: Arc<Client>, evm_config: EthEvmConfig) -> Self {
-        Self { client, evm_config }
+    pub fn new(
+        client: Arc<Client>,
+        evm_config: EvolveEthEvmConfig,
+        config: EvolvePayloadBuilderConfig,
+    ) -> Self {
+        if let Some(sink) = config.base_fee_sink {
+            info!(target: "ev-reth", fee_sink = ?sink, "Base fee redirect enabled via chainspec");
+        }
+
+        Self {
+            client,
+            evm_config,
+            config,
+        }
     }
 
     /// Builds a payload using the provided attributes
@@ -68,9 +94,22 @@ where
             ))
         })?;
 
+        // Set coinbase/beneficiary from attributes, defaulting to sink when unset.
+        let mut suggested_fee_recipient = attributes.suggested_fee_recipient;
+        if suggested_fee_recipient == Address::ZERO {
+            if let Some(sink) = self.config.base_fee_sink {
+                suggested_fee_recipient = sink;
+                info!(
+                    target: "ev-reth",
+                    fee_sink = ?sink,
+                    "Suggested fee recipient missing; defaulting to base-fee sink"
+                );
+            }
+        }
+
         let next_block_attrs = NextBlockEnvAttributes {
             timestamp: attributes.timestamp,
-            suggested_fee_recipient: attributes.suggested_fee_recipient,
+            suggested_fee_recipient,
             prev_randao: attributes.prev_randao,
             gas_limit,
             parent_beacon_block_root: Some(alloy_primitives::B256::ZERO), // Set to zero for evolve blocks
@@ -79,7 +118,6 @@ where
             withdrawals: Some(Default::default()),
         };
 
-        // Create block builder using the EVM config
         let mut builder = self
             .evm_config
             .builder_for_next_block(&mut state_db, &sealed_parent, next_block_attrs)
@@ -143,6 +181,7 @@ where
             .map_err(PayloadBuilderError::other)?;
 
         let sealed_block = block.sealed_block().clone();
+
         tracing::info!(
                     block_number = sealed_block.number,
                     block_hash = ?sealed_block.hash(),
@@ -157,12 +196,32 @@ where
 }
 
 /// Creates a new payload builder service
-pub const fn create_payload_builder_service<Client>(
+pub fn create_payload_builder_service<Client>(
     client: Arc<Client>,
-    evm_config: EthEvmConfig,
+    evm_config: EvolveEthEvmConfig,
 ) -> Option<EvolvePayloadBuilder<Client>>
 where
-    Client: StateProviderFactory + HeaderProvider<Header = Header> + Send + Sync + 'static,
+    Client: StateProviderFactory
+        + HeaderProvider<Header = Header>
+        + ChainSpecProvider<ChainSpec = ChainSpec>
+        + Send
+        + Sync
+        + 'static,
 {
-    Some(EvolvePayloadBuilder::new(client, evm_config))
+    let chain_spec = client.chain_spec();
+
+    let config = match EvolvePayloadBuilderConfig::from_chain_spec(&chain_spec) {
+        Ok(config) => config,
+        Err(err) => {
+            tracing::warn!(target: "ev-reth", error = ?err, "Failed to parse chainspec extras");
+            return None;
+        }
+    };
+
+    if let Err(err) = config.validate() {
+        tracing::warn!(target: "ev-reth", error = ?err, "Invalid evolve payload builder configuration");
+        return None;
+    }
+
+    Some(EvolvePayloadBuilder::new(client, evm_config, config))
 }
