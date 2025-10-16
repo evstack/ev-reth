@@ -80,7 +80,7 @@ where
     async fn build_payload_builder(
         self,
         ctx: &BuilderContext<Node>,
-        pool: Pool,
+        _pool: Pool,
         evm_config: EvolveEvmConfig,
     ) -> eyre::Result<Self::PayloadBuilder> {
         let chain_spec = ctx.chain_spec();
@@ -92,8 +92,6 @@ where
         }
 
         config.validate()?;
-
-        let _ = pool;
 
         let evolve_builder = Arc::new(EvolvePayloadBuilder::new(
             Arc::new(ctx.provider().clone()),
