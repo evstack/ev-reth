@@ -1,5 +1,5 @@
-use clap::Parser;
+use clap::Args;
 
 /// Evolve CLI arguments (currently empty; reserved for future toggles).
-#[derive(Debug, Clone, Parser, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Default, Args)]
 pub struct EvolveArgs {}

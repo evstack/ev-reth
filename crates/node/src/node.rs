@@ -4,7 +4,6 @@ use alloy_rpc_types::engine::{
     ExecutionData, ExecutionPayloadEnvelopeV2, ExecutionPayloadEnvelopeV3,
     ExecutionPayloadEnvelopeV4, ExecutionPayloadEnvelopeV5, ExecutionPayloadV1,
 };
-use clap::Parser;
 use reth_ethereum::{
     chainspec::ChainSpec,
     node::{
@@ -24,7 +23,6 @@ use serde::{Deserialize, Serialize};
 use tracing::info;
 
 use crate::{
-    args::EvolveArgs,
     attributes::{EvolveEnginePayloadAttributes, EvolveEnginePayloadBuilderAttributes},
     executor::EvolveExecutorBuilder,
     payload_service::EvolvePayloadBuilderBuilder,
@@ -67,15 +65,12 @@ impl EngineTypes for EvolveEngineTypes {
 /// Evolve node type.
 #[derive(Debug, Clone, Default)]
 #[non_exhaustive]
-pub struct EvolveNode {
-    /// Evolve-specific arguments.
-    pub args: EvolveArgs,
-}
+pub struct EvolveNode {}
 
 impl EvolveNode {
     /// Create a new evolve node with the given arguments.
-    pub const fn new(args: EvolveArgs) -> Self {
-        Self { args }
+    pub const fn new() -> Self {
+        Self {}
     }
 }
 
@@ -109,7 +104,7 @@ where
             .pool(EthereumPoolBuilder::default())
             .executor(EvolveExecutorBuilder::default())
             .payload(BasicPayloadServiceBuilder::new(
-                EvolvePayloadBuilderBuilder::new(&self.args),
+                EvolvePayloadBuilderBuilder::new(),
             ))
             .network(EthereumNetworkBuilder::default())
             .consensus(evolve_ev_reth::consensus::EvolveConsensusBuilder::default())
@@ -121,13 +116,7 @@ where
 }
 
 /// Helper logging to announce node startup with args.
-pub fn log_startup(args: &EvolveArgs) {
-    info!("=== EV-RETH: Starting with args: {:?} ===", args);
+pub fn log_startup() {
     info!("=== EV-RETH: Evolve node mode enabled ===");
     info!("=== EV-RETH: Using custom payload builder with transaction support ===");
-}
-
-/// Ensure Clap derives are linked when this crate is used without the binary.
-pub fn parse_args() -> EvolveArgs {
-    EvolveArgs::parse()
 }

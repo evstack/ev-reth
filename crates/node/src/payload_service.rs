@@ -24,9 +24,8 @@ use tokio::runtime::Handle;
 use tracing::info;
 
 use crate::{
-    args::EvolveArgs, attributes::EvolveEnginePayloadBuilderAttributes,
-    builder::EvolvePayloadBuilder, config::EvolvePayloadBuilderConfig, executor::EvolveEvmConfig,
-    node::EvolveEngineTypes,
+    attributes::EvolveEnginePayloadBuilderAttributes, builder::EvolvePayloadBuilder,
+    config::EvolvePayloadBuilderConfig, executor::EvolveEvmConfig, node::EvolveEngineTypes,
 };
 
 use evolve_ev_reth::config::set_current_block_gas_limit;
@@ -40,7 +39,7 @@ pub struct EvolvePayloadBuilderBuilder {
 
 impl EvolvePayloadBuilderBuilder {
     /// Create a new builder with evolve args.
-    pub fn new(_args: &EvolveArgs) -> Self {
+    pub fn new() -> Self {
         let config = EvolvePayloadBuilderConfig::new();
         info!("Created Evolve payload builder with config: {:?}", config);
         Self { config }
@@ -49,21 +48,17 @@ impl EvolvePayloadBuilderBuilder {
 
 impl Default for EvolvePayloadBuilderBuilder {
     fn default() -> Self {
-        Self::new(&EvolveArgs::default())
+        Self::new()
     }
 }
 
 /// The evolve engine payload builder that integrates with the evolve payload builder.
 #[derive(Debug, Clone)]
-pub struct EvolveEnginePayloadBuilder<Pool, Client>
+pub struct EvolveEnginePayloadBuilder<Client>
 where
-    Pool: Clone,
     Client: Clone,
 {
     pub(crate) evolve_builder: Arc<EvolvePayloadBuilder<Client>>,
-    #[allow(dead_code)]
-    pub(crate) pool: Pool,
-    #[allow(dead_code)]
     pub(crate) config: EvolvePayloadBuilderConfig,
 }
 
@@ -80,7 +75,7 @@ where
         + Unpin
         + 'static,
 {
-    type PayloadBuilder = EvolveEnginePayloadBuilder<Pool, Node::Provider>;
+    type PayloadBuilder = EvolveEnginePayloadBuilder<Node::Provider>;
 
     async fn build_payload_builder(
         self,
@@ -98,6 +93,8 @@ where
 
         config.validate()?;
 
+        let _ = pool;
+
         let evolve_builder = Arc::new(EvolvePayloadBuilder::new(
             Arc::new(ctx.provider().clone()),
             evm_config,
@@ -106,13 +103,12 @@ where
 
         Ok(EvolveEnginePayloadBuilder {
             evolve_builder,
-            pool,
             config,
         })
     }
 }
 
-impl<Pool, Client> PayloadBuilder for EvolveEnginePayloadBuilder<Pool, Client>
+impl<Client> PayloadBuilder for EvolveEnginePayloadBuilder<Client>
 where
     Client: reth_ethereum::provider::StateProviderFactory
         + ChainSpecProvider<ChainSpec = ChainSpec>
@@ -121,7 +117,6 @@ where
         + Send
         + Sync
         + 'static,
-    Pool: TransactionPool<Transaction: PoolTransaction<Consensus = TransactionSigned>>,
 {
     type Attributes = EvolveEnginePayloadBuilderAttributes;
     type BuiltPayload = EthBuiltPayload;

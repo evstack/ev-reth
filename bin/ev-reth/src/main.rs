@@ -50,11 +50,11 @@ fn main() {
         }
     }
 
-    if let Err(err) = Cli::<EthereumChainSpecParser, EvolveArgs>::parse().run(
-        async move |builder, evolve_args| {
-            log_startup(&evolve_args);
+    if let Err(err) = Cli::<EthereumChainSpecParser, EvolveArgs>::parse()
+        .run(|builder, _evolve_args| async move {
+            log_startup();
             let handle = builder
-                .node(EvolveNode::new(evolve_args))
+                .node(EvolveNode::new())
                 .extend_rpc_modules(move |ctx| {
                     // Build custom txpool RPC with config + optional CLI/env override
                     let evolve_cfg = EvolveConfig::default();
@@ -70,8 +70,8 @@ fn main() {
 
             info!("=== EV-RETH: Node launched successfully with ev-reth payload builder ===");
             handle.node_exit_future.await
-        },
-    ) {
+        })
+    {
         eprintln!("Error: {err:?}");
         std::process::exit(1);
     }

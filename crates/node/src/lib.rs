@@ -31,6 +31,6 @@ pub use builder::{create_payload_builder_service, EvolvePayloadBuilder};
 pub use config::{ConfigError, EvolvePayloadBuilderConfig};
 pub use error::EvolveEngineError;
 pub use executor::{build_evm_config, EvolveEvmConfig, EvolveExecutorBuilder};
-pub use node::{log_startup, parse_args, EvolveEngineTypes, EvolveNode, EvolveNodeAddOns};
+pub use node::{log_startup, EvolveEngineTypes, EvolveNode, EvolveNodeAddOns};
 pub use payload_service::{EvolveEnginePayloadBuilder, EvolvePayloadBuilderBuilder};
 pub use validator::{EvolveEngineValidator, EvolveEngineValidatorBuilder};
