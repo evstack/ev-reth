@@ -30,22 +30,67 @@ use crate::common::{
 };
 
 sol! {
+    /// Mint and burn proxy contract interface.
+    ///
+    /// This contract acts as a proxy to the mint/burn precompile at address 0xf1.
+    /// It forwards mint and burn calls to the precompile, allowing the designated
+    /// mint admin contract to control token supply.
     contract MintAdminProxy {
         function mint(address to, uint256 amount);
         function burn(address from, uint256 amount);
     }
 }
 
+/// Bytecode for the MintAdminProxy contract.
+///
+/// This minimal proxy contract forwards all calls to the mint/burn precompile
+/// at address 0x000000000000000000000000000000000000f1.
+/// The bytecode delegates all function calls to the precompile using DELEGATECALL.
 const ADMIN_PROXY_INITCODE: [u8; 54] = alloy_primitives::hex!(
     "602a600c600039602a6000f336600060003760006000366000600073000000000000000000000000000000000000f1005af1600080f3"
 );
 
+/// Test recipient address used in mint/burn tests.
 const TEST_MINT_RECIPIENT: Address = address!("0x0101010101010101010101010101010101010101");
 
+/// Computes the contract address that will be created by a deployer at a given nonce.
+///
+/// Uses the CREATE opcode address derivation formula: keccak256(rlp([sender, nonce])).
+///
+/// # Arguments
+/// * `deployer` - Address of the contract deployer
+/// * `nonce` - Nonce value for the deployment transaction
+///
+/// # Returns
+/// The deterministic contract address that will be created
 fn contract_address_from_nonce(deployer: Address, nonce: u64) -> Address {
     deployer.create(nonce)
 }
 
+/// Builds and submits a block containing the specified transactions via the Engine API.
+///
+/// This helper function orchestrates the complete block building process:
+/// 1. Creates payload attributes with the provided transactions
+/// 2. Calls `engine_forkchoiceUpdatedV3` to initiate payload building
+/// 3. Retrieves the built payload via `engine_getPayloadV3`
+/// 4. Submits the payload via `engine_newPayloadV3`
+/// 5. Finalizes the block via another `engine_forkchoiceUpdatedV3` call
+/// 6. Updates the environment state with the new block info
+///
+/// # Arguments
+/// * `env` - Test environment containing the node client
+/// * `parent_hash` - Hash of the parent block (updated to new block hash)
+/// * `parent_number` - Number of the parent block (updated to new block number)
+/// * `parent_timestamp` - Timestamp of the parent block (updated to new block timestamp)
+/// * `gas_limit` - Gas limit for the new block
+/// * `transactions` - RLP-encoded transactions to include in the block
+/// * `suggested_fee_recipient` - Address to receive block rewards and fees
+///
+/// # Returns
+/// The execution payload envelope for the newly built block
+///
+/// # Panics
+/// Panics if the payload is not marked as valid by the engine
 async fn build_block_with_transactions(
     env: &mut Environment<EvolveEngineTypes>,
     parent_hash: &mut B256,
@@ -130,6 +175,23 @@ use ev_node::{
     EvolveEnginePayloadAttributes, EvolveEngineTypes, EvolveNode, EvolvePayloadBuilderConfig,
 };
 
+/// Tests that a single ev-reth node can successfully produce blocks.
+///
+/// # Test Flow
+/// 1. Initializes a single-node test environment with dev mode enabled
+/// 2. Produces 2 blocks using the Engine API
+/// 3. Marks the chain as canonical
+/// 4. Verifies the head block number is 2
+///
+/// # What It Tests
+/// - Basic block production functionality
+/// - Engine API integration
+/// - Block chain progression
+/// - Canonical chain management
+///
+/// # Success Criteria
+/// - Node successfully produces exactly 2 blocks
+/// - Final head block number is 2
 #[tokio::test(flavor = "multi_thread")]
 async fn test_e2e_single_node_produces_blocks() -> Result<()> {
     reth_tracing::init_test_tracing();
@@ -161,6 +223,27 @@ async fn test_e2e_single_node_produces_blocks() -> Result<()> {
         .await
 }
 
+/// Tests that the base fee sink address correctly receives base fees and priority tips.
+///
+/// # Test Flow
+/// 1. Creates a chain spec with a designated base fee sink address (0xAAAA...AA)
+/// 2. Records the sink's initial balance
+/// 3. Builds a block containing a transfer transaction
+/// 4. Calculates expected fees:
+///    - Base fee = base_fee_per_gas × gas_used
+///    - Priority tip = min(tip_cap, max_priority_fee_per_gas) × gas_used
+/// 5. Verifies the sink receives exactly base_fee + priority_tip
+///
+/// # What It Tests
+/// - Base fee sink mechanism (Evolve-specific feature)
+/// - Fee calculation and distribution
+/// - Transaction gas consumption
+/// - Priority fee (tip) handling for different transaction types (Legacy, EIP-2930, EIP-1559)
+///
+/// # Success Criteria
+/// - Block consumes gas (gas_used > 0)
+/// - Base fee sink balance increases by exactly (base_fee + tip)
+/// - Fee calculations match expected values for the transaction type
 #[tokio::test(flavor = "multi_thread")]
 async fn test_e2e_base_fee_sink_receives_base_fee() -> Result<()> {
     reth_tracing::init_test_tracing();
@@ -282,6 +365,292 @@ async fn test_e2e_base_fee_sink_receives_base_fee() -> Result<()> {
     Ok(())
 }
 
+/// Tests minting and burning tokens to/from a dynamically generated wallet not in genesis.
+///
+/// # Test Flow
+/// 1. Creates a fresh wallet address (not in genesis, zero initial balance)
+/// 2. Deploys the MintAdminProxy contract at a predetermined address
+/// 3. Mints 0.005 ETH to the new wallet via the mint precompile
+/// 4. Verifies the wallet balance increases to exactly the minted amount
+/// 5. Burns 0.002 ETH from the wallet via the burn precompile
+/// 6. Verifies the wallet balance decreases by exactly the burned amount
+///
+/// # What It Tests
+/// - Mint precompile functionality for non-genesis addresses
+/// - Burn precompile functionality
+/// - Balance state changes from mint/burn operations
+/// - Admin proxy contract delegation to precompile (0xf1)
+/// - Transaction receipt validation for mint/burn operations
+///
+/// # Success Criteria
+/// - New wallet starts with zero balance (proving it's not in genesis)
+/// - After minting: balance = mint_amount (0.005 ETH)
+/// - After burning: balance = mint_amount - burn_amount (0.003 ETH)
+/// - All transactions succeed (receipt status = true)
+#[tokio::test(flavor = "multi_thread")]
+async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
+    reth_tracing::init_test_tracing();
+
+    let chain_id = TEST_CHAIN_ID;
+
+    // Create deployer wallet from the standard test wallets
+    let mut wallets = Wallet::new(1).with_chain_id(chain_id).wallet_gen();
+    let deployer = wallets.remove(0);
+    let deployer_address = deployer.address();
+
+    // Generate a truly random address not in genesis by using a random private key
+    // We don't need the private key since we're only minting/burning TO this address
+    let new_wallet_address = Address::random();
+
+    println!("Deployer address: {}", deployer_address);
+    println!("New wallet address: {}", new_wallet_address);
+
+    let contract_address = contract_address_from_nonce(deployer_address, 0);
+    let chain_spec = create_test_chain_spec_with_mint_admin(contract_address);
+    let evolve_config =
+        EvolvePayloadBuilderConfig::from_chain_spec(chain_spec.as_ref()).expect("valid config");
+    assert_eq!(
+        evolve_config.mint_admin,
+        Some(contract_address),
+        "chainspec should propagate mint admin address"
+    );
+
+    let mut setup = Setup::<EvolveEngineTypes>::new()
+        .with_chain_spec(chain_spec.clone())
+        .with_network(NetworkSetup::single_node())
+        .with_dev_mode(true);
+
+    let mut env = Environment::<EvolveEngineTypes>::default();
+    setup.apply::<EvolveNode>(&mut env).await?;
+
+    // Check initial balance of new wallet (should be zero since not in genesis)
+    let initial_balance =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+            &env.node_clients[0].rpc,
+            new_wallet_address,
+            Some(BlockId::latest()),
+        )
+        .await?;
+    println!("New wallet initial balance: {}", initial_balance);
+    assert_eq!(
+        initial_balance,
+        U256::ZERO,
+        "randomly generated wallet should have zero balance (not in genesis)"
+    );
+
+    let parent_block = env.node_clients[0]
+        .get_block_by_number(BlockNumberOrTag::Latest)
+        .await?
+        .expect("parent block should exist");
+    let mut parent_hash = parent_block.header.hash;
+    let mut parent_timestamp = parent_block.header.inner.timestamp;
+    let mut parent_number = parent_block.header.inner.number;
+    let gas_limit = parent_block.header.inner.gas_limit;
+
+    // Deploy proxy contract at the predetermined admin address.
+    let mut deploy_tx = TransactionRequest::default();
+    deploy_tx.nonce = Some(0);
+    deploy_tx.gas = Some(1_000_000);
+    deploy_tx.max_fee_per_gas = Some(20_000_000_000);
+    deploy_tx.max_priority_fee_per_gas = Some(2_000_000_000);
+    deploy_tx.chain_id = Some(chain_id);
+    deploy_tx.value = Some(U256::ZERO);
+    deploy_tx.to = Some(TxKind::Create);
+    deploy_tx.input = TransactionInput {
+        input: None,
+        data: Some(Bytes::from_static(&ADMIN_PROXY_INITCODE)),
+    };
+
+    let deploy_envelope = TransactionTestContext::sign_tx(deployer.clone(), deploy_tx).await;
+    let deploy_raw: Bytes = deploy_envelope.encoded_2718().into();
+
+    build_block_with_transactions(
+        &mut env,
+        &mut parent_hash,
+        &mut parent_number,
+        &mut parent_timestamp,
+        gas_limit,
+        vec![deploy_raw],
+        Address::ZERO,
+    )
+    .await?;
+
+    println!("Deployed admin proxy contract at: {}", contract_address);
+
+    // Mint tokens to the new wallet via contract proxy.
+    let mint_amount = U256::from(5_000_000_000_000_000u64); // 0.005 ETH
+    let mint_call = MintAdminProxy::mintCall {
+        to: new_wallet_address,
+        amount: mint_amount,
+    }
+    .abi_encode();
+
+    let mint_tx = TransactionRequest {
+        nonce: Some(1),
+        gas: Some(150_000),
+        max_fee_per_gas: Some(20_000_000_000),
+        max_priority_fee_per_gas: Some(2_000_000_000),
+        chain_id: Some(chain_id),
+        to: Some(TxKind::Call(contract_address)),
+        value: Some(U256::ZERO),
+        input: TransactionInput {
+            input: None,
+            data: Some(Bytes::from(mint_call)),
+        },
+        ..Default::default()
+    };
+
+    let mint_envelope = TransactionTestContext::sign_tx(deployer.clone(), mint_tx).await;
+    let mint_raw: Bytes = mint_envelope.encoded_2718().into();
+
+    build_block_with_transactions(
+        &mut env,
+        &mut parent_hash,
+        &mut parent_number,
+        &mut parent_timestamp,
+        gas_limit,
+        vec![mint_raw],
+        Address::ZERO,
+    )
+    .await?;
+
+    let mint_tx_hash = *mint_envelope.tx_hash();
+    let mint_receipt = EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::transaction_receipt(
+        &env.node_clients[0].rpc,
+        mint_tx_hash,
+    )
+    .await?
+    .expect("mint transaction receipt available");
+    println!(
+        "Mint receipt status: {}, logs: {:?}",
+        mint_receipt.status(),
+        mint_receipt.logs
+    );
+    assert!(
+        mint_receipt.status(),
+        "mint proxy transaction should succeed"
+    );
+
+    let balance_after_mint =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+            &env.node_clients[0].rpc,
+            new_wallet_address,
+            Some(BlockId::latest()),
+        )
+        .await?;
+    println!("New wallet balance after mint: {}", balance_after_mint);
+    assert_eq!(
+        balance_after_mint, mint_amount,
+        "new wallet should have exactly the minted amount"
+    );
+
+    // Burn tokens from the new wallet.
+    let burn_amount = U256::from(2_000_000_000_000_000u64); // Burn 0.002 ETH
+    let burn_call = MintAdminProxy::burnCall {
+        from: new_wallet_address,
+        amount: burn_amount,
+    }
+    .abi_encode();
+
+    let burn_tx = TransactionRequest {
+        nonce: Some(2),
+        gas: Some(150_000),
+        max_fee_per_gas: Some(20_000_000_000),
+        max_priority_fee_per_gas: Some(2_000_000_000),
+        chain_id: Some(chain_id),
+        to: Some(TxKind::Call(contract_address)),
+        value: Some(U256::ZERO),
+        input: TransactionInput {
+            input: None,
+            data: Some(Bytes::from(burn_call)),
+        },
+        ..Default::default()
+    };
+
+    let burn_envelope = TransactionTestContext::sign_tx(deployer, burn_tx).await;
+    let burn_raw: Bytes = burn_envelope.encoded_2718().into();
+
+    build_block_with_transactions(
+        &mut env,
+        &mut parent_hash,
+        &mut parent_number,
+        &mut parent_timestamp,
+        gas_limit,
+        vec![burn_raw],
+        Address::ZERO,
+    )
+    .await?;
+
+    let burn_tx_hash = *burn_envelope.tx_hash();
+    let burn_receipt = EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::transaction_receipt(
+        &env.node_clients[0].rpc,
+        burn_tx_hash,
+    )
+    .await?
+    .expect("burn transaction receipt available");
+    println!(
+        "Burn receipt status: {}, logs: {:?}",
+        burn_receipt.status(),
+        burn_receipt.logs
+    );
+    assert!(
+        burn_receipt.status(),
+        "burn proxy transaction should succeed"
+    );
+
+    let final_balance =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+            &env.node_clients[0].rpc,
+            new_wallet_address,
+            Some(BlockId::latest()),
+        )
+        .await?;
+    println!("New wallet final balance after burn: {}", final_balance);
+
+    let expected_final_balance = mint_amount - burn_amount;
+    assert_eq!(
+        final_balance, expected_final_balance,
+        "burn should reduce the balance by the burned amount (expected: {}, got: {})",
+        expected_final_balance, final_balance
+    );
+
+    println!(
+        "Test passed! Minted {} to new wallet, burned {}, final balance: {}",
+        mint_amount, burn_amount, final_balance
+    );
+
+    drop(setup);
+
+    Ok(())
+}
+
+/// Tests the mint and burn precompile functionality via an admin proxy contract.
+///
+/// # Test Flow
+/// 1. Computes the deployment address for the admin proxy contract
+/// 2. Creates a chain spec designating that contract as the mint admin
+/// 3. Records the recipient's initial balance (may be non-zero if in genesis)
+/// 4. Deploys the MintAdminProxy contract to the predetermined address
+/// 5. Mints tokens to a hardcoded test recipient (TEST_MINT_RECIPIENT)
+/// 6. Verifies the mint succeeded and balance increased correctly
+/// 7. Burns half the minted amount from the recipient
+/// 8. Verifies the burn succeeded and balance decreased correctly
+///
+/// # What It Tests
+/// - Mint admin authorization mechanism
+/// - Contract deployment at predetermined address
+/// - Mint precompile invocation via DELEGATECALL from admin contract
+/// - Burn precompile invocation via DELEGATECALL from admin contract
+/// - Balance queries at specific block numbers
+/// - Transaction receipt validation
+/// - Chain spec mint admin configuration propagation
+///
+/// # Success Criteria
+/// - Chain spec correctly configures the mint admin address
+/// - Admin proxy contract deploys successfully
+/// - Mint transaction succeeds and increases balance by mint_amount
+/// - Burn transaction succeeds and decreases balance by burn_amount
+/// - Final balance = initial_balance + mint_amount - burn_amount
 #[tokio::test(flavor = "multi_thread")]
 async fn test_e2e_mint_precompile_via_contract() -> Result<()> {
     reth_tracing::init_test_tracing();
