@@ -40,19 +40,38 @@ pub const TEST_BASE_FEE: u64 = 0;
 
 /// Creates a reusable chain specification for tests.
 pub fn create_test_chain_spec() -> Arc<ChainSpec> {
-    create_test_chain_spec_with_base_fee_sink(None)
+    create_test_chain_spec_with_extras(None, None)
 }
 
 /// Creates a reusable chain specification with an optional base fee sink address.
 pub fn create_test_chain_spec_with_base_fee_sink(base_fee_sink: Option<Address>) -> Arc<ChainSpec> {
+    create_test_chain_spec_with_extras(base_fee_sink, None)
+}
+
+/// Creates a reusable chain specification with a configured mint admin address.
+pub fn create_test_chain_spec_with_mint_admin(mint_admin: Address) -> Arc<ChainSpec> {
+    create_test_chain_spec_with_extras(None, Some(mint_admin))
+}
+
+fn create_test_chain_spec_with_extras(
+    base_fee_sink: Option<Address>,
+    mint_admin: Option<Address>,
+) -> Arc<ChainSpec> {
     let mut genesis: Genesis =
         serde_json::from_str(include_str!("../assets/genesis.json")).expect("valid genesis");
 
-    if let Some(sink) = base_fee_sink {
+    if base_fee_sink.is_some() || mint_admin.is_some() {
+        let mut extras = serde_json::Map::new();
+        if let Some(sink) = base_fee_sink {
+            extras.insert("baseFeeSink".to_string(), json!(sink));
+        }
+        if let Some(admin) = mint_admin {
+            extras.insert("mintAdmin".to_string(), json!(admin));
+        }
         genesis
             .config
             .extra_fields
-            .insert("evolve".to_string(), json!({ "baseFeeSink": sink }));
+            .insert("evolve".to_string(), serde_json::Value::Object(extras));
     }
 
     Arc::new(
