@@ -337,7 +337,7 @@ mod tests {
         }
 
         assert!(
-            !journal.inner.state.get(&recipient),
+            !journal.inner.state.contains_key(&recipient),
             "unauthorized call must not create new accounts"
         );
     }

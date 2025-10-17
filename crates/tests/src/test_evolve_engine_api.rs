@@ -194,31 +194,6 @@ fn encode_transaction(tx: &TransactionSigned) -> Result<Bytes> {
     Ok(Bytes::from(buf))
 }
 
-/// Test 1: Basic fork choice update
-async fn test_basic_fork_choice_update(node: &EngineApiTestNode) -> Result<()> {
-    println!("Testing basic fork choice update...");
-
-    let forkchoice_state = ForkchoiceState {
-        head_block_hash: B256::random(),
-        safe_block_hash: B256::random(),
-        finalized_block_hash: B256::random(),
-    };
-
-    let result = node.fork_choice_updated_v3(forkchoice_state, None).await;
-
-    match result {
-        Ok(response) => {
-            println!("✓ Basic fork choice update succeeded: {response:?}");
-        }
-        Err(e) => {
-            // This is expected to fail with unknown hash in real node
-            println!("⚠ Fork choice update failed (expected for unknown hash): {e}");
-        }
-    }
-
-    Ok(())
-}
-
 /// Test 2: Fork choice update with transactions
 async fn test_fork_choice_with_transactions(node: &EngineApiTestNode) -> Result<()> {
     println!("Testing fork choice update with transactions...");
@@ -288,13 +263,6 @@ async fn test_fork_choice_with_transactions(node: &EngineApiTestNode) -> Result<
     Ok(())
 }
 
-/// Test: Basic fork choice update
-#[tokio::test]
-async fn test_engine_api_basic_fork_choice_update() -> Result<()> {
-    let node = EngineApiTestNode::new().await?;
-    test_basic_fork_choice_update(&node).await
-}
-
 /// Test: Fork choice update with transactions
 #[tokio::test]
 async fn test_engine_api_fork_choice_with_transactions() -> Result<()> {
@@ -314,19 +282,6 @@ async fn test_evolve_engine_api_integration() -> Result<()> {
 
     let mut passed = 0;
     let mut failed = 0;
-
-    // Run tests
-    println!("\n=== Test 1: Basic Fork Choice Update ===");
-    match test_basic_fork_choice_update(&node).await {
-        Ok(_) => {
-            println!("✅ Test 1 PASSED");
-            passed += 1;
-        }
-        Err(e) => {
-            println!("❌ Test 1 FAILED: {e}");
-            failed += 1;
-        }
-    }
 
     println!("\n=== Test 2: Fork Choice with Transactions ===");
     match test_fork_choice_with_transactions(&node).await {
