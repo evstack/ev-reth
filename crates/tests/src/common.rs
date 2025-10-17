@@ -6,14 +6,16 @@
 use std::sync::Arc;
 
 use alloy_consensus::{transaction::SignerRecoverable, TxLegacy, TypedTransaction};
+use alloy_genesis::Genesis;
 use alloy_primitives::{Address, Bytes, ChainId, Signature, TxKind, B256, U256};
 use ev_revm::{with_ev_handler, BaseFeeRedirect};
 use eyre::Result;
-use reth_chainspec::{ChainSpecBuilder, MAINNET};
+use reth_chainspec::{ChainSpec, ChainSpecBuilder};
 use reth_ethereum_primitives::TransactionSigned;
 use reth_evm_ethereum::EthEvmConfig;
 use reth_primitives::{Header, Transaction};
 use reth_provider::test_utils::{ExtendedAccount, MockEthProvider};
+use serde_json::json;
 use tempfile::TempDir;
 
 use ev_node::{EvolvePayloadBuilder, EvolvePayloadBuilderConfig};
@@ -35,6 +37,32 @@ pub const TEST_TIMESTAMP: u64 = 1710338135;
 pub const TEST_GAS_LIMIT: u64 = 30_000_000;
 /// Base fee used in mock headers to satisfy post-London/EIP-4844 requirements
 pub const TEST_BASE_FEE: u64 = 0;
+
+/// Creates a reusable chain specification for tests.
+pub fn create_test_chain_spec() -> Arc<ChainSpec> {
+    create_test_chain_spec_with_base_fee_sink(None)
+}
+
+/// Creates a reusable chain specification with an optional base fee sink address.
+pub fn create_test_chain_spec_with_base_fee_sink(base_fee_sink: Option<Address>) -> Arc<ChainSpec> {
+    let mut genesis: Genesis =
+        serde_json::from_str(include_str!("../assets/genesis.json")).expect("valid genesis");
+
+    if let Some(sink) = base_fee_sink {
+        genesis
+            .config
+            .extra_fields
+            .insert("evolve".to_string(), json!({ "baseFeeSink": sink }));
+    }
+
+    Arc::new(
+        ChainSpecBuilder::default()
+            .chain(reth_chainspec::Chain::from_id(TEST_CHAIN_ID))
+            .genesis(genesis)
+            .cancun_activated()
+            .build(),
+    )
+}
 
 /// Shared test fixture for evolve payload builder tests
 #[derive(Debug)]
@@ -77,12 +105,7 @@ impl EvolveTestFixture {
         provider.add_header(genesis_hash, genesis_header);
 
         // Create a test chain spec with our test chain ID
-        let test_chainspec = Arc::new(
-            ChainSpecBuilder::from(&*MAINNET)
-                .chain(reth_chainspec::Chain::from_id(TEST_CHAIN_ID))
-                .cancun_activated()
-                .build(),
-        );
+        let test_chainspec = create_test_chain_spec();
         let evm_config = EthEvmConfig::new(test_chainspec.clone());
         let config = EvolvePayloadBuilderConfig::from_chain_spec(test_chainspec.as_ref()).unwrap();
         config.validate().unwrap();

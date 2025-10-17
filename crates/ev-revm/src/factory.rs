@@ -53,7 +53,7 @@ impl<F> EvEvmFactory<F> {
 
         precompiles.apply_precompile(&MINT_PRECOMPILE_ADDR, move |_| {
             let mint_for_call = Arc::clone(&mint);
-            let id_for_call = id.clone();
+            let id_for_call = id;
             Some(DynPrecompile::new_stateful(id_for_call, move |input| {
                 mint_for_call.call(input)
             }))

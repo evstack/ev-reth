@@ -41,7 +41,10 @@ impl EvolvePayloadBuilderConfig {
         {
             let extras = extra.map_err(ConfigError::InvalidExtras)?;
             config.base_fee_sink = extras.base_fee_sink;
-            config.mint_admin = extras.mint_admin.and_then(|addr| if addr.is_zero() { None } else { Some(addr) });
+            config.mint_admin =
+                extras
+                    .mint_admin
+                    .and_then(|addr| if addr.is_zero() { None } else { Some(addr) });
         }
         Ok(config)
     }

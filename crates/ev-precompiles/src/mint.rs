@@ -97,7 +97,7 @@ impl MintPrecompile {
 
 impl Precompile for MintPrecompile {
     fn precompile_id(&self) -> &PrecompileId {
-        &Self::id()
+        Self::id()
     }
 
     /// Execute the precompile with the given input data, gas limit, and caller address.
@@ -154,7 +154,10 @@ mod tests {
     use alloy::sol_types::SolCall;
     use alloy_primitives::address;
     use revm::{
-        context::{journal::{Journal, JournalInner}, BlockEnv},
+        context::{
+            journal::{Journal, JournalInner},
+            BlockEnv,
+        },
         database::{CacheDB, EmptyDB},
         primitives::hardfork::SpecId,
     };
@@ -191,7 +194,11 @@ mod tests {
     }
 
     fn account_balance(journal: &TestJournal, address: Address) -> Option<U256> {
-        journal.inner.state.get(&address).map(|account| account.info.balance)
+        journal
+            .inner
+            .state
+            .get(&address)
+            .map(|account| account.info.balance)
     }
 
     #[test]
@@ -202,24 +209,30 @@ mod tests {
         let precompile = MintPrecompile::new(admin);
 
         let (mut journal, block_env) = setup_context();
-        let calldata =
-            INativeToken::mintCall { to: recipient, amount }.abi_encode();
+        let calldata = INativeToken::mintCall {
+            to: recipient,
+            amount,
+        }
+        .abi_encode();
 
-        let result = run_call(
-            &mut journal,
-            &block_env,
-            &precompile,
-            admin,
-            &calldata,
-        );
+        let result = run_call(&mut journal, &block_env, &precompile, admin, &calldata);
 
         assert!(result.is_ok(), "mint call should succeed");
         let balance = account_balance(&journal, recipient).expect("recipient account exists");
-        assert_eq!(balance, amount, "recipient balance must increase by minted amount");
+        assert_eq!(
+            balance, amount,
+            "recipient balance must increase by minted amount"
+        );
 
         let account = journal.inner.state.get(&recipient).unwrap();
-        assert!(account.is_touched(), "recipient account should be marked touched");
-        assert!(account.is_created(), "recipient account should be marked created");
+        assert!(
+            account.is_touched(),
+            "recipient account should be marked touched"
+        );
+        assert!(
+            account.is_created(),
+            "recipient account should be marked created"
+        );
     }
 
     #[test]
@@ -231,19 +244,28 @@ mod tests {
         let precompile = MintPrecompile::new(admin);
 
         let (mut journal, block_env) = setup_context();
-        let mint_calldata =
-            INativeToken::mintCall { to: holder, amount: mint_amount }.abi_encode();
+        let mint_calldata = INativeToken::mintCall {
+            to: holder,
+            amount: mint_amount,
+        }
+        .abi_encode();
         run_call(&mut journal, &block_env, &precompile, admin, &mint_calldata)
             .expect("mint call should succeed");
-        let burn_calldata =
-            INativeToken::burnCall { from: holder, amount: burn_amount }.abi_encode();
+        let burn_calldata = INativeToken::burnCall {
+            from: holder,
+            amount: burn_amount,
+        }
+        .abi_encode();
 
-        let result =
-            run_call(&mut journal, &block_env, &precompile, admin, &burn_calldata);
+        let result = run_call(&mut journal, &block_env, &precompile, admin, &burn_calldata);
 
         assert!(result.is_ok(), "burn call should succeed");
         let balance = account_balance(&journal, holder).expect("holder account exists");
-        assert_eq!(balance, mint_amount - burn_amount, "holder balance must decrease");
+        assert_eq!(
+            balance,
+            mint_amount - burn_amount,
+            "holder balance must decrease"
+        );
     }
 
     #[test]
@@ -255,25 +277,36 @@ mod tests {
         let precompile = MintPrecompile::new(admin);
 
         let (mut journal, block_env) = setup_context();
-        let mint_calldata =
-            INativeToken::mintCall { to: holder, amount: initial_amount }.abi_encode();
+        let mint_calldata = INativeToken::mintCall {
+            to: holder,
+            amount: initial_amount,
+        }
+        .abi_encode();
         run_call(&mut journal, &block_env, &precompile, admin, &mint_calldata)
             .expect("mint call should succeed");
-        let burn_calldata =
-            INativeToken::burnCall { from: holder, amount: burn_amount }.abi_encode();
+        let burn_calldata = INativeToken::burnCall {
+            from: holder,
+            amount: burn_amount,
+        }
+        .abi_encode();
 
-        let result =
-            run_call(&mut journal, &block_env, &precompile, admin, &burn_calldata);
+        let result = run_call(&mut journal, &block_env, &precompile, admin, &burn_calldata);
 
         match result {
             Err(PrecompileError::Other(msg)) => {
-                assert_eq!(msg, "insufficient balance", "expected insufficient balance error")
+                assert_eq!(
+                    msg, "insufficient balance",
+                    "expected insufficient balance error"
+                )
             }
             other => panic!("expected underflow error, got {other:?}"),
         }
 
         let balance = account_balance(&journal, holder).expect("holder account exists");
-        assert_eq!(balance, initial_amount, "balance should remain unchanged on underflow");
+        assert_eq!(
+            balance, initial_amount,
+            "balance should remain unchanged on underflow"
+        );
     }
 
     #[test]
@@ -285,20 +318,26 @@ mod tests {
         let precompile = MintPrecompile::new(admin);
 
         let (mut journal, block_env) = setup_context();
-        let calldata =
-            INativeToken::mintCall { to: recipient, amount }.abi_encode();
+        let calldata = INativeToken::mintCall {
+            to: recipient,
+            amount,
+        }
+        .abi_encode();
 
         let result = run_call(&mut journal, &block_env, &precompile, caller, &calldata);
 
         match result {
             Err(PrecompileError::Other(msg)) => {
-                assert_eq!(msg, "unauthorized caller", "expected unauthorized caller error")
+                assert_eq!(
+                    msg, "unauthorized caller",
+                    "expected unauthorized caller error"
+                )
             }
             other => panic!("expected unauthorized error, got {other:?}"),
         }
 
         assert!(
-            journal.inner.state.get(&recipient).is_none(),
+            !journal.inner.state.get(&recipient),
             "unauthorized call must not create new accounts"
         );
     }

@@ -6,6 +6,8 @@
 pub mod common;
 
 #[cfg(test)]
+mod e2e_tests;
+#[cfg(test)]
 mod engine_api_tests;
 #[cfg(test)]
 mod integration_tests;
