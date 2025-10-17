@@ -19,5 +19,8 @@ revm-inspector.workspace = true
 thiserror.workspace = true
 ev-precompiles = { path = "../ev-precompiles" }
 
+[dev-dependencies]
+alloy-sol-types.workspace = true
+
 [lints]
 workspace = true

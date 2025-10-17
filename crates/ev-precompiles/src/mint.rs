@@ -115,7 +115,6 @@ impl Precompile for MintPrecompile {
             Ok(v) => v,
             Err(e) => return Err(PrecompileError::Other(e.to_string())),
         };
-
         let internals = input.internals_mut();
 
         // 2) Dispatch to the right handler.
@@ -124,9 +123,9 @@ impl Precompile for MintPrecompile {
                 let to = call.to;
                 let amount = call.amount;
 
-                internals.touch_account(to);
                 Self::ensure_account_created(internals, to)?;
                 Self::add_balance(internals, to, amount)?;
+                internals.touch_account(to);
 
                 Ok(PrecompileOutput::new(gas_limit, Bytes::new()))
             }
@@ -134,9 +133,9 @@ impl Precompile for MintPrecompile {
                 let from = call.from;
                 let amount = call.amount;
 
-                internals.touch_account(from);
                 Self::ensure_account_created(internals, from)?;
                 Self::sub_balance(internals, from, amount)?;
+                internals.touch_account(from);
 
                 Ok(PrecompileOutput::new(gas_limit, Bytes::new()))
             }

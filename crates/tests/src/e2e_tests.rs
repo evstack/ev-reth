@@ -1,7 +1,7 @@
-use alloy_consensus::TxEnvelope;
+use alloy_consensus::{TxEnvelope, TxReceipt};
 use alloy_eips::{eip2718::Encodable2718, BlockNumberOrTag};
 use alloy_network::eip2718::Decodable2718;
-use alloy_primitives::{keccak256, Address, Bytes, TxKind, B256, U256};
+use alloy_primitives::{address, Address, Bytes, TxKind, B256, U256};
 use alloy_rpc_types::{
     eth::{
         Block, BlockTransactions, Header, Receipt, Transaction, TransactionInput,
@@ -37,41 +37,13 @@ sol! {
 }
 
 const ADMIN_PROXY_INITCODE: [u8; 54] = alloy_primitives::hex!(
-    "602a600c600039602a6000f360006000363760006000366000600073000000000000000000000000000000000000f1005af1600080f3"
+    "602a600c600039602a6000f336600060003760006000366000600073000000000000000000000000000000000000f1005af1600080f3"
 );
 
+const TEST_MINT_RECIPIENT: Address = address!("0x0101010101010101010101010101010101010101");
+
 fn contract_address_from_nonce(deployer: Address, nonce: u64) -> Address {
-    let mut nonce_encoded = Vec::new();
-    if nonce == 0 {
-        nonce_encoded.push(0x80);
-    } else if nonce <= 0x7f {
-        nonce_encoded.push(nonce as u8);
-    } else {
-        let mut bytes = Vec::new();
-        let mut value = nonce;
-        while value > 0 {
-            bytes.push((value & 0xff) as u8);
-            value >>= 8;
-        }
-        bytes.reverse();
-        nonce_encoded.push(0x80 + bytes.len() as u8);
-        nonce_encoded.extend(bytes);
-    }
-
-    let payload_length = 1 + deployer.as_slice().len() + nonce_encoded.len();
-    debug_assert!(
-        payload_length < 56,
-        "payload_length exceeds single-byte encoding"
-    );
-
-    let mut rlp_encoded = Vec::with_capacity(1 + payload_length);
-    rlp_encoded.push(0xc0 + payload_length as u8);
-    rlp_encoded.push(0x80 + deployer.as_slice().len() as u8);
-    rlp_encoded.extend_from_slice(deployer.as_slice());
-    rlp_encoded.extend_from_slice(&nonce_encoded);
-
-    let hash = keccak256(rlp_encoded);
-    Address::from_slice(&hash[12..])
+    deployer.create(nonce)
 }
 
 async fn build_block_with_transactions(
@@ -154,7 +126,9 @@ async fn build_block_with_transactions(
 
     Ok(payload_envelope)
 }
-use ev_node::{EvolveEnginePayloadAttributes, EvolveEngineTypes, EvolveNode};
+use ev_node::{
+    EvolveEnginePayloadAttributes, EvolveEngineTypes, EvolveNode, EvolvePayloadBuilderConfig,
+};
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_e2e_single_node_produces_blocks() -> Result<()> {
@@ -316,11 +290,19 @@ async fn test_e2e_mint_precompile_via_contract() -> Result<()> {
 
     let mut wallets = Wallet::new(4).with_chain_id(chain_id).wallet_gen();
     let deployer = wallets.remove(0);
-    let mintee_address = wallets.remove(0).address();
+    let _unused_wallet = wallets.remove(0);
     let deployer_address = deployer.address();
+    let recipient_address = TEST_MINT_RECIPIENT;
 
     let contract_address = contract_address_from_nonce(deployer_address, 0);
     let chain_spec = create_test_chain_spec_with_mint_admin(contract_address);
+    let evolve_config =
+        EvolvePayloadBuilderConfig::from_chain_spec(chain_spec.as_ref()).expect("valid config");
+    assert_eq!(
+        evolve_config.mint_admin,
+        Some(contract_address),
+        "chainspec should propagate mint admin address"
+    );
 
     let mut setup = Setup::<EvolveEngineTypes>::new()
         .with_chain_spec(chain_spec.clone())
@@ -329,6 +311,14 @@ async fn test_e2e_mint_precompile_via_contract() -> Result<()> {
 
     let mut env = Environment::<EvolveEngineTypes>::default();
     setup.apply::<EvolveNode>(&mut env).await?;
+
+    let recipient_initial_balance =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+            &env.node_clients[0].rpc,
+            recipient_address,
+            Some(BlockId::latest()),
+        )
+        .await?;
 
     let parent_block = env.node_clients[0]
         .get_block_by_number(BlockNumberOrTag::Latest)
@@ -340,13 +330,21 @@ async fn test_e2e_mint_precompile_via_contract() -> Result<()> {
     let gas_limit = parent_block.header.inner.gas_limit;
 
     // Deploy proxy contract at the predetermined admin address.
-    let deploy_raw = TransactionTestContext::deploy_tx_bytes(
-        chain_id,
-        1_000_000,
-        Bytes::from_static(&ADMIN_PROXY_INITCODE),
-        deployer.clone(),
-    )
-    .await;
+    let mut deploy_tx = TransactionRequest::default();
+    deploy_tx.nonce = Some(0);
+    deploy_tx.gas = Some(1_000_000);
+    deploy_tx.max_fee_per_gas = Some(20_000_000_000);
+    deploy_tx.max_priority_fee_per_gas = Some(2_000_000_000);
+    deploy_tx.chain_id = Some(chain_id);
+    deploy_tx.value = Some(U256::ZERO);
+    deploy_tx.to = Some(TxKind::Create);
+    deploy_tx.input = TransactionInput {
+        input: None,
+        data: Some(Bytes::from_static(&ADMIN_PROXY_INITCODE)),
+    };
+
+    let deploy_envelope = TransactionTestContext::sign_tx(deployer.clone(), deploy_tx).await;
+    let deploy_raw: Bytes = deploy_envelope.encoded_2718().into();
 
     build_block_with_transactions(
         &mut env,
@@ -359,10 +357,25 @@ async fn test_e2e_mint_precompile_via_contract() -> Result<()> {
     )
     .await?;
 
+    let latest_block = env.node_clients[0]
+        .get_block_by_number(BlockNumberOrTag::Latest)
+        .await?
+        .expect("latest block available after mint");
+    let tx_count = match latest_block.transactions {
+        BlockTransactions::Full(ref txs) => txs.len(),
+        BlockTransactions::Hashes(ref hashes) => hashes.len(),
+        BlockTransactions::Uncle => 0,
+    };
+    println!(
+        "latest block number {} tx count {}",
+        latest_block.number(),
+        tx_count
+    );
+
     // Mint tokens via contract proxy.
     let mint_amount = U256::from(1_000_000_000_000_000u64);
     let mint_call = MintAdminProxy::mintCall {
-        to: mintee_address,
+        to: recipient_address,
         amount: mint_amount,
     }
     .abi_encode();
@@ -396,22 +409,64 @@ async fn test_e2e_mint_precompile_via_contract() -> Result<()> {
     )
     .await?;
 
+    let mint_tx_hash = *mint_envelope.tx_hash();
+    let mint_receipt = EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::transaction_receipt(
+        &env.node_clients[0].rpc,
+        mint_tx_hash,
+    )
+    .await?
+    .expect("mint transaction receipt available");
+    println!(
+        "mint receipt status: {}, logs: {:?}",
+        mint_receipt.status(),
+        mint_receipt.logs
+    );
+    assert!(
+        mint_receipt.status(),
+        "mint proxy transaction reverted on execution"
+    );
+
     let balance_after_mint =
         EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
             &env.node_clients[0].rpc,
-            mintee_address,
+            recipient_address,
             Some(BlockId::latest()),
         )
         .await?;
+    let balance_at_block =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+            &env.node_clients[0].rpc,
+            recipient_address,
+            Some(BlockId::Number(BlockNumberOrTag::Number(
+                parent_number.into(),
+            ))),
+        )
+        .await?;
+    let contract_balance_after_mint =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+            &env.node_clients[0].rpc,
+            contract_address,
+            Some(BlockId::latest()),
+        )
+        .await?;
+    println!(
+        "mintee balance diff: {} -> {} (latest) | {} (@block {}), contract balance now: {}",
+        recipient_initial_balance,
+        balance_after_mint,
+        balance_at_block,
+        parent_number,
+        contract_balance_after_mint
+    );
     assert_eq!(
-        balance_after_mint, mint_amount,
+        balance_after_mint.saturating_sub(recipient_initial_balance),
+        mint_amount,
         "minted amount should credit recipient"
     );
 
     // Burn a portion through the same proxy contract.
     let burn_amount = mint_amount / U256::from(2u8);
     let burn_call = MintAdminProxy::burnCall {
-        from: mintee_address,
+        from: recipient_address,
         amount: burn_amount,
     }
     .abi_encode();
@@ -448,13 +503,13 @@ async fn test_e2e_mint_precompile_via_contract() -> Result<()> {
     let final_balance =
         EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
             &env.node_clients[0].rpc,
-            mintee_address,
+            recipient_address,
             Some(BlockId::latest()),
         )
         .await?;
     assert_eq!(
         final_balance,
-        mint_amount - burn_amount,
+        recipient_initial_balance + mint_amount - burn_amount,
         "burn should reduce the previously minted balance",
     );
 
