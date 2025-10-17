@@ -130,9 +130,11 @@ mod tests {
     use super::*;
     use crate::factory::SpecId;
     use alloy_evm::{Evm, EvmEnv};
-    use alloy_primitives::{address, Address, Bytes, TxKind, U256};
+    use alloy_primitives::{address, keccak256, Address, Bytes, TxKind, U256};
+    use alloy_sol_types::{sol, SolCall};
     use reth_revm::{
         revm::{
+            bytecode::Bytecode as RevmBytecode,
             context_interface::result::ExecutionResult,
             database::{CacheDB, EmptyDB},
             primitives::KECCAK_EMPTY,
@@ -220,5 +222,91 @@ mod tests {
             .map(|account| account.info.balance.is_zero())
             .unwrap_or(true);
         assert!(burn_balance_intact, "burn address balance must remain zero");
+    }
+
+    #[test]
+    fn mint_precompile_via_proxy_runtime_mints() {
+        sol! {
+            contract MintAdminProxy {
+                function mint(address to, uint256 amount);
+            }
+        }
+
+        const ADMIN_PROXY_RUNTIME: [u8; 42] = alloy_primitives::hex!(
+            "36600060003760006000366000600073000000000000000000000000000000000000f1005af1600080f3"
+        );
+
+        let caller = address!("0x0000000000000000000000000000000000000aaa");
+        let contract = address!("0x0000000000000000000000000000000000000bbb");
+        let mintee = address!("0x0000000000000000000000000000000000000ccc");
+        let amount = U256::from(1_000_000_000_000_000u64);
+
+        let mut state = State::builder()
+            .with_database(CacheDB::<EmptyDB>::default())
+            .with_bundle_update()
+            .build();
+
+        state.insert_account(
+            caller,
+            AccountInfo {
+                balance: U256::from(10_000_000_000u64),
+                nonce: 0,
+                code_hash: KECCAK_EMPTY,
+                code: None,
+            },
+        );
+
+        state.insert_account(
+            contract,
+            AccountInfo {
+                balance: U256::ZERO,
+                nonce: 1,
+                code_hash: keccak256(ADMIN_PROXY_RUNTIME.as_slice()),
+                code: Some(RevmBytecode::new_raw(Bytes::copy_from_slice(
+                    ADMIN_PROXY_RUNTIME.as_slice(),
+                ))),
+            },
+        );
+
+        let mut evm_env = EvmEnv::default();
+        evm_env.cfg_env.chain_id = 1;
+        evm_env.cfg_env.spec = SpecId::CANCUN;
+        evm_env.block_env.gas_limit = 30_000_000;
+        evm_env.block_env.number = U256::from(1);
+        evm_env.block_env.basefee = 1;
+
+        let mut evm = EvEvmFactory::new(
+            alloy_evm::eth::EthEvmFactory::default(),
+            None,
+            Some(contract),
+        )
+        .create_evm(state, evm_env.clone());
+
+        let tx = crate::factory::TxEnv {
+            caller,
+            kind: TxKind::Call(contract),
+            gas_limit: 500_000,
+            gas_price: 1,
+            value: U256::ZERO,
+            data: MintAdminProxy::mintCall { to: mintee, amount }.abi_encode().into(),
+            ..Default::default()
+        };
+
+        let result_and_state = evm
+            .transact_raw(tx)
+            .expect("proxy call executes without error");
+
+        let ExecutionResult::Success { .. } = result_and_state.result else {
+            panic!("expected successful mint execution via proxy")
+        };
+
+        let state: EvmState = result_and_state.state;
+        let mintee_account = state
+            .get(&mintee)
+            .expect("mint precompile should create mintee account");
+        assert_eq!(
+            mintee_account.info.balance, amount,
+            "mint proxy should credit the recipient"
+        );
     }
 }
