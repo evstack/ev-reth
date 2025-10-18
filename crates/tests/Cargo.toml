@@ -41,6 +41,8 @@ reth-errors.workspace = true
 reth-engine-primitives.workspace = true
 reth-ethereum-primitives.workspace = true
 reth-chainspec.workspace = true
+reth-e2e-test-utils.workspace = true
+reth-rpc-api.workspace = true
 
 # Alloy dependencies
 alloy-genesis.workspace = true

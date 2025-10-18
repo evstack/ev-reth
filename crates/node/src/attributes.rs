@@ -1,14 +1,17 @@
 use alloy_eips::{eip4895::Withdrawals, Decodable2718};
 use alloy_primitives::{Address, Bytes, B256};
 use alloy_rpc_types::{
-    engine::{PayloadAttributes as EthPayloadAttributes, PayloadId},
+    engine::{PayloadAttributes as RpcPayloadAttributes, PayloadId},
     Withdrawal,
 };
+use reth_chainspec::EthereumHardforks;
+use reth_engine_local::payload::LocalPayloadAttributesBuilder;
 use reth_ethereum::{
     node::api::payload::{PayloadAttributes, PayloadBuilderAttributes},
     TransactionSigned,
 };
 use reth_payload_builder::EthPayloadBuilderAttributes;
+use reth_payload_primitives::PayloadAttributesBuilder;
 use serde::{Deserialize, Serialize};
 
 use crate::error::EvolveEngineError;
@@ -18,7 +21,7 @@ use crate::error::EvolveEngineError;
 pub struct EvolveEnginePayloadAttributes {
     /// Standard Ethereum payload attributes.
     #[serde(flatten)]
-    pub inner: EthPayloadAttributes,
+    pub inner: RpcPayloadAttributes,
     /// Transactions to be included in the payload (passed via Engine API).
     pub transactions: Option<Vec<Bytes>>,
     /// Optional gas limit for the payload.
@@ -37,6 +40,16 @@ impl PayloadAttributes for EvolveEnginePayloadAttributes {
 
     fn parent_beacon_block_root(&self) -> Option<B256> {
         self.inner.parent_beacon_block_root()
+    }
+}
+
+impl From<RpcPayloadAttributes> for EvolveEnginePayloadAttributes {
+    fn from(inner: RpcPayloadAttributes) -> Self {
+        Self {
+            inner,
+            transactions: None,
+            gas_limit: None,
+        }
     }
 }
 
@@ -106,5 +119,41 @@ impl PayloadBuilderAttributes for EvolveEnginePayloadBuilderAttributes {
 
     fn withdrawals(&self) -> &Withdrawals {
         &self.ethereum_attributes.withdrawals
+    }
+}
+
+impl From<EthPayloadBuilderAttributes> for EvolveEnginePayloadBuilderAttributes {
+    fn from(eth: EthPayloadBuilderAttributes) -> Self {
+        Self {
+            ethereum_attributes: eth,
+            transactions: Vec::new(),
+            gas_limit: None,
+        }
+    }
+}
+
+impl PayloadAttributesBuilder<EvolveEnginePayloadAttributes>
+    for LocalPayloadAttributesBuilder<reth_ethereum::chainspec::ChainSpec>
+{
+    fn build(&self, timestamp: u64) -> EvolveEnginePayloadAttributes {
+        let inner = RpcPayloadAttributes {
+            timestamp,
+            prev_randao: B256::random(),
+            suggested_fee_recipient: Address::random(),
+            withdrawals: self
+                .chain_spec
+                .is_shanghai_active_at_timestamp(timestamp)
+                .then(Default::default),
+            parent_beacon_block_root: self
+                .chain_spec
+                .is_cancun_active_at_timestamp(timestamp)
+                .then(B256::random),
+        };
+
+        EvolveEnginePayloadAttributes {
+            inner,
+            transactions: None,
+            gas_limit: None,
+        }
     }
 }

@@ -42,7 +42,11 @@ where
         BaseFeeRedirect::new(sink)
     });
 
-    Ok(with_ev_handler(base_config, redirect))
+    Ok(with_ev_handler(
+        base_config,
+        redirect,
+        evolve_config.mint_admin,
+    ))
 }
 
 /// Thin wrapper so we can plug the EV executor into the node components builder.
