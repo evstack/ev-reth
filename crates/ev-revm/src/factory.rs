@@ -280,7 +280,7 @@ mod tests {
             None,
             Some(contract),
         )
-        .create_evm(state, evm_env.clone());
+        .create_evm(state, evm_env);
 
         let tx = crate::factory::TxEnv {
             caller,
@@ -288,7 +288,9 @@ mod tests {
             gas_limit: 500_000,
             gas_price: 1,
             value: U256::ZERO,
-            data: MintAdminProxy::mintCall { to: mintee, amount }.abi_encode().into(),
+            data: MintAdminProxy::mintCall { to: mintee, amount }
+                .abi_encode()
+                .into(),
             ..Default::default()
         };
 
