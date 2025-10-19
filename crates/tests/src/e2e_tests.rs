@@ -82,7 +82,7 @@ fn contract_address_from_nonce(deployer: Address, nonce: u64) -> Address {
 /// * `parent_hash` - Hash of the parent block (updated to new block hash)
 /// * `parent_number` - Number of the parent block (updated to new block number)
 /// * `parent_timestamp` - Timestamp of the parent block (updated to new block timestamp)
-/// * `gas_limit` - Gas limit for the new block
+/// * `gas_limit` - Optional gas limit override for the new block
 /// * `transactions` - RLP-encoded transactions to include in the block
 /// * `suggested_fee_recipient` - Address to receive block rewards and fees
 ///
@@ -91,12 +91,12 @@ fn contract_address_from_nonce(deployer: Address, nonce: u64) -> Address {
 ///
 /// # Panics
 /// Panics if the payload is not marked as valid by the engine
-async fn build_block_with_transactions(
+pub(crate) async fn build_block_with_transactions(
     env: &mut Environment<EvolveEngineTypes>,
     parent_hash: &mut B256,
     parent_number: &mut u64,
     parent_timestamp: &mut u64,
-    gas_limit: u64,
+    gas_limit: Option<u64>,
     transactions: Vec<Bytes>,
     suggested_fee_recipient: Address,
 ) -> Result<alloy_rpc_types_engine::ExecutionPayloadEnvelopeV3> {
@@ -109,7 +109,7 @@ async fn build_block_with_transactions(
             parent_beacon_block_root: Some(B256::ZERO),
         },
         transactions: Some(transactions),
-        gas_limit: Some(gas_limit),
+        gas_limit,
     };
 
     let fork_choice = ForkchoiceState {
@@ -286,7 +286,7 @@ async fn test_e2e_base_fee_sink_receives_base_fee() -> Result<()> {
         &mut parent_hash,
         &mut parent_number,
         &mut parent_timestamp,
-        gas_limit,
+        Some(gas_limit),
         vec![raw_tx.clone()],
         fee_sink,
     )
@@ -471,7 +471,7 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
         &mut parent_hash,
         &mut parent_number,
         &mut parent_timestamp,
-        gas_limit,
+        Some(gas_limit),
         vec![deploy_raw],
         Address::ZERO,
     )
@@ -510,7 +510,7 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
         &mut parent_hash,
         &mut parent_number,
         &mut parent_timestamp,
-        gas_limit,
+        Some(gas_limit),
         vec![mint_raw],
         Address::ZERO,
     )
@@ -577,7 +577,7 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
         &mut parent_hash,
         &mut parent_number,
         &mut parent_timestamp,
-        gas_limit,
+        Some(gas_limit),
         vec![burn_raw],
         Address::ZERO,
     )
@@ -724,7 +724,7 @@ async fn test_e2e_mint_precompile_via_contract() -> Result<()> {
         &mut parent_hash,
         &mut parent_number,
         &mut parent_timestamp,
-        gas_limit,
+        Some(gas_limit),
         vec![deploy_raw],
         Address::ZERO,
     )
@@ -776,7 +776,7 @@ async fn test_e2e_mint_precompile_via_contract() -> Result<()> {
         &mut parent_hash,
         &mut parent_number,
         &mut parent_timestamp,
-        gas_limit,
+        Some(gas_limit),
         vec![mint_raw],
         Address::ZERO,
     )
@@ -865,7 +865,7 @@ async fn test_e2e_mint_precompile_via_contract() -> Result<()> {
         &mut parent_hash,
         &mut parent_number,
         &mut parent_timestamp,
-        gas_limit,
+        Some(gas_limit),
         vec![burn_raw],
         Address::ZERO,
     )
