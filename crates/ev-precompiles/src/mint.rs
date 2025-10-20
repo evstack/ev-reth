@@ -51,9 +51,11 @@ impl MintPrecompile {
             .map_err(Self::map_internals_error)?;
 
         if account.is_loaded_as_not_existing() {
-            // Ensure the precompile account is treated as non-empty so state pruning
-            // does not wipe out its storage between blocks.
-            account.info.nonce = 1;
+            if addr == MINT_PRECOMPILE_ADDR {
+                // Ensure the mint precompile account is treated as non-empty so state pruning
+                // does not wipe out its storage between blocks.
+                account.info.nonce = 1;
+            }
             account.mark_created();
             internals.touch_account(addr);
         }
