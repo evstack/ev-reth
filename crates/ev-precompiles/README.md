@@ -24,12 +24,19 @@ The precompile is deployed at a reserved address in the precompile address space
 interface INativeToken {
     function mint(address to, uint256 amount);
     function burn(address from, uint256 amount);
+    function addToAllowList(address account);
+    function removeFromAllowList(address account);
 }
 ```
 
 ### Authorization
 
-Only the **mint admin** address can call this precompile. The mint admin is configured in the chain specification:
+Only authorized addresses can call state-mutating functionality. Authorization is composed of:
+
+- The **mint admin** address, configured in the chain specification.
+- Addresses that the mint admin adds to the precompile's **allowlist** at runtime.
+
+The admin manages the allowlist through the dedicated functions on the precompile interface and can add or remove entries without redeploying contracts.
 
 ```json
 {
@@ -132,3 +139,39 @@ The mint admin is configured in the chain specification. See `crates/node/src/co
 ```
 
 If no mint admin is specified, the precompile is still available but will reject all calls.
+
+### Allowlist Management
+
+The mint admin can delegate minting and burning capabilities to additional addresses by adding them to the allowlist:
+
+```solidity
+INativeToken(MINT_PRECOMPILE_ADDR).addToAllowList(operator);
+INativeToken(MINT_PRECOMPILE_ADDR).removeFromAllowList(operator);
+```
+
+Allowlisted addresses can invoke `mint` and `burn`, but they cannot modify the allowlist itself. Removing an address from the allowlist immediately revokes its permissions.
+
+#### Example Transactions
+
+The allowlist is managed through standard transactions targeting the precompile address. For example, using Foundry's `cast` CLI:
+
+```bash
+# Grant operator access (run as the configured mint admin)
+cast send --rpc-url $RPC_URL --private-key $ADMIN_KEY \
+  0x000000000000000000000000000000000000f100 \
+  "addToAllowList(address)" 0xOPERATOR_ADDRESS
+
+# Revoke access later
+cast send --rpc-url $RPC_URL --private-key $ADMIN_KEY \
+  0x000000000000000000000000000000000000f100 \
+  "removeFromAllowList(address)" 0xOPERATOR_ADDRESS
+```
+
+Any address added to the allowlist can then call the precompile directly:
+
+```bash
+# Allowlisted operator mints 1 ether to a recipient
+cast send --rpc-url $RPC_URL --private-key $OPERATOR_KEY \
+  0x000000000000000000000000000000000000f100 \
+  "mint(address,uint256)" 0xRECIPIENT 1000000000000000000
+```

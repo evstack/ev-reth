@@ -15,6 +15,7 @@ evolve-ev-reth = { path = "../evolve" }
 ev-node = { path = "../node" }
 ev-common = { path = "../common" }
 ev-revm.workspace = true
+ev-precompiles = { path = "../ev-precompiles" }
 
 # Reth dependencies
 reth-testing-utils.workspace = true

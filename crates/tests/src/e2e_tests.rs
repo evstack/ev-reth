@@ -28,8 +28,17 @@ use crate::common::{
     create_test_chain_spec, create_test_chain_spec_with_base_fee_sink,
     create_test_chain_spec_with_mint_admin, TEST_CHAIN_ID,
 };
+use ev_precompiles::mint::MINT_PRECOMPILE_ADDR;
 
 sol! {
+    /// Interface for the native token precompile used in e2e tests.
+    interface NativeTokenPrecompile {
+        function mint(address to, uint256 amount);
+        function burn(address from, uint256 amount);
+        function addToAllowList(address account);
+        function removeFromAllowList(address account);
+    }
+
     /// Mint and burn proxy contract interface.
     ///
     /// This contract acts as a proxy to the mint/burn precompile at address 0xf1.
@@ -369,49 +378,51 @@ async fn test_e2e_base_fee_sink_receives_base_fee() -> Result<()> {
 ///
 /// # Test Flow
 /// 1. Creates a fresh wallet address (not in genesis, zero initial balance)
-/// 2. Deploys the `MintAdminProxy` contract at a predetermined address
-/// 3. Mints 0.005 ETH to the new wallet via the mint precompile
-/// 4. Verifies the wallet balance increases to exactly the minted amount
-/// 5. Burns 0.002 ETH from the wallet via the burn precompile
-/// 6. Verifies the wallet balance decreases by exactly the burned amount
+/// 2. Configures the mint admin directly in the chain spec (no proxy contract)
+/// 3. Adds an operator to the precompile allowlist at runtime
+/// 4. Operator mints 0.005 ETH to the new wallet via the mint precompile
+/// 5. Operator burns 0.002 ETH from the wallet via the burn precompile
+/// 6. Admin removes the operator from the allowlist and a subsequent mint fails
 ///
 /// # What It Tests
 /// - Mint precompile functionality for non-genesis addresses
 /// - Burn precompile functionality
+/// - Runtime allowlist management (add and remove)
 /// - Balance state changes from mint/burn operations
-/// - Admin proxy contract delegation to precompile (0xf1)
 /// - Transaction receipt validation for mint/burn operations
 ///
 /// # Success Criteria
 /// - New wallet starts with zero balance (proving it's not in genesis)
 /// - After minting: balance = `mint_amount` (0.005 ETH)
 /// - After burning: balance = `mint_amount` - `burn_amount` (0.003 ETH)
-/// - All transactions succeed (receipt status = true)
+/// - Removal revokes operator permissions (final mint fails)
+/// - Successful transactions have `status = true`, revoked mint `status = false`
 #[tokio::test(flavor = "multi_thread")]
 async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
     reth_tracing::init_test_tracing();
 
     let chain_id = TEST_CHAIN_ID;
 
-    // Create deployer wallet from the standard test wallets
-    let mut wallets = Wallet::new(1).with_chain_id(chain_id).wallet_gen();
-    let deployer = wallets.remove(0);
-    let deployer_address = deployer.address();
+    // Create admin and operator wallets from the standard test wallets.
+    let mut wallets = Wallet::new(2).with_chain_id(chain_id).wallet_gen();
+    let admin = wallets.remove(0);
+    let operator = wallets.remove(0);
+    let admin_address = admin.address();
+    let operator_address = operator.address();
 
-    // Generate a truly random address not in genesis by using a random private key
-    // We don't need the private key since we're only minting/burning TO this address
+    // Generate a truly random recipient address not present in genesis.
     let new_wallet_address = Address::random();
 
-    println!("Deployer address: {}", deployer_address);
+    println!("Admin address: {}", admin_address);
+    println!("Operator address: {}", operator_address);
     println!("New wallet address: {}", new_wallet_address);
 
-    let contract_address = contract_address_from_nonce(deployer_address, 0);
-    let chain_spec = create_test_chain_spec_with_mint_admin(contract_address);
+    let chain_spec = create_test_chain_spec_with_mint_admin(admin_address);
     let evolve_config =
         EvolvePayloadBuilderConfig::from_chain_spec(chain_spec.as_ref()).expect("valid config");
     assert_eq!(
         evolve_config.mint_admin,
-        Some(contract_address),
+        Some(admin_address),
         "chainspec should propagate mint admin address"
     );
 
@@ -423,7 +434,7 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
     let mut env = Environment::<EvolveEngineTypes>::default();
     setup.apply::<EvolveNode>(&mut env).await?;
 
-    // Check initial balance of new wallet (should be zero since not in genesis)
+    // Check initial balance of new wallet (should be zero since not in genesis).
     let initial_balance =
         EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
             &env.node_clients[0].rpc,
@@ -447,24 +458,29 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
     let mut parent_number = parent_block.header.inner.number;
     let gas_limit = parent_block.header.inner.gas_limit;
 
-    // Deploy proxy contract at the predetermined admin address.
-    let deploy_tx = TransactionRequest {
+    // Allowlist the operator so it can mint/burn directly.
+    let allowlist_call = NativeTokenPrecompile::addToAllowListCall {
+        account: operator_address,
+    }
+    .abi_encode();
+
+    let allowlist_tx = TransactionRequest {
         nonce: Some(0),
-        gas: Some(1_000_000),
+        gas: Some(150_000),
         max_fee_per_gas: Some(20_000_000_000),
         max_priority_fee_per_gas: Some(2_000_000_000),
         chain_id: Some(chain_id),
         value: Some(U256::ZERO),
-        to: Some(TxKind::Create),
+        to: Some(TxKind::Call(MINT_PRECOMPILE_ADDR)),
         input: TransactionInput {
             input: None,
-            data: Some(Bytes::from_static(&ADMIN_PROXY_INITCODE)),
+            data: Some(Bytes::from(allowlist_call)),
         },
         ..Default::default()
     };
 
-    let deploy_envelope = TransactionTestContext::sign_tx(deployer.clone(), deploy_tx).await;
-    let deploy_raw: Bytes = deploy_envelope.encoded_2718().into();
+    let allowlist_envelope = TransactionTestContext::sign_tx(admin.clone(), allowlist_tx).await;
+    let allowlist_raw: Bytes = allowlist_envelope.encoded_2718().into();
 
     build_block_with_transactions(
         &mut env,
@@ -472,28 +488,47 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
         &mut parent_number,
         &mut parent_timestamp,
         Some(gas_limit),
-        vec![deploy_raw],
+        vec![allowlist_raw],
         Address::ZERO,
     )
     .await?;
 
-    println!("Deployed admin proxy contract at: {}", contract_address);
+    let allowlist_receipt = EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::transaction_receipt(
+        &env.node_clients[0].rpc,
+        *allowlist_envelope.tx_hash(),
+    )
+    .await?
+    .expect("allowlist transaction receipt available");
+    assert!(
+        allowlist_receipt.status(),
+        "allowlist transaction should succeed"
+    );
+    let allowlist_slot = operator_address.into_word();
+    let allowlist_storage =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::storage_at(
+            &env.node_clients[0].rpc,
+            MINT_PRECOMPILE_ADDR,
+            allowlist_slot.into(),
+            Some(BlockId::latest()),
+        )
+        .await?;
+    println!("Allowlist slot value after add: {allowlist_storage:?}");
 
-    // Mint tokens to the new wallet via contract proxy.
+    // Mint tokens to the new wallet directly via the precompile using the operator.
     let mint_amount = U256::from(5_000_000_000_000_000u64); // 0.005 ETH
-    let mint_call = MintAdminProxy::mintCall {
+    let mint_call = NativeTokenPrecompile::mintCall {
         to: new_wallet_address,
         amount: mint_amount,
     }
     .abi_encode();
 
     let mint_tx = TransactionRequest {
-        nonce: Some(1),
+        nonce: Some(0),
         gas: Some(150_000),
         max_fee_per_gas: Some(20_000_000_000),
         max_priority_fee_per_gas: Some(2_000_000_000),
         chain_id: Some(chain_id),
-        to: Some(TxKind::Call(contract_address)),
+        to: Some(TxKind::Call(MINT_PRECOMPILE_ADDR)),
         value: Some(U256::ZERO),
         input: TransactionInput {
             input: None,
@@ -502,7 +537,7 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
         ..Default::default()
     };
 
-    let mint_envelope = TransactionTestContext::sign_tx(deployer.clone(), mint_tx).await;
+    let mint_envelope = TransactionTestContext::sign_tx(operator.clone(), mint_tx).await;
     let mint_raw: Bytes = mint_envelope.encoded_2718().into();
 
     build_block_with_transactions(
@@ -516,10 +551,9 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
     )
     .await?;
 
-    let mint_tx_hash = *mint_envelope.tx_hash();
     let mint_receipt = EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::transaction_receipt(
         &env.node_clients[0].rpc,
-        mint_tx_hash,
+        *mint_envelope.tx_hash(),
     )
     .await?
     .expect("mint transaction receipt available");
@@ -530,7 +564,7 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
     );
     assert!(
         mint_receipt.status(),
-        "mint proxy transaction should succeed"
+        "mint precompile transaction should succeed"
     );
 
     let balance_after_mint =
@@ -546,21 +580,21 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
         "new wallet should have exactly the minted amount"
     );
 
-    // Burn tokens from the new wallet.
-    let burn_amount = U256::from(2_000_000_000_000_000u64); // Burn 0.002 ETH
-    let burn_call = MintAdminProxy::burnCall {
+    // Burn a portion of the minted tokens using the same operator account.
+    let burn_amount = U256::from(2_000_000_000_000_000u64); // 0.002 ETH
+    let burn_call = NativeTokenPrecompile::burnCall {
         from: new_wallet_address,
         amount: burn_amount,
     }
     .abi_encode();
 
     let burn_tx = TransactionRequest {
-        nonce: Some(2),
+        nonce: Some(1),
         gas: Some(150_000),
         max_fee_per_gas: Some(20_000_000_000),
         max_priority_fee_per_gas: Some(2_000_000_000),
         chain_id: Some(chain_id),
-        to: Some(TxKind::Call(contract_address)),
+        to: Some(TxKind::Call(MINT_PRECOMPILE_ADDR)),
         value: Some(U256::ZERO),
         input: TransactionInput {
             input: None,
@@ -569,7 +603,7 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
         ..Default::default()
     };
 
-    let burn_envelope = TransactionTestContext::sign_tx(deployer, burn_tx).await;
+    let burn_envelope = TransactionTestContext::sign_tx(operator.clone(), burn_tx.clone()).await;
     let burn_raw: Bytes = burn_envelope.encoded_2718().into();
 
     build_block_with_transactions(
@@ -583,10 +617,9 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
     )
     .await?;
 
-    let burn_tx_hash = *burn_envelope.tx_hash();
     let burn_receipt = EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::transaction_receipt(
         &env.node_clients[0].rpc,
-        burn_tx_hash,
+        *burn_envelope.tx_hash(),
     )
     .await?
     .expect("burn transaction receipt available");
@@ -595,11 +628,134 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
         burn_receipt.status(),
         burn_receipt.logs
     );
-    assert!(
-        burn_receipt.status(),
-        "burn proxy transaction should succeed"
+    if !burn_receipt.status() {
+        let revert_preview =
+            EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::call(
+                &env.node_clients[0].rpc,
+                burn_tx.clone(),
+                Some(BlockId::latest()),
+                None,
+                None,
+            )
+            .await;
+        println!("Burn eth_call result: {revert_preview:?}");
+        panic!("burn precompile transaction should succeed");
+    }
+
+    let expected_after_burn = mint_amount - burn_amount;
+    let balance_after_burn =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+            &env.node_clients[0].rpc,
+            new_wallet_address,
+            Some(BlockId::latest()),
+        )
+        .await?;
+    println!("New wallet balance after burn: {}", balance_after_burn);
+    assert_eq!(
+        balance_after_burn, expected_after_burn,
+        "wallet should reflect minted minus burned amount"
     );
 
+    // Remove the operator from the allowlist and assert it can no longer mint.
+    let remove_call = NativeTokenPrecompile::removeFromAllowListCall {
+        account: operator_address,
+    }
+    .abi_encode();
+
+    let remove_tx = TransactionRequest {
+        nonce: Some(1),
+        gas: Some(150_000),
+        max_fee_per_gas: Some(20_000_000_000),
+        max_priority_fee_per_gas: Some(2_000_000_000),
+        chain_id: Some(chain_id),
+        value: Some(U256::ZERO),
+        to: Some(TxKind::Call(MINT_PRECOMPILE_ADDR)),
+        input: TransactionInput {
+            input: None,
+            data: Some(Bytes::from(remove_call)),
+        },
+        ..Default::default()
+    };
+
+    let remove_envelope = TransactionTestContext::sign_tx(admin.clone(), remove_tx).await;
+    let remove_raw: Bytes = remove_envelope.encoded_2718().into();
+
+    build_block_with_transactions(
+        &mut env,
+        &mut parent_hash,
+        &mut parent_number,
+        &mut parent_timestamp,
+        Some(gas_limit),
+        vec![remove_raw],
+        Address::ZERO,
+    )
+    .await?;
+
+    let remove_receipt = EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::transaction_receipt(
+        &env.node_clients[0].rpc,
+        *remove_envelope.tx_hash(),
+    )
+    .await?
+    .expect("remove transaction receipt available");
+    assert!(
+        remove_receipt.status(),
+        "remove allowlist transaction should succeed"
+    );
+
+    // Operator tries to mint again after removal — should revert.
+    let unauthorized_mint_call = NativeTokenPrecompile::mintCall {
+        to: new_wallet_address,
+        amount: U256::from(1_000_000_000_000_000u64), // 0.001 ETH
+    }
+    .abi_encode();
+
+    let unauthorized_mint_tx = TransactionRequest {
+        nonce: Some(2),
+        gas: Some(150_000),
+        max_fee_per_gas: Some(20_000_000_000),
+        max_priority_fee_per_gas: Some(2_000_000_000),
+        chain_id: Some(chain_id),
+        value: Some(U256::ZERO),
+        to: Some(TxKind::Call(MINT_PRECOMPILE_ADDR)),
+        input: TransactionInput {
+            input: None,
+            data: Some(Bytes::from(unauthorized_mint_call)),
+        },
+        ..Default::default()
+    };
+
+    let unauthorized_envelope =
+        TransactionTestContext::sign_tx(operator.clone(), unauthorized_mint_tx).await;
+    let unauthorized_raw: Bytes = unauthorized_envelope.encoded_2718().into();
+
+    build_block_with_transactions(
+        &mut env,
+        &mut parent_hash,
+        &mut parent_number,
+        &mut parent_timestamp,
+        Some(gas_limit),
+        vec![unauthorized_raw],
+        Address::ZERO,
+    )
+    .await?;
+
+    let unauthorized_receipt = EthApiClient::<
+        TransactionRequest,
+        Transaction,
+        Block,
+        Receipt,
+        Header,
+    >::transaction_receipt(
+        &env.node_clients[0].rpc, *unauthorized_envelope.tx_hash()
+    )
+    .await?
+    .expect("unauthorized mint receipt available");
+    assert!(
+        !unauthorized_receipt.status(),
+        "operator should be unable to mint after removal from allowlist"
+    );
+
+    // Ensure balance unchanged after failed mint.
     let final_balance =
         EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
             &env.node_clients[0].rpc,
@@ -607,18 +763,9 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
             Some(BlockId::latest()),
         )
         .await?;
-    println!("New wallet final balance after burn: {}", final_balance);
-
-    let expected_final_balance = mint_amount - burn_amount;
     assert_eq!(
-        final_balance, expected_final_balance,
-        "burn should reduce the balance by the burned amount (expected: {}, got: {})",
-        expected_final_balance, final_balance
-    );
-
-    println!(
-        "Test passed! Minted {} to new wallet, burned {}, final balance: {}",
-        mint_amount, burn_amount, final_balance
+        final_balance, expected_after_burn,
+        "failed mint must not change recipient balance"
     );
 
     drop(setup);

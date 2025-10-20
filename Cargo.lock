@@ -2928,6 +2928,7 @@ dependencies = [
  "reth-revm",
  "revm",
  "thiserror 1.0.69",
+ "tracing",
 ]
 
 [[package]]
@@ -3006,6 +3007,7 @@ dependencies = [
  "chrono",
  "ev-common",
  "ev-node",
+ "ev-precompiles",
  "ev-revm",
  "evolve-ev-reth",
  "eyre",
