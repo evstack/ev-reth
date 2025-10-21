@@ -175,6 +175,15 @@ impl Precompile for MintPrecompile {
     fn call(&self, mut input: PrecompileInput<'_>) -> PrecompileResult {
         let caller: Address = input.caller;
         let gas_limit = input.gas;
+        let data_len = input.data.len();
+
+        tracing::info!(
+            target: "mint_precompile",
+            ?caller,
+            gas = gas_limit,
+            calldata_len = data_len,
+            "mint precompile call invoked"
+        );
 
         // 1) Decode by ABI — this inspects the 4-byte selector and picks the right variant.
         let decoded = match INativeToken::INativeTokenCalls::abi_decode(input.data) {
