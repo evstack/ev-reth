@@ -67,8 +67,10 @@ where
             .validate()
             .map_err(|e| PayloadBuilderError::Internal(RethError::Other(Box::new(e))))?;
 
-        // Get the latest state provider
-        let state_provider = self.client.latest().map_err(PayloadBuilderError::other)?;
+        let state_provider = self
+            .client
+            .state_by_block_hash(attributes.parent_hash)
+            .map_err(PayloadBuilderError::other)?;
 
         // Create a database from the state provider
         let db = StateProviderDatabase::new(&state_provider);
