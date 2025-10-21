@@ -203,7 +203,7 @@ impl Precompile for MintPrecompile {
                 Self::add_balance(internals, to, amount)?;
                 internals.touch_account(to);
 
-                Ok(PrecompileOutput::new(gas_limit, Bytes::new()))
+                Ok(PrecompileOutput::new(0, Bytes::new()))
             }
             INativeToken::INativeTokenCalls::burn(call) => {
                 self.ensure_authorized(internals, caller)?;
@@ -214,17 +214,17 @@ impl Precompile for MintPrecompile {
                 Self::sub_balance(internals, from, amount)?;
                 internals.touch_account(from);
 
-                Ok(PrecompileOutput::new(gas_limit, Bytes::new()))
+                Ok(PrecompileOutput::new(0, Bytes::new()))
             }
             INativeToken::INativeTokenCalls::addToAllowList(call) => {
                 self.ensure_admin(caller)?;
                 Self::set_allowlisted(internals, call.account, true)?;
-                Ok(PrecompileOutput::new(gas_limit, Bytes::new()))
+                Ok(PrecompileOutput::new(0, Bytes::new()))
             }
             INativeToken::INativeTokenCalls::removeFromAllowList(call) => {
                 self.ensure_admin(caller)?;
                 Self::set_allowlisted(internals, call.account, false)?;
-                Ok(PrecompileOutput::new(gas_limit, Bytes::new()))
+                Ok(PrecompileOutput::new(0, Bytes::new()))
             }
         }
     }
@@ -301,9 +301,12 @@ mod tests {
         }
         .abi_encode();
 
-        let result = run_call(&mut journal, &block_env, &precompile, admin, &calldata);
-
-        assert!(result.is_ok(), "mint call should succeed");
+        let output = run_call(&mut journal, &block_env, &precompile, admin, &calldata)
+            .expect("mint call should succeed");
+        assert_eq!(
+            output.gas_used, 0,
+            "mint precompile should not consume gas"
+        );
         let balance = account_balance(&journal, recipient).expect("recipient account exists");
         assert_eq!(
             balance, amount,
@@ -335,17 +338,25 @@ mod tests {
             amount: mint_amount,
         }
         .abi_encode();
-        run_call(&mut journal, &block_env, &precompile, admin, &mint_calldata)
-            .expect("mint call should succeed");
+        let mint_output =
+            run_call(&mut journal, &block_env, &precompile, admin, &mint_calldata)
+                .expect("mint call should succeed");
+        assert_eq!(
+            mint_output.gas_used, 0,
+            "mint precompile should not consume gas"
+        );
         let burn_calldata = INativeToken::burnCall {
             from: holder,
             amount: burn_amount,
         }
         .abi_encode();
 
-        let result = run_call(&mut journal, &block_env, &precompile, admin, &burn_calldata);
-
-        assert!(result.is_ok(), "burn call should succeed");
+        let burn_output = run_call(&mut journal, &block_env, &precompile, admin, &burn_calldata)
+            .expect("burn call should succeed");
+        assert_eq!(
+            burn_output.gas_used, 0,
+            "burn precompile should not consume gas"
+        );
         let balance = account_balance(&journal, holder).expect("holder account exists");
         assert_eq!(
             balance,
@@ -442,15 +453,20 @@ mod tests {
             account: allowlisted,
         }
         .abi_encode();
-        run_call(&mut journal, &block_env, &precompile, admin, &add_calldata)
-            .expect("admin should be able to add to allowlist");
+        let add_output =
+            run_call(&mut journal, &block_env, &precompile, admin, &add_calldata)
+                .expect("admin should be able to add to allowlist");
+        assert_eq!(
+            add_output.gas_used, 0,
+            "allowlist add should not consume gas"
+        );
 
         let mint_calldata = INativeToken::mintCall {
             to: recipient,
             amount,
         }
         .abi_encode();
-        run_call(
+        let mint_output = run_call(
             &mut journal,
             &block_env,
             &precompile,
@@ -458,6 +474,10 @@ mod tests {
             &mint_calldata,
         )
         .expect("allowlisted caller should be able to mint");
+        assert_eq!(
+            mint_output.gas_used, 0,
+            "mint for allowlisted caller should not consume gas"
+        );
 
         let balance = account_balance(&journal, recipient).expect("recipient exists");
         assert_eq!(balance, amount, "recipient receives minted amount");
@@ -477,14 +497,19 @@ mod tests {
             account: allowlisted,
         }
         .abi_encode();
-        run_call(&mut journal, &block_env, &precompile, admin, &add_calldata)
-            .expect("admin should be able to add allowlist entry");
+        let add_output =
+            run_call(&mut journal, &block_env, &precompile, admin, &add_calldata)
+                .expect("admin should be able to add allowlist entry");
+        assert_eq!(
+            add_output.gas_used, 0,
+            "allowlist add should not consume gas"
+        );
 
         let remove_calldata = INativeToken::removeFromAllowListCall {
             account: allowlisted,
         }
         .abi_encode();
-        run_call(
+        let remove_output = run_call(
             &mut journal,
             &block_env,
             &precompile,
@@ -492,6 +517,10 @@ mod tests {
             &remove_calldata,
         )
         .expect("admin should be able to remove allowlist entry");
+        assert_eq!(
+            remove_output.gas_used, 0,
+            "allowlist removal should not consume gas"
+        );
 
         let mint_calldata = INativeToken::mintCall {
             to: recipient,
@@ -536,8 +565,13 @@ mod tests {
             account: allowlisted,
         }
         .abi_encode();
-        run_call(&mut journal, &block_env, &precompile, admin, &add_calldata)
-            .expect("admin should add allowlist entry");
+        let add_output =
+            run_call(&mut journal, &block_env, &precompile, admin, &add_calldata)
+                .expect("admin should add allowlist entry");
+        assert_eq!(
+            add_output.gas_used, 0,
+            "allowlist add should not consume gas"
+        );
 
         // Mint tokens as allowlisted operator
         let mint_calldata = INativeToken::mintCall {
@@ -545,7 +579,7 @@ mod tests {
             amount: mint_amount,
         }
         .abi_encode();
-        run_call(
+        let mint_output = run_call(
             &mut journal,
             &block_env,
             &precompile,
@@ -553,6 +587,10 @@ mod tests {
             &mint_calldata,
         )
         .expect("allowlisted operator should mint");
+        assert_eq!(
+            mint_output.gas_used, 0,
+            "allowlisted mint should not consume gas"
+        );
 
         // Burn subset as allowlisted operator
         let burn_calldata = INativeToken::burnCall {
@@ -560,7 +598,7 @@ mod tests {
             amount: burn_amount,
         }
         .abi_encode();
-        run_call(
+        let burn_output = run_call(
             &mut journal,
             &block_env,
             &precompile,
@@ -568,6 +606,10 @@ mod tests {
             &burn_calldata,
         )
         .expect("allowlisted operator should burn");
+        assert_eq!(
+            burn_output.gas_used, 0,
+            "allowlisted burn should not consume gas"
+        );
 
         let balance = account_balance(&journal, holder).expect("holder account exists");
         assert_eq!(
