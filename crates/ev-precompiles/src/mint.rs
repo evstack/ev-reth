@@ -8,6 +8,7 @@ use alloy_evm::{
 };
 use alloy_primitives::{address, Address, Bytes, U256};
 use revm::precompile::PrecompileOutput;
+use revm_primitives::Bytecode;
 use std::sync::OnceLock;
 
 sol! {
@@ -34,6 +35,11 @@ impl MintPrecompile {
         ID.get_or_init(|| PrecompileId::custom("native_mint"))
     }
 
+    fn bytecode() -> &'static Bytecode {
+        static BYTECODE: OnceLock<Bytecode> = OnceLock::new();
+        BYTECODE.get_or_init(|| Bytecode::new_raw(Bytes::from_static(&[0xFE])))
+    }
+
     pub fn new(admin: Address) -> Self {
         Self { admin }
     }
@@ -55,6 +61,7 @@ impl MintPrecompile {
                 // Ensure the mint precompile account is treated as non-empty so state pruning
                 // does not wipe out its storage between blocks.
                 account.info.nonce = 1;
+                internals.set_code(addr, Self::bytecode().clone());
             }
             account.mark_created();
             internals.touch_account(addr);
