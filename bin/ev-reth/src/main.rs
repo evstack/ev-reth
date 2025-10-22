@@ -45,7 +45,7 @@ fn main() {
     // Initialize OTLP tracing
     if std::env::var("OTEL_SDK_DISABLED").as_deref() == Ok("false") {
         if let Err(e) = init_otlp_tracing() {
-            eprintln!("Failed to initialize OTLP tracing: {:?}", e);
+            eprintln!("Failed to initialize OTLP tracing: {e:?}");
             eprintln!("Continuing without OTLP tracing...");
         }
     }
