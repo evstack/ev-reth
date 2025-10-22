@@ -12,10 +12,10 @@ use std::sync::OnceLock;
 
 sol! {
     interface INativeToken {
-        function mint(address to, uint256 amount);
-        function burn(address from, uint256 amount);
-        function addToAllowList(address account);
-        function removeFromAllowList(address account);
+        function mint(address to, uint256 amount) external;
+        function burn(address from, uint256 amount) external;
+        function addToAllowList(address account) external;
+        function removeFromAllowList(address account) external;
     }
 }
 
