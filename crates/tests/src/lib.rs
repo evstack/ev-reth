@@ -6,11 +6,7 @@
 pub mod common;
 
 #[cfg(test)]
-mod engine_api_tests;
-#[cfg(test)]
-mod integration_tests;
-#[cfg(test)]
-mod payload_builder_tests;
+pub(crate) mod e2e_tests;
 #[cfg(test)]
 mod test_evolve_engine_api;
 
