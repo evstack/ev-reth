@@ -60,8 +60,8 @@ impl MintPrecompile {
             if addr == MINT_PRECOMPILE_ADDR {
                 // Ensure the mint precompile account is treated as non-empty so state pruning
                 // does not wipe out its storage between blocks.
-                account.info.nonce = 1;
-                internals.set_code(addr, Self::bytecode().clone());
+                account.info.set_code(Self::bytecode().clone());
+                account.info.set_nonce(1);
             }
             account.mark_created();
             internals.touch_account(addr);
