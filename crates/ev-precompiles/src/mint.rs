@@ -7,8 +7,7 @@ use alloy_evm::{
     EvmInternals, EvmInternalsError,
 };
 use alloy_primitives::{address, Address, Bytes, U256};
-use revm::bytecode::Bytecode;
-use revm::precompile::PrecompileOutput;
+use revm::{bytecode::Bytecode, precompile::PrecompileOutput};
 use std::sync::OnceLock;
 
 sol! {
