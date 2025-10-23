@@ -1,6 +1,9 @@
 // Mint precompile
 
-use alloy::{sol, sol_types::SolInterface};
+use alloy::{
+    sol,
+    sol_types::{SolInterface, SolValue},
+};
 use alloy_evm::{
     precompiles::{Precompile, PrecompileInput},
     revm::precompile::{PrecompileError, PrecompileId, PrecompileResult},
@@ -16,6 +19,7 @@ sol! {
         function burn(address from, uint256 amount) external;
         function addToAllowList(address account) external;
         function removeFromAllowList(address account) external;
+        function allowlist(address account) external view returns (bool);
     }
 }
 
@@ -231,6 +235,11 @@ impl Precompile for MintPrecompile {
                 self.ensure_admin(caller)?;
                 Self::set_allowlisted(internals, call.account, false)?;
                 Ok(PrecompileOutput::new(0, Bytes::new()))
+            }
+            INativeToken::INativeTokenCalls::allowlist(call) => {
+                let is_allowed = Self::is_allowlisted(internals, call.account)?;
+                let result = is_allowed.abi_encode();
+                Ok(PrecompileOutput::new(0, result.into()))
             }
         }
     }
