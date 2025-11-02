@@ -49,6 +49,7 @@ interface INativeToken {
     function burn(address from, uint256 amount) external;
     function addToAllowList(address account) external;
     function removeFromAllowList(address account) external;
+    function allowlist(address account) external view returns (bool);
 }
 ```
 
