@@ -141,7 +141,8 @@ where
 
         // Convert Engine API attributes to Evolve payload attributes.
         // If no gas_limit provided, default to the parent header's gas limit (genesis for first block).
-        let effective_gas_limit = attributes.gas_limit.unwrap_or(parent_header.gas_limit);
+        let parent_header_ref = parent_header.as_ref();
+        let effective_gas_limit = attributes.gas_limit.unwrap_or(parent_header_ref.gas_limit);
         // Publish effective gas limit for RPC alignment.
         set_current_block_gas_limit(effective_gas_limit);
 
@@ -164,13 +165,16 @@ where
             attributes.prev_randao(),
             fee_recipient,
             attributes.parent(),
-            parent_header.number + 1,
+            parent_header_ref.number + 1,
         );
 
         // Build the payload using the evolve payload builder - use spawn_blocking for async work.
         let evolve_builder = self.evolve_builder.clone();
-        let sealed_block = tokio::task::block_in_place(|| {
-            Handle::current().block_on(evolve_builder.build_payload(evolve_attrs))
+        let parent_header_for_builder = parent_header_ref.clone();
+        let sealed_block = tokio::task::block_in_place(move || {
+            Handle::current().block_on(
+                evolve_builder.build_payload(evolve_attrs, parent_header_for_builder),
+            )
         })
         .map_err(PayloadBuilderError::other)?;
 
@@ -208,7 +212,8 @@ where
 
         // Create empty evolve attributes (no transactions).
         // If no gas_limit provided, default to the parent header's gas limit (genesis for first block).
-        let effective_gas_limit = attributes.gas_limit.unwrap_or(parent_header.gas_limit);
+        let parent_header_ref = parent_header.as_ref();
+        let effective_gas_limit = attributes.gas_limit.unwrap_or(parent_header_ref.gas_limit);
         // Publish effective gas limit for RPC alignment.
         set_current_block_gas_limit(effective_gas_limit);
 
@@ -231,13 +236,16 @@ where
             attributes.prev_randao(),
             fee_recipient,
             attributes.parent(),
-            parent_header.number + 1,
+            parent_header_ref.number + 1,
         );
 
         // Build empty payload - use spawn_blocking for async work.
         let evolve_builder = self.evolve_builder.clone();
-        let sealed_block = tokio::task::block_in_place(|| {
-            Handle::current().block_on(evolve_builder.build_payload(evolve_attrs))
+        let parent_header_for_builder = parent_header_ref.clone();
+        let sealed_block = tokio::task::block_in_place(move || {
+            Handle::current().block_on(
+                evolve_builder.build_payload(evolve_attrs, parent_header_for_builder),
+            )
         })
         .map_err(PayloadBuilderError::other)?;
 

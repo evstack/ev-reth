@@ -61,6 +61,7 @@ where
     pub async fn build_payload(
         &self,
         attributes: EvolvePayloadAttributes,
+        parent_header: SealedHeader,
     ) -> Result<SealedBlock, PayloadBuilderError> {
         // Validate attributes
         attributes
@@ -77,15 +78,12 @@ where
             .with_bundle_update()
             .build();
 
-        // Get parent header using the client's HeaderProvider trait
-        let parent_header = self
-            .client
-            .header(&attributes.parent_hash)
-            .map_err(PayloadBuilderError::other)?
-            .ok_or_else(|| {
-                PayloadBuilderError::Internal(RethError::Other("Parent header not found".into()))
-            })?;
-        let sealed_parent = SealedHeader::new(parent_header, attributes.parent_hash);
+        debug_assert_eq!(
+            parent_header.hash(),
+            attributes.parent_hash,
+            "parent header mismatch"
+        );
+        let sealed_parent = parent_header;
 
         // Create next block environment attributes
         let gas_limit = attributes.gas_limit.ok_or_else(|| {
