@@ -10,11 +10,7 @@ use alloy_evm::{
     EvmInternals, EvmInternalsError,
 };
 use alloy_primitives::{address, Address, Bytes, U256};
-use revm::{
-    bytecode::Bytecode,
-    context::journaled_state::TransferError,
-    precompile::PrecompileOutput,
-};
+use revm::{bytecode::Bytecode, precompile::PrecompileOutput};
 use std::sync::OnceLock;
 
 sol! {
@@ -84,13 +80,13 @@ impl MintPrecompile {
         let account = internals
             .load_account(addr)
             .map_err(Self::map_internals_error)?;
-        account
+        let new_balance = account
             .info
             .balance
             .checked_add(amount)
             .ok_or_else(|| PrecompileError::Other("balance overflow".to_string()))?;
         internals
-            .balance_incr(addr, amount)
+            .set_balance(addr, new_balance)
             .map_err(Self::map_internals_error)?;
         Ok(())
     }
@@ -103,23 +99,14 @@ impl MintPrecompile {
         let account = internals
             .load_account(addr)
             .map_err(Self::map_internals_error)?;
-        account
+        let new_balance = account
             .info
             .balance
             .checked_sub(amount)
             .ok_or_else(|| PrecompileError::Other("insufficient balance".to_string()))?;
-        // Transfer the burned amount to the zero address to reflect the balance decrement.
-        if let Some(err) = internals
-            .transfer(addr, Address::ZERO, amount)
-            .map_err(Self::map_internals_error)?
-        {
-            let msg = match err {
-                TransferError::OutOfFunds => "insufficient balance",
-                TransferError::OverflowPayment => "balance overflow",
-                TransferError::CreateCollision => "account collision",
-            };
-            return Err(PrecompileError::Other(msg.to_string()));
-        }
+        internals
+            .set_balance(addr, new_balance)
+            .map_err(Self::map_internals_error)?;
         Ok(())
     }
 
