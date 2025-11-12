@@ -167,7 +167,7 @@ mod tests {
             },
         );
 
-        let mut evm_env = EvmEnv::default();
+        let mut evm_env: alloy_evm::EvmEnv<SpecId, BlockEnv> = EvmEnv::default();
         evm_env.cfg_env.chain_id = 1;
         evm_env.cfg_env.spec = SpecId::CANCUN;
         evm_env.block_env.basefee = 100;
@@ -269,7 +269,7 @@ mod tests {
             },
         );
 
-        let mut evm_env = EvmEnv::default();
+        let mut evm_env: alloy_evm::EvmEnv<SpecId, BlockEnv> = EvmEnv::default();
         evm_env.cfg_env.chain_id = 1;
         evm_env.cfg_env.spec = SpecId::CANCUN;
         evm_env.block_env.gas_limit = 30_000_000;
