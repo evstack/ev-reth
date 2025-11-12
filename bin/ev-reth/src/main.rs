@@ -11,8 +11,10 @@ use evolve_ev_reth::{
     rpc::txpool::{EvolveTxpoolApiImpl, EvolveTxpoolApiServer},
 };
 use reth_ethereum_cli::{chainspec::EthereumChainSpecParser, Cli};
+use reth_tracing_otlp::{span_layer, OtlpProtocol};
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use url::Url;
 
 use ev_node::{log_startup, EvolveArgs, EvolveNode};
 
@@ -21,11 +23,29 @@ static ALLOC: reth_cli_util::allocator::Allocator = reth_cli_util::allocator::ne
 
 /// Initialize reth OTLP tracing
 fn init_otlp_tracing() -> eyre::Result<()> {
+    const DEFAULT_ENDPOINT: &str = "http://127.0.0.1:4318/v1/traces";
+
+    let endpoint = std::env::var("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT")
+        .or_else(|_| std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT"))
+        .unwrap_or_else(|_| DEFAULT_ENDPOINT.to_owned());
+    let mut endpoint = Url::parse(&endpoint).or_else(|_| Url::parse(DEFAULT_ENDPOINT))?;
+
+    let protocol = std::env::var("OTEL_EXPORTER_OTLP_TRACES_PROTOCOL")
+        .or_else(|_| std::env::var("OTEL_EXPORTER_OTLP_PROTOCOL"))
+        .unwrap_or_else(|_| "http".to_string());
+    let protocol = match protocol.to_lowercase().as_str() {
+        "grpc" => OtlpProtocol::Grpc,
+        _ => OtlpProtocol::Http,
+    };
+
+    protocol.validate_endpoint(&mut endpoint)?;
+
+    let span_layer = span_layer("ev-reth", &endpoint, protocol)?;
     // Set up tracing subscriber with reth OTLP layer
     tracing_subscriber::registry()
         .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
         .with(tracing_subscriber::fmt::layer().with_target(false))
-        .with(reth_tracing_otlp::layer("ev-reth"))
+        .with(span_layer)
         .init();
 
     info!("Reth OTLP tracing initialized for service: ev-reth");

@@ -176,6 +176,30 @@ where
 {
     type Inspector = INSP;
 
+    fn all_inspector(
+        &self,
+    ) -> (
+        &Self::Context,
+        &Self::Instructions,
+        &Self::Precompiles,
+        &FrameStack<Self::Frame>,
+        &Self::Inspector,
+    ) {
+        self.inner.all_inspector()
+    }
+
+    fn all_mut_inspector(
+        &mut self,
+    ) -> (
+        &mut Self::Context,
+        &mut Self::Instructions,
+        &mut Self::Precompiles,
+        &mut FrameStack<Self::Frame>,
+        &mut Self::Inspector,
+    ) {
+        self.inner.all_mut_inspector()
+    }
+
     fn inspector(&mut self) -> &mut Self::Inspector {
         &mut self.inner.inspector
     }
@@ -221,6 +245,28 @@ where
     type Instructions = EthInstructions<EthInterpreter, CTX>;
     type Precompiles = PRECOMP;
     type Frame = EthFrame<EthInterpreter>;
+
+    fn all(
+        &self,
+    ) -> (
+        &Self::Context,
+        &Self::Instructions,
+        &Self::Precompiles,
+        &FrameStack<Self::Frame>,
+    ) {
+        self.inner.all()
+    }
+
+    fn all_mut(
+        &mut self,
+    ) -> (
+        &mut Self::Context,
+        &mut Self::Instructions,
+        &mut Self::Precompiles,
+        &mut FrameStack<Self::Frame>,
+    ) {
+        self.inner.all_mut()
+    }
 
     fn ctx(&mut self) -> &mut Self::Context {
         &mut self.inner.ctx
@@ -287,6 +333,7 @@ where
     type Error = EVMError<DB::Error, InvalidTransaction>;
     type HaltReason = HaltReason;
     type Spec = SpecId;
+    type BlockEnv = BlockEnv;
     type Precompiles = PRECOMP;
     type Inspector = INSP;
 
@@ -324,7 +371,7 @@ where
         .map(|res| ResultAndState::new(res.result, res.state))
     }
 
-    fn finish(self) -> (Self::DB, EvmEnv<Self::Spec>) {
+    fn finish(self) -> (Self::DB, EvmEnv<Self::Spec, Self::BlockEnv>) {
         let Self { inner, .. } = self;
         let Context {
             block,

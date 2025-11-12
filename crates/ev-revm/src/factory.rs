@@ -14,7 +14,7 @@ use reth_revm::{
     revm::{
         context::{
             result::{EVMError, HaltReason},
-            TxEnv,
+            BlockEnv, TxEnv,
         },
         context_interface::result::InvalidTransaction,
         primitives::hardfork::SpecId,
@@ -70,12 +70,13 @@ impl EvmFactory for EvEvmFactory<EthEvmFactory> {
         EVMError<DBError, InvalidTransaction>;
     type HaltReason = HaltReason;
     type Spec = SpecId;
+    type BlockEnv = BlockEnv;
     type Precompiles = PrecompilesMap;
 
     fn create_evm<DB: Database>(
         &self,
         db: DB,
-        evm_env: EvmEnv<Self::Spec>,
+        evm_env: EvmEnv<Self::Spec, Self::BlockEnv>,
     ) -> Self::Evm<DB, NoOpInspector> {
         let inner = self.inner.create_evm(db, evm_env);
         let mut evm = EvEvm::from_inner(inner, self.redirect, false);
@@ -89,7 +90,7 @@ impl EvmFactory for EvEvmFactory<EthEvmFactory> {
     fn create_evm_with_inspector<DB: Database, I: Inspector<Self::Context<DB>>>(
         &self,
         db: DB,
-        input: EvmEnv<Self::Spec>,
+        input: EvmEnv<Self::Spec, Self::BlockEnv>,
         inspector: I,
     ) -> Self::Evm<DB, I> {
         let inner = self.inner.create_evm_with_inspector(db, input, inspector);
@@ -166,7 +167,7 @@ mod tests {
             },
         );
 
-        let mut evm_env = EvmEnv::default();
+        let mut evm_env: alloy_evm::EvmEnv<SpecId, BlockEnv> = EvmEnv::default();
         evm_env.cfg_env.chain_id = 1;
         evm_env.cfg_env.spec = SpecId::CANCUN;
         evm_env.block_env.basefee = 100;
@@ -268,7 +269,7 @@ mod tests {
             },
         );
 
-        let mut evm_env = EvmEnv::default();
+        let mut evm_env: alloy_evm::EvmEnv<SpecId, BlockEnv> = EvmEnv::default();
         evm_env.cfg_env.chain_id = 1;
         evm_env.cfg_env.spec = SpecId::CANCUN;
         evm_env.block_env.gas_limit = 30_000_000;

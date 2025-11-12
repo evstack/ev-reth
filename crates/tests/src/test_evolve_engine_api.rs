@@ -26,6 +26,7 @@ use reth_e2e_test_utils::{
     transaction::TransactionTestContext,
     wallet::Wallet,
 };
+use reth_primitives::TransactionSigned;
 use reth_rpc_api::clients::{EngineApiClient, EthApiClient};
 
 async fn make_transfer_batch(
@@ -69,7 +70,7 @@ async fn test_e2e_engine_api_fork_choice_with_transactions() -> Result<()> {
     let chain_spec = create_test_chain_spec();
     let chain_id = chain_spec.chain().id();
 
-    let mut setup = Setup::<EvolveEngineTypes>::new()
+    let mut setup = Setup::<EvolveEngineTypes>::default()
         .with_chain_spec(chain_spec)
         .with_network(NetworkSetup::single_node())
         .with_dev_mode(true);
@@ -198,12 +199,17 @@ async fn test_e2e_engine_api_fork_choice_with_transactions() -> Result<()> {
                 TxEnvelope::decode_2718(&mut raw_slice).expect("transaction should decode");
             let tx_hash = *tx_envelope.tx_hash();
 
-            let receipt = EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::transaction_receipt(
-                &env.node_clients[0].rpc,
-                tx_hash,
-            )
-            .await?
-            .expect("transaction receipt should exist");
+            let receipt: Receipt =
+                EthApiClient::<
+                    TransactionRequest,
+                    Transaction,
+                    Block,
+                    Receipt,
+                    Header,
+                    TransactionSigned,
+                >::transaction_receipt(&env.node_clients[0].rpc, tx_hash)
+                .await?
+                .expect("transaction receipt should exist");
             assert!(receipt.status(), "{label} transaction should succeed");
         }
     }
@@ -237,7 +243,7 @@ async fn test_e2e_engine_api_gas_limit_handling() -> Result<()> {
     let chain_spec = create_test_chain_spec();
     let chain_id = chain_spec.chain().id();
 
-    let mut setup = Setup::<EvolveEngineTypes>::new()
+    let mut setup = Setup::<EvolveEngineTypes>::default()
         .with_chain_spec(chain_spec)
         .with_network(NetworkSetup::single_node())
         .with_dev_mode(true);
