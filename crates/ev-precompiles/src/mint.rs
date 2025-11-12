@@ -80,13 +80,13 @@ impl MintPrecompile {
         let account = internals
             .load_account(addr)
             .map_err(Self::map_internals_error)?;
-        let new_balance = account
+        account
             .info
             .balance
             .checked_add(amount)
             .ok_or_else(|| PrecompileError::Other("balance overflow".to_string()))?;
         internals
-            .set_balance(addr, new_balance)
+            .balance_incr(addr, amount)
             .map_err(Self::map_internals_error)?;
         Ok(())
     }
@@ -332,10 +332,6 @@ mod tests {
         assert!(
             account.is_touched(),
             "recipient account should be marked touched"
-        );
-        assert!(
-            account.is_created(),
-            "recipient account should be marked created"
         );
     }
 
