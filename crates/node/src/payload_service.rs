@@ -90,6 +90,17 @@ where
         if self.config.base_fee_sink.is_some() {
             config.base_fee_sink = self.config.base_fee_sink;
         }
+        if self.config.base_fee_redirect_activation_height.is_some() {
+            config.base_fee_redirect_activation_height =
+                self.config.base_fee_redirect_activation_height;
+        }
+        if self.config.mint_admin.is_some() {
+            config.mint_admin = self.config.mint_admin;
+        }
+        if self.config.mint_precompile_activation_height.is_some() {
+            config.mint_precompile_activation_height =
+                self.config.mint_precompile_activation_height;
+        }
 
         config.validate()?;
 
@@ -145,12 +156,14 @@ where
         // Publish effective gas limit for RPC alignment.
         set_current_block_gas_limit(effective_gas_limit);
 
+        let block_number = parent_header.number + 1;
         let mut fee_recipient = attributes.suggested_fee_recipient();
         if fee_recipient == Address::ZERO {
-            if let Some(sink) = self.config.base_fee_sink {
+            if let Some(sink) = self.config.base_fee_sink_for_block(block_number) {
                 info!(
                     target: "ev-reth",
                     fee_sink = ?sink,
+                    block_number,
                     "Suggested fee recipient missing; defaulting to base-fee sink"
                 );
                 fee_recipient = sink;
@@ -164,7 +177,7 @@ where
             attributes.prev_randao(),
             fee_recipient,
             attributes.parent(),
-            parent_header.number + 1,
+            block_number,
         );
 
         // Build the payload using the evolve payload builder - use spawn_blocking for async work.
@@ -212,12 +225,14 @@ where
         // Publish effective gas limit for RPC alignment.
         set_current_block_gas_limit(effective_gas_limit);
 
+        let block_number = parent_header.number + 1;
         let mut fee_recipient = attributes.suggested_fee_recipient();
         if fee_recipient == Address::ZERO {
-            if let Some(sink) = self.config.base_fee_sink {
+            if let Some(sink) = self.config.base_fee_sink_for_block(block_number) {
                 info!(
                     target: "ev-reth",
                     fee_sink = ?sink,
+                    block_number,
                     "Suggested fee recipient missing; defaulting to base-fee sink"
                 );
                 fee_recipient = sink;
@@ -231,7 +246,7 @@ where
             attributes.prev_randao(),
             fee_recipient,
             attributes.parent(),
-            parent_header.number + 1,
+            block_number,
         );
 
         // Build empty payload - use spawn_blocking for async work.

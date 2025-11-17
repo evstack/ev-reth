@@ -17,7 +17,8 @@
     "terminalTotalDifficulty": 0,
     "terminalTotalDifficultyPassed": true,
     "evolve": {
-      "baseFeeSink": "0x00000000000000000000000000000000000000fe"
+      "baseFeeSink": "0x00000000000000000000000000000000000000fe",
+      "baseFeeRedirectActivationHeight": 0
     }
   },
   "difficulty": "0x1",

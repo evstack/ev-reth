@@ -46,8 +46,13 @@ where
         evm_config: EvolveEthEvmConfig,
         config: EvolvePayloadBuilderConfig,
     ) -> Self {
-        if let Some(sink) = config.base_fee_sink {
-            info!(target: "ev-reth", fee_sink = ?sink, "Base fee redirect enabled via chainspec");
+        if let Some((sink, activation)) = config.base_fee_redirect_settings() {
+            info!(
+                target: "ev-reth",
+                fee_sink = ?sink,
+                activation_height = activation,
+                "Base fee redirect enabled via chainspec"
+            );
         }
 
         Self {
@@ -85,6 +90,7 @@ where
             .ok_or_else(|| {
                 PayloadBuilderError::Internal(RethError::Other("Parent header not found".into()))
             })?;
+        let block_number = parent_header.number + 1;
         let sealed_parent = SealedHeader::new(parent_header, attributes.parent_hash);
 
         // Create next block environment attributes
@@ -97,11 +103,12 @@ where
         // Set coinbase/beneficiary from attributes, defaulting to sink when unset.
         let mut suggested_fee_recipient = attributes.suggested_fee_recipient;
         if suggested_fee_recipient == Address::ZERO {
-            if let Some(sink) = self.config.base_fee_sink {
+            if let Some(sink) = self.config.base_fee_sink_for_block(block_number) {
                 suggested_fee_recipient = sink;
                 info!(
                     target: "ev-reth",
                     fee_sink = ?sink,
+                    block_number,
                     "Suggested fee recipient missing; defaulting to base-fee sink"
                 );
             }

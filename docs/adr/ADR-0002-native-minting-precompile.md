@@ -57,8 +57,10 @@ Authorization is managed through a combination of a genesis-configured `mintAdmi
 
 *   The `mintAdmin` is the only account that can add or remove addresses from the `allowlist`.
 *   Both the `mintAdmin` and the addresses on the `allowlist` can call `mint` and `burn`.
+*   An optional `mintPrecompileActivationHeight` field allows networks to delay activation until a
+    future block so archival nodes remain compatible with historical state transitions.
 
-This design provides a flexible and secure way to manage the native token supply. The `mintAdmin` can be a simple EOA for testing or a complex smart contract (e.g., a multisig wallet) for production environments.
+This design provides a flexible and secure way to manage the native token supply. The `mintAdmin` can be a simple EOA for testing or a complex smart contract (e.g., a multisig wallet) for production environments, and activation can be staged at any block height by setting the chainspec field described above.
 
 ### Implementation Details
 

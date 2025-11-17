@@ -8,6 +8,10 @@ struct ChainspecEvolveConfig {
     pub base_fee_sink: Option<Address>,
     #[serde(default, rename = "mintAdmin")]
     pub mint_admin: Option<Address>,
+    #[serde(default, rename = "baseFeeRedirectActivationHeight")]
+    pub base_fee_redirect_activation_height: Option<u64>,
+    #[serde(default, rename = "mintPrecompileActivationHeight")]
+    pub mint_precompile_activation_height: Option<u64>,
 }
 
 /// Configuration for the Evolve payload builder
@@ -19,6 +23,12 @@ pub struct EvolvePayloadBuilderConfig {
     /// Optional mint precompile admin address sourced from the chainspec.
     #[serde(default)]
     pub mint_admin: Option<Address>,
+    /// Optional activation height for base-fee redirect; defaults to 0 when sink set.
+    #[serde(default)]
+    pub base_fee_redirect_activation_height: Option<u64>,
+    /// Optional activation height for mint precompile; defaults to 0 when admin set.
+    #[serde(default)]
+    pub mint_precompile_activation_height: Option<u64>,
 }
 
 impl EvolvePayloadBuilderConfig {
@@ -27,6 +37,8 @@ impl EvolvePayloadBuilderConfig {
         Self {
             base_fee_sink: None,
             mint_admin: None,
+            base_fee_redirect_activation_height: None,
+            mint_precompile_activation_height: None,
         }
     }
 
@@ -41,10 +53,22 @@ impl EvolvePayloadBuilderConfig {
         {
             let extras = extra.map_err(ConfigError::InvalidExtras)?;
             config.base_fee_sink = extras.base_fee_sink;
+            config.base_fee_redirect_activation_height = extras.base_fee_redirect_activation_height;
             config.mint_admin =
                 extras
                     .mint_admin
                     .and_then(|addr| if addr.is_zero() { None } else { Some(addr) });
+            config.mint_precompile_activation_height = extras.mint_precompile_activation_height;
+
+            if config.base_fee_sink.is_some()
+                && config.base_fee_redirect_activation_height.is_none()
+            {
+                config.base_fee_redirect_activation_height = Some(0);
+            }
+
+            if config.mint_admin.is_some() && config.mint_precompile_activation_height.is_none() {
+                config.mint_precompile_activation_height = Some(0);
+            }
         }
         Ok(config)
     }
@@ -52,6 +76,28 @@ impl EvolvePayloadBuilderConfig {
     /// Validates the configuration
     pub const fn validate(&self) -> Result<(), ConfigError> {
         Ok(())
+    }
+
+    /// Returns the configured base-fee redirect sink and activation height (defaulting to 0).
+    pub fn base_fee_redirect_settings(&self) -> Option<(Address, u64)> {
+        self.base_fee_sink.map(|sink| {
+            let activation = self.base_fee_redirect_activation_height.unwrap_or(0);
+            (sink, activation)
+        })
+    }
+
+    /// Returns the mint precompile admin and activation height (defaulting to 0).
+    pub fn mint_precompile_settings(&self) -> Option<(Address, u64)> {
+        self.mint_admin.map(|admin| {
+            let activation = self.mint_precompile_activation_height.unwrap_or(0);
+            (admin, activation)
+        })
+    }
+
+    /// Returns the sink if the redirect is active for the provided block number.
+    pub fn base_fee_sink_for_block(&self, block_number: u64) -> Option<Address> {
+        self.base_fee_redirect_settings()
+            .and_then(|(sink, activation)| (block_number >= activation).then_some(sink))
     }
 }
 
@@ -103,6 +149,8 @@ mod tests {
 
         assert_eq!(config.base_fee_sink, Some(test_address));
         assert_eq!(config.mint_admin, None);
+        assert_eq!(config.base_fee_redirect_activation_height, Some(0));
+        assert_eq!(config.mint_precompile_activation_height, None);
     }
 
     #[test]
@@ -117,6 +165,28 @@ mod tests {
 
         assert_eq!(config.base_fee_sink, None);
         assert_eq!(config.mint_admin, Some(mint_admin));
+        assert_eq!(config.base_fee_redirect_activation_height, None);
+        assert_eq!(config.mint_precompile_activation_height, Some(0));
+    }
+
+    #[test]
+    fn test_activation_heights_override() {
+        let sink = address!("0000000000000000000000000000000000000002");
+        let admin = address!("00000000000000000000000000000000000000bb");
+        let extras = json!({
+            "baseFeeSink": sink,
+            "baseFeeRedirectActivationHeight": 42,
+            "mintAdmin": admin,
+            "mintPrecompileActivationHeight": 64
+        });
+
+        let chainspec = create_test_chainspec_with_extras(Some(extras));
+        let config = EvolvePayloadBuilderConfig::from_chain_spec(&chainspec).unwrap();
+
+        assert_eq!(config.base_fee_sink, Some(sink));
+        assert_eq!(config.base_fee_redirect_activation_height, Some(42));
+        assert_eq!(config.mint_admin, Some(admin));
+        assert_eq!(config.mint_precompile_activation_height, Some(64));
     }
 
     #[test]
@@ -129,6 +199,7 @@ mod tests {
         let config = EvolvePayloadBuilderConfig::from_chain_spec(&chainspec).unwrap();
 
         assert_eq!(config.mint_admin, None);
+        assert_eq!(config.mint_precompile_activation_height, None);
     }
 
     #[test]
@@ -140,6 +211,7 @@ mod tests {
         let config = EvolvePayloadBuilderConfig::from_chain_spec(&chainspec).unwrap();
 
         assert_eq!(config.base_fee_sink, None);
+        assert_eq!(config.base_fee_redirect_activation_height, None);
     }
 
     #[test]
@@ -150,6 +222,8 @@ mod tests {
 
         assert_eq!(config.base_fee_sink, None);
         assert_eq!(config.mint_admin, None);
+        assert_eq!(config.base_fee_redirect_activation_height, None);
+        assert_eq!(config.mint_precompile_activation_height, None);
     }
 
     #[test]
@@ -186,6 +260,8 @@ mod tests {
         let config = EvolvePayloadBuilderConfig::default();
         assert_eq!(config.base_fee_sink, None);
         assert_eq!(config.mint_admin, None);
+        assert_eq!(config.base_fee_redirect_activation_height, None);
+        assert_eq!(config.mint_precompile_activation_height, None);
     }
 
     #[test]
@@ -194,6 +270,8 @@ mod tests {
         let config = EvolvePayloadBuilderConfig::new();
         assert_eq!(config.base_fee_sink, None);
         assert_eq!(config.mint_admin, None);
+        assert_eq!(config.base_fee_redirect_activation_height, None);
+        assert_eq!(config.mint_precompile_activation_height, None);
     }
 
     #[test]
@@ -205,8 +283,28 @@ mod tests {
         let config_with_sink = EvolvePayloadBuilderConfig {
             base_fee_sink: Some(address!("0000000000000000000000000000000000000001")),
             mint_admin: Some(address!("00000000000000000000000000000000000000aa")),
+            base_fee_redirect_activation_height: Some(0),
+            mint_precompile_activation_height: Some(0),
         };
         assert!(config_with_sink.validate().is_ok());
+    }
+
+    #[test]
+    fn test_base_fee_sink_for_block() {
+        let sink = address!("0000000000000000000000000000000000000003");
+        let mut config = EvolvePayloadBuilderConfig {
+            base_fee_sink: Some(sink),
+            mint_admin: None,
+            base_fee_redirect_activation_height: Some(5),
+            mint_precompile_activation_height: None,
+        };
+
+        assert_eq!(config.base_fee_sink_for_block(4), None);
+        assert_eq!(config.base_fee_sink_for_block(5), Some(sink));
+        assert_eq!(config.base_fee_sink_for_block(10), Some(sink));
+
+        config.base_fee_redirect_activation_height = None;
+        assert_eq!(config.base_fee_sink_for_block(0), Some(sink));
     }
 
     #[test]
