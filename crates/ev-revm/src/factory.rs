@@ -488,7 +488,7 @@ mod tests {
             .expect("pre-activation call executes");
         let state: EvmState = result_before.state;
         assert!(
-            state.get(&mintee).is_none(),
+            !state.contains_key(&mintee),
             "precompile must not mint before activation height"
         );
 
