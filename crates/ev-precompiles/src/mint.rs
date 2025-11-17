@@ -55,7 +55,7 @@ impl MintPrecompile {
         internals: &mut EvmInternals<'_>,
         addr: Address,
     ) -> Result<(), PrecompileError> {
-        let mut account = internals
+        let account = internals
             .load_account(addr)
             .map_err(Self::map_internals_error)?;
 
@@ -63,10 +63,9 @@ impl MintPrecompile {
             if addr == MINT_PRECOMPILE_ADDR {
                 // Ensure the mint precompile account is treated as non-empty so state pruning
                 // does not wipe out its storage between blocks.
-                account.info.set_code(Self::bytecode().clone());
-                account.info.set_nonce(1);
+                internals.set_code(addr, Self::bytecode().clone());
+                internals.nonce_bump_journal_entry(addr);
             }
-            account.mark_created();
             internals.touch_account(addr);
         }
 
@@ -78,15 +77,17 @@ impl MintPrecompile {
         addr: Address,
         amount: U256,
     ) -> Result<(), PrecompileError> {
-        let mut account = internals
+        let account = internals
             .load_account(addr)
             .map_err(Self::map_internals_error)?;
-        let new_balance = account
+        account
             .info
             .balance
             .checked_add(amount)
             .ok_or_else(|| PrecompileError::Other("balance overflow".to_string()))?;
-        account.info.set_balance(new_balance);
+        internals
+            .balance_incr(addr, amount)
+            .map_err(Self::map_internals_error)?;
         Ok(())
     }
 
@@ -95,7 +96,7 @@ impl MintPrecompile {
         addr: Address,
         amount: U256,
     ) -> Result<(), PrecompileError> {
-        let mut account = internals
+        let account = internals
             .load_account(addr)
             .map_err(Self::map_internals_error)?;
         let new_balance = account
@@ -103,7 +104,9 @@ impl MintPrecompile {
             .balance
             .checked_sub(amount)
             .ok_or_else(|| PrecompileError::Other("insufficient balance".to_string()))?;
-        account.info.set_balance(new_balance);
+        internals
+            .set_balance(addr, new_balance)
+            .map_err(Self::map_internals_error)?;
         Ok(())
     }
 
@@ -329,10 +332,6 @@ mod tests {
         assert!(
             account.is_touched(),
             "recipient account should be marked touched"
-        );
-        assert!(
-            account.is_created(),
-            "recipient account should be marked created"
         );
     }
 
