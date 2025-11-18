@@ -18,7 +18,9 @@
     "terminalTotalDifficultyPassed": true,
     "evolve": {
       "baseFeeSink": "0x00000000000000000000000000000000000000fe",
-      "baseFeeRedirectActivationHeight": 0
+      "baseFeeRedirectActivationHeight": 0,
+      "mintPrecompileAdmin": "0x0000000000000000000000000000000000000000",
+      "mintPrecompileActivationHeight": 0
     }
   },
   "difficulty": "0x1",
