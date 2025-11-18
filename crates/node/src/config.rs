@@ -6,10 +6,10 @@ use serde::{Deserialize, Serialize};
 struct ChainspecEvolveConfig {
     #[serde(default, rename = "baseFeeSink")]
     pub base_fee_sink: Option<Address>,
-    #[serde(default, rename = "mintAdmin")]
-    pub mint_admin: Option<Address>,
     #[serde(default, rename = "baseFeeRedirectActivationHeight")]
     pub base_fee_redirect_activation_height: Option<u64>,
+    #[serde(default, rename = "mintAdmin")]
+    pub mint_admin: Option<Address>,
     #[serde(default, rename = "mintPrecompileActivationHeight")]
     pub mint_precompile_activation_height: Option<u64>,
 }
@@ -20,12 +20,12 @@ pub struct EvolvePayloadBuilderConfig {
     /// Optional chainspec-configured recipient for redirected base fees.
     #[serde(default)]
     pub base_fee_sink: Option<Address>,
-    /// Optional mint precompile admin address sourced from the chainspec.
-    #[serde(default)]
-    pub mint_admin: Option<Address>,
     /// Optional activation height for base-fee redirect; defaults to 0 when sink set.
     #[serde(default)]
     pub base_fee_redirect_activation_height: Option<u64>,
+    /// Optional mint precompile admin address sourced from the chainspec.
+    #[serde(default)]
+    pub mint_admin: Option<Address>,
     /// Optional activation height for mint precompile; defaults to 0 when admin set.
     #[serde(default)]
     pub mint_precompile_activation_height: Option<u64>,
