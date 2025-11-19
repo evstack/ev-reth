@@ -1,8 +1,12 @@
-name: CI
+name: Contracts CI
 
 on:
   push:
+    paths:
+      - 'contracts/**'
   pull_request:
+    paths:
+      - 'contracts/**'
   workflow_dispatch:
 
 env:
@@ -12,6 +16,9 @@ jobs:
   check:
     name: Foundry project
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contracts
     steps:
       - uses: actions/checkout@v4
         with:
