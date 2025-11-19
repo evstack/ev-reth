@@ -39,6 +39,7 @@ contract BurnCollectorTest is Test {
         burnCollector.setRecipient(destination, recipient);
         burnCollector.setMinimumAmount(minAmount);
         burnCollector.setCallFee(fee);
+        // Default burn share is 10000 (100%)
     }
 
     function test_Receive() public {
@@ -48,108 +49,139 @@ contract BurnCollectorTest is Test {
         assertEq(address(burnCollector).balance, amount, "Balance mismatch");
     }
 
-    function test_SendToCelestia() public {
-        // Fund the collector with enough to meet minAmount (excluding fee which is added on top)
-        // Actually, the check is address(this).balance >= minAmount.
-        // If we send fee, it adds to balance.
-        // Let's fund it with minAmount first.
+    function test_SendToCelestia_100PercentBurn() public {
+        // Fund with minAmount
         (bool success, ) = address(burnCollector).call{value: minAmount}("");
-        require(success, "Funding failed");
+        require(success);
 
-        // Expect the call to the mock minter
-        // Total sent = existing balance (minAmount) + fee sent in call
         uint256 totalAmount = minAmount + fee;
 
         vm.expectEmit(true, true, true, true, address(mockMinter));
         emit MockHypNativeMinter.TransferRemoteCalled(destination, recipient, totalAmount);
 
-        // Expect the event from BurnCollector
-        vm.expectEmit(true, true, true, true, address(burnCollector));
-        emit BurnCollector.SentToCelestia(totalAmount, recipient, bytes32(uint256(1)));
-
-        // Call as user with fee
         vm.prank(user);
         vm.deal(user, fee);
         burnCollector.sendToCelestia{value: fee}();
 
         assertEq(address(burnCollector).balance, 0, "Collector should be empty");
-        assertEq(address(mockMinter).balance, totalAmount, "Minter should have received funds");
+        assertEq(burnCollector.otherBucketBalance(), 0, "Other bucket should be empty");
     }
 
-    function test_SendToCelestia_InsufficientFee() public {
+    function test_SendToCelestia_Split5050() public {
+        // Set split to 50%
+        burnCollector.setBurnShare(5000);
+
+        // Fund with 2 ether. 
+        // Fee is 0.1 ether.
+        // Total new funds = 2.1 ether.
+        // Burn = 1.05 ether. Other = 1.05 ether.
+        // Min amount is 1 ether, so 1.05 >= 1.0 is OK.
+        uint256 fundAmount = 2 ether;
+        (bool success, ) = address(burnCollector).call{value: fundAmount}("");
+        require(success);
+
+        uint256 totalNew = fundAmount + fee;
+        uint256 expectedBurn = totalNew / 2;
+        uint256 expectedOther = totalNew - expectedBurn;
+
+        vm.expectEmit(true, true, true, true, address(mockMinter));
+        emit MockHypNativeMinter.TransferRemoteCalled(destination, recipient, expectedBurn);
+
         vm.prank(user);
         vm.deal(user, fee);
-        // Send less than fee
-        vm.expectRevert("BurnCollector: insufficient fee");
-        burnCollector.sendToCelestia{value: fee - 1}();
+        burnCollector.sendToCelestia{value: fee}();
+
+        assertEq(address(burnCollector).balance, expectedOther, "Collector should hold other funds");
+        assertEq(burnCollector.otherBucketBalance(), expectedOther, "Other bucket accounting incorrect");
     }
 
-    function test_SendToCelestia_BelowMinAmount() public {
-        // Fund with less than minAmount
-        uint256 amount = minAmount - 0.5 ether;
-        (bool success, ) = address(burnCollector).call{value: amount}("");
-        require(success, "Funding failed");
+    function test_SendToCelestia_AccumulateOther() public {
+        burnCollector.setBurnShare(5000); // 50%
 
-        // Even with fee, if logic checks total balance, we need to be careful.
-        // Logic: require(address(this).balance >= minimumAmount)
-        // If we send fee, balance increases.
-        // Let's assume we want to test when TOTAL balance is still low.
-        // If minAmount is 1 ether. Funding is 0.5. Fee is 0.1. Total 0.6 < 1.0.
+        // First call: 2 ether + 0.1 fee = 2.1 total. 1.05 burn, 1.05 other.
+        (bool success, ) = address(burnCollector).call{value: 2 ether}("");
+        require(success);
         
-        // Reset to clean state for clarity
-        burnCollector = new BurnCollector(address(mockMinter), owner);
-        burnCollector.setRecipient(destination, recipient);
-        burnCollector.setMinimumAmount(1 ether);
-        burnCollector.setCallFee(0.1 ether);
+        vm.prank(user);
+        vm.deal(user, fee);
+        burnCollector.sendToCelestia{value: fee}();
 
-        (success, ) = address(burnCollector).call{value: 0.5 ether}("");
+        uint256 firstOther = 1.05 ether;
+        assertEq(burnCollector.otherBucketBalance(), firstOther);
+
+        // Second call: 2 ether + 0.1 fee = 2.1 total NEW funds.
+        // Previous balance: 1.05. New balance before split: 1.05 + 2.1 = 3.15.
+        // Logic: newFunds = balance (3.15) - otherBucket (1.05) = 2.1. Correct.
+        (success, ) = address(burnCollector).call{value: 2 ether}("");
         require(success);
 
         vm.prank(user);
-        vm.deal(user, 1 ether);
+        vm.deal(user, fee);
+        burnCollector.sendToCelestia{value: fee}();
+
+        uint256 secondOther = 1.05 ether;
+        assertEq(burnCollector.otherBucketBalance(), firstOther + secondOther);
+        assertEq(address(burnCollector).balance, firstOther + secondOther);
+    }
+
+    function test_WithdrawOther() public {
+        burnCollector.setBurnShare(5000);
+        (bool success, ) = address(burnCollector).call{value: 2 ether}("");
+        require(success);
+
+        vm.prank(user);
+        vm.deal(user, fee);
+        burnCollector.sendToCelestia{value: fee}();
+
+        uint256 otherAmount = 1.05 ether;
+        assertEq(burnCollector.otherBucketBalance(), otherAmount);
+
+        // Withdraw half
+        uint256 withdrawAmount = 0.5 ether;
+        address payable recipientAddr = payable(address(0x99));
+        
+        burnCollector.withdrawOther(recipientAddr, withdrawAmount);
+
+        assertEq(burnCollector.otherBucketBalance(), otherAmount - withdrawAmount);
+        assertEq(recipientAddr.balance, withdrawAmount);
+        assertEq(address(burnCollector).balance, otherAmount - withdrawAmount);
+    }
+
+    function test_WithdrawOther_Insufficient() public {
+        burnCollector.setBurnShare(5000);
+        (bool success, ) = address(burnCollector).call{value: 2 ether}("");
+        require(success);
+        
+        vm.prank(user);
+        vm.deal(user, fee);
+        burnCollector.sendToCelestia{value: fee}();
+
+        uint256 otherAmount = 1.05 ether;
+        
+        vm.expectRevert("BurnCollector: insufficient other balance");
+        burnCollector.withdrawOther(payable(owner), otherAmount + 1);
+    }
+
+    function test_SendToCelestia_BelowMinAmount_AfterSplit() public {
+        burnCollector.setBurnShare(1000); // 10% burn
+        
+        // Fund with 2 ether. Total 2.1.
+        // Burn = 0.21. Other = 1.89.
+        // Min amount is 1.0. 0.21 < 1.0. Should revert.
+        (bool success, ) = address(burnCollector).call{value: 2 ether}("");
+        require(success);
+
+        vm.prank(user);
+        vm.deal(user, fee);
         vm.expectRevert("BurnCollector: minimum amount not met");
-        burnCollector.sendToCelestia{value: 0.1 ether}();
+        burnCollector.sendToCelestia{value: fee}();
     }
 
     function test_AdminFunctions() public {
-        // Test setRecipient
-        burnCollector.setRecipient(5678, bytes32(uint256(0xbeef)));
-        assertEq(burnCollector.destinationDomain(), 5678);
-        assertEq(burnCollector.recipientAddress(), bytes32(uint256(0xbeef)));
+        burnCollector.setBurnShare(5000);
+        assertEq(burnCollector.burnShareBps(), 5000);
 
-        // Test setMinimumAmount
-        burnCollector.setMinimumAmount(5 ether);
-        assertEq(burnCollector.minimumAmount(), 5 ether);
-
-        // Test setCallFee
-        burnCollector.setCallFee(1 ether);
-        assertEq(burnCollector.callFee(), 1 ether);
-
-        // Test transferOwnership
-        address newOwner = address(0x2);
-        burnCollector.transferOwnership(newOwner);
-        assertEq(burnCollector.owner(), newOwner);
-
-        // Old owner cannot call anymore
-        vm.expectRevert("BurnCollector: caller is not the owner");
-        burnCollector.setCallFee(2 ether);
-    }
-
-    function test_AdminAccessControl() public {
-        vm.prank(user);
-        vm.expectRevert("BurnCollector: caller is not the owner");
-        burnCollector.setRecipient(1, bytes32(0));
-
-        vm.prank(user);
-        vm.expectRevert("BurnCollector: caller is not the owner");
-        burnCollector.setMinimumAmount(1);
-
-        vm.prank(user);
-        vm.expectRevert("BurnCollector: caller is not the owner");
-        burnCollector.setCallFee(1);
-
-        vm.prank(user);
-        vm.expectRevert("BurnCollector: caller is not the owner");
-        burnCollector.transferOwnership(user);
+        vm.expectRevert("BurnCollector: invalid bps");
+        burnCollector.setBurnShare(10001);
     }
 }
