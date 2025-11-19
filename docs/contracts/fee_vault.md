@@ -1,7 +1,7 @@
-# BurnCollector Design & Use Case
+# FeeVault Design & Use Case
 
 ## Overview
-The `BurnCollector` is a specialized smart contract designed to accumulate native tokens (ETH or gas tokens) and periodically bridge them to a specific destination chain (e.g., Celestia) via the Hyperlane protocol.
+The `FeeVault` is a specialized smart contract designed to accumulate native tokens (ETH or gas tokens) and periodically bridge them to a specific destination chain (e.g., Celestia) via the Hyperlane protocol.
 
 ## Use Case
 This contract serves as a **fee sink** and **bridging mechanism** for a rollup or chain that wants to redirect collected fees (e.g., EIP-1559 base fees) to another ecosystem.
@@ -26,8 +26,8 @@ This contract serves as a **fee sink** and **bridging mechanism** for a rollup o
 ## Workflow
 
 1. **Accumulation Phase**:
-   - Block producers/Execution layer sends base fees to `BurnCollector`.
-   - Users/Contracts send ETH to `BurnCollector`.
+   - Block producers/Execution layer sends base fees to `FeeVault`.
+   - Users/Contracts send ETH to `FeeVault`.
 
 2. **Trigger Phase**:
    - A keeper or user notices the balance exceeds `minimumAmount`.

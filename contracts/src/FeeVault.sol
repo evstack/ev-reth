@@ -9,7 +9,7 @@ interface IHypNativeMinter {
     ) external payable returns (bytes32 messageId);
 }
 
-contract BurnCollector {
+contract FeeVault {
     IHypNativeMinter public immutable hypNativeMinter;
 
     address public owner;
@@ -32,7 +32,7 @@ contract BurnCollector {
     event FundsSplit(uint256 totalNew, uint256 burnAmount, uint256 otherAmount);
 
     modifier onlyOwner() {
-        require(msg.sender == owner, "BurnCollector: caller is not the owner");
+        require(msg.sender == owner, "FeeVault: caller is not the owner");
         _;
     }
 
@@ -46,12 +46,12 @@ contract BurnCollector {
     receive() external payable {}
 
     function sendToCelestia() external payable {
-        require(msg.value >= callFee, "BurnCollector: insufficient fee");
+        require(msg.value >= callFee, "FeeVault: insufficient fee");
         
         // Calculate new funds available for splitting
         // Total Balance - Already Allocated to Other Bucket
         uint256 currentBalance = address(this).balance;
-        require(currentBalance >= otherBucketBalance, "BurnCollector: accounting error");
+        require(currentBalance >= otherBucketBalance, "FeeVault: accounting error");
         
         uint256 newFunds = currentBalance - otherBucketBalance;
         
@@ -59,7 +59,7 @@ contract BurnCollector {
         uint256 burnAmount = (newFunds * burnShareBps) / 10000;
         uint256 otherAmount = newFunds - burnAmount;
 
-        require(burnAmount >= minimumAmount, "BurnCollector: minimum amount not met");
+        require(burnAmount >= minimumAmount, "FeeVault: minimum amount not met");
 
         // Update accounting
         otherBucketBalance += otherAmount;
@@ -78,7 +78,7 @@ contract BurnCollector {
     // Admin functions
 
     function transferOwnership(address newOwner) external onlyOwner {
-        require(newOwner != address(0), "BurnCollector: new owner is the zero address");
+        require(newOwner != address(0), "FeeVault: new owner is the zero address");
         emit OwnershipTransferred(owner, newOwner);
         owner = newOwner;
     }
@@ -100,17 +100,17 @@ contract BurnCollector {
     }
 
     function setBurnShare(uint256 _burnShareBps) external onlyOwner {
-        require(_burnShareBps <= 10000, "BurnCollector: invalid bps");
+        require(_burnShareBps <= 10000, "FeeVault: invalid bps");
         burnShareBps = _burnShareBps;
         emit BurnShareUpdated(_burnShareBps);
     }
 
     function withdrawOther(address payable _recipient, uint256 _amount) external onlyOwner {
-        require(_amount <= otherBucketBalance, "BurnCollector: insufficient other balance");
+        require(_amount <= otherBucketBalance, "FeeVault: insufficient other balance");
         otherBucketBalance -= _amount;
         
         (bool success, ) = _recipient.call{value: _amount}("");
-        require(success, "BurnCollector: transfer failed");
+        require(success, "FeeVault: transfer failed");
         
         emit OtherWithdrawn(_recipient, _amount);
     }
