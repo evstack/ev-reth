@@ -23,6 +23,7 @@ contract FeeVaultTest is Test {
     MockHypNativeMinter public mockMinter;
     address public owner;
     address public user;
+    address public otherRecipient;
 
     uint32 public destination = 1234;
     bytes32 public recipient = bytes32(uint256(0xdeadbeef));
@@ -32,6 +33,7 @@ contract FeeVaultTest is Test {
     function setUp() public {
         owner = address(this);
         user = address(0x1);
+        otherRecipient = address(0x99);
         mockMinter = new MockHypNativeMinter();
         feeVault = new FeeVault(address(mockMinter), owner);
 
@@ -39,7 +41,8 @@ contract FeeVaultTest is Test {
         feeVault.setRecipient(destination, recipient);
         feeVault.setMinimumAmount(minAmount);
         feeVault.setCallFee(fee);
-        // Default burn share is 10000 (100%)
+        feeVault.setOtherRecipient(otherRecipient);
+        // Default bridge share is 10000 (100%)
     }
 
     function test_Receive() public {
@@ -49,7 +52,7 @@ contract FeeVaultTest is Test {
         assertEq(address(feeVault).balance, amount, "Balance mismatch");
     }
 
-    function test_SendToCelestia_100PercentBurn() public {
+    function test_SendToCelestia_100PercentBridge() public {
         // Fund with minAmount
         (bool success, ) = address(feeVault).call{value: minAmount}("");
         require(success);
@@ -68,102 +71,34 @@ contract FeeVaultTest is Test {
         feeVault.sendToCelestia{value: fee}();
 
         assertEq(address(feeVault).balance, 0, "Collector should be empty");
-        assertEq(feeVault.otherBucketBalance(), 0, "Other bucket should be empty");
     }
 
     function test_SendToCelestia_Split5050() public {
         // Set split to 50%
-        feeVault.setBurnShare(5000);
+        feeVault.setBridgeShare(5000);
 
         // Fund with 2 ether. 
         // Fee is 0.1 ether.
         // Total new funds = 2.1 ether.
-        // Burn = 1.05 ether. Other = 1.05 ether.
+        // Bridge = 1.05 ether. Other = 1.05 ether.
         // Min amount is 1 ether, so 1.05 >= 1.0 is OK.
         uint256 fundAmount = 2 ether;
         (bool success, ) = address(feeVault).call{value: fundAmount}("");
         require(success);
 
         uint256 totalNew = fundAmount + fee;
-        uint256 expectedBurn = totalNew / 2;
-        uint256 expectedOther = totalNew - expectedBurn;
+        uint256 expectedBridge = totalNew / 2;
+        uint256 expectedOther = totalNew - expectedBridge;
 
         vm.expectEmit(true, true, true, true, address(mockMinter));
-        emit MockHypNativeMinter.TransferRemoteCalled(destination, recipient, expectedBurn);
+        emit MockHypNativeMinter.TransferRemoteCalled(destination, recipient, expectedBridge);
 
         vm.prank(user);
         vm.deal(user, fee);
         feeVault.sendToCelestia{value: fee}();
 
-        assertEq(address(feeVault).balance, expectedOther, "Collector should hold other funds");
-        assertEq(feeVault.otherBucketBalance(), expectedOther, "Other bucket accounting incorrect");
-    }
-
-    function test_SendToCelestia_AccumulateOther() public {
-        feeVault.setBurnShare(5000); // 50%
-
-        // First call: 2 ether + 0.1 fee = 2.1 total. 1.05 burn, 1.05 other.
-        (bool success, ) = address(feeVault).call{value: 2 ether}("");
-        require(success);
-        
-        vm.prank(user);
-        vm.deal(user, fee);
-        feeVault.sendToCelestia{value: fee}();
-
-        uint256 firstOther = 1.05 ether;
-        assertEq(feeVault.otherBucketBalance(), firstOther);
-
-        // Second call: 2 ether + 0.1 fee = 2.1 total NEW funds.
-        // Previous balance: 1.05. New balance before split: 1.05 + 2.1 = 3.15.
-        // Logic: newFunds = balance (3.15) - otherBucket (1.05) = 2.1. Correct.
-        (success, ) = address(feeVault).call{value: 2 ether}("");
-        require(success);
-
-        vm.prank(user);
-        vm.deal(user, fee);
-        feeVault.sendToCelestia{value: fee}();
-
-        uint256 secondOther = 1.05 ether;
-        assertEq(feeVault.otherBucketBalance(), firstOther + secondOther);
-        assertEq(address(feeVault).balance, firstOther + secondOther);
-    }
-
-    function test_WithdrawOther() public {
-        feeVault.setBurnShare(5000);
-        (bool success, ) = address(feeVault).call{value: 2 ether}("");
-        require(success);
-
-        vm.prank(user);
-        vm.deal(user, fee);
-        feeVault.sendToCelestia{value: fee}();
-
-        uint256 otherAmount = 1.05 ether;
-        assertEq(feeVault.otherBucketBalance(), otherAmount);
-
-        // Withdraw half
-        uint256 withdrawAmount = 0.5 ether;
-        address payable recipientAddr = payable(address(0x99));
-        
-        feeVault.withdrawOther(recipientAddr, withdrawAmount);
-
-        assertEq(feeVault.otherBucketBalance(), otherAmount - withdrawAmount);
-        assertEq(recipientAddr.balance, withdrawAmount);
-        assertEq(address(feeVault).balance, otherAmount - withdrawAmount);
-    }
-
-    function test_WithdrawOther_Insufficient() public {
-        feeVault.setBurnShare(5000);
-        (bool success, ) = address(feeVault).call{value: 2 ether}("");
-        require(success);
-        
-        vm.prank(user);
-        vm.deal(user, fee);
-        feeVault.sendToCelestia{value: fee}();
-
-        uint256 otherAmount = 1.05 ether;
-        
-        vm.expectRevert("FeeVault: insufficient other balance");
-        feeVault.withdrawOther(payable(owner), otherAmount + 1);
+        assertEq(address(feeVault).balance, 0, "Collector should be empty");
+        assertEq(otherRecipient.balance, expectedOther, "Other recipient should receive funds");
     }
 
     function test_SendToCelestia_InsufficientFee() public {
@@ -175,10 +110,10 @@ contract FeeVaultTest is Test {
     }
 
     function test_SendToCelestia_BelowMinAmount_AfterSplit() public {
-        feeVault.setBurnShare(1000); // 10% burn
+        feeVault.setBridgeShare(1000); // 10% bridge
         
         // Fund with 2 ether. Total 2.1.
-        // Burn = 0.21. Other = 1.89.
+        // Bridge = 0.21. Other = 1.89.
         // Min amount is 1.0. 0.21 < 1.0. Should revert.
         (bool success, ) = address(feeVault).call{value: 2 ether}("");
         require(success);
@@ -212,14 +147,20 @@ contract FeeVaultTest is Test {
         vm.expectRevert("FeeVault: caller is not the owner");
         feeVault.setCallFee(2 ether);
 
-        // Test setBurnShare
+        // Test setBridgeShare
         vm.prank(newOwner);
-        feeVault.setBurnShare(5000);
-        assertEq(feeVault.burnShareBps(), 5000);
+        feeVault.setBridgeShare(5000);
+        assertEq(feeVault.bridgeShareBps(), 5000);
 
         vm.prank(newOwner);
         vm.expectRevert("FeeVault: invalid bps");
-        feeVault.setBurnShare(10001);
+        feeVault.setBridgeShare(10001);
+
+        // Test setOtherRecipient
+        vm.prank(newOwner);
+        address newOther = address(0x88);
+        feeVault.setOtherRecipient(newOther);
+        assertEq(feeVault.otherRecipient(), newOther);
     }
 
     function test_AdminAccessControl() public {
@@ -241,10 +182,10 @@ contract FeeVaultTest is Test {
 
         vm.prank(user);
         vm.expectRevert("FeeVault: caller is not the owner");
-        feeVault.setBurnShare(5000);
+        feeVault.setBridgeShare(5000);
 
         vm.prank(user);
         vm.expectRevert("FeeVault: caller is not the owner");
-        feeVault.withdrawOther(payable(user), 1);
+        feeVault.setOtherRecipient(user);
     }
 }

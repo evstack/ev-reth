@@ -19,17 +19,17 @@ contract FeeVault {
     uint256 public callFee;
 
     // Split accounting
-    uint256 public otherBucketBalance;
-    uint256 public burnShareBps; // Basis points (0-10000) for burn share
+    address public otherRecipient;
+    uint256 public bridgeShareBps; // Basis points (0-10000) for bridge share
 
     event SentToCelestia(uint256 amount, bytes32 recipient, bytes32 messageId);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
     event RecipientUpdated(uint32 destinationDomain, bytes32 recipientAddress);
     event MinimumAmountUpdated(uint256 minimumAmount);
     event CallFeeUpdated(uint256 callFee);
-    event BurnShareUpdated(uint256 burnShareBps);
-    event OtherWithdrawn(address indexed recipient, uint256 amount);
-    event FundsSplit(uint256 totalNew, uint256 burnAmount, uint256 otherAmount);
+    event BridgeShareUpdated(uint256 bridgeShareBps);
+    event OtherRecipientUpdated(address otherRecipient);
+    event FundsSplit(uint256 totalNew, uint256 bridgeAmount, uint256 otherAmount);
 
     modifier onlyOwner() {
         require(msg.sender == owner, "FeeVault: caller is not the owner");
@@ -39,7 +39,7 @@ contract FeeVault {
     constructor(address _hypNativeMinter, address _owner) {
         hypNativeMinter = IHypNativeMinter(_hypNativeMinter);
         owner = _owner;
-        burnShareBps = 10000; // Default to 100% burn
+        bridgeShareBps = 10000; // Default to 100% bridge
         emit OwnershipTransferred(address(0), _owner);
     }
 
@@ -48,31 +48,31 @@ contract FeeVault {
     function sendToCelestia() external payable {
         require(msg.value >= callFee, "FeeVault: insufficient fee");
         
-        // Calculate new funds available for splitting
-        // Total Balance - Already Allocated to Other Bucket
         uint256 currentBalance = address(this).balance;
-        require(currentBalance >= otherBucketBalance, "FeeVault: accounting error");
-        
-        uint256 newFunds = currentBalance - otherBucketBalance;
         
         // Calculate split
-        uint256 burnAmount = (newFunds * burnShareBps) / 10000;
-        uint256 otherAmount = newFunds - burnAmount;
+        uint256 bridgeAmount = (currentBalance * bridgeShareBps) / 10000;
+        uint256 otherAmount = currentBalance - bridgeAmount;
 
-        require(burnAmount >= minimumAmount, "FeeVault: minimum amount not met");
+        require(bridgeAmount >= minimumAmount, "FeeVault: minimum amount not met");
 
-        // Update accounting
-        otherBucketBalance += otherAmount;
-        emit FundsSplit(newFunds, burnAmount, otherAmount);
+        emit FundsSplit(currentBalance, bridgeAmount, otherAmount);
 
-        // Bridge the burn amount
-        bytes32 messageId = hypNativeMinter.transferRemote{value: burnAmount}(
+        // Send other amount if any
+        if (otherAmount > 0) {
+            require(otherRecipient != address(0), "FeeVault: other recipient not set");
+            (bool success, ) = otherRecipient.call{value: otherAmount}("");
+            require(success, "FeeVault: transfer failed");
+        }
+
+        // Bridge the bridge amount
+        bytes32 messageId = hypNativeMinter.transferRemote{value: bridgeAmount}(
             destinationDomain,
             recipientAddress,
-            burnAmount
+            bridgeAmount
         );
 
-        emit SentToCelestia(burnAmount, recipientAddress, messageId);
+        emit SentToCelestia(bridgeAmount, recipientAddress, messageId);
     }
 
     // Admin functions
@@ -99,19 +99,15 @@ contract FeeVault {
         emit CallFeeUpdated(_callFee);
     }
 
-    function setBurnShare(uint256 _burnShareBps) external onlyOwner {
-        require(_burnShareBps <= 10000, "FeeVault: invalid bps");
-        burnShareBps = _burnShareBps;
-        emit BurnShareUpdated(_burnShareBps);
+    function setBridgeShare(uint256 _bridgeShareBps) external onlyOwner {
+        require(_bridgeShareBps <= 10000, "FeeVault: invalid bps");
+        bridgeShareBps = _bridgeShareBps;
+        emit BridgeShareUpdated(_bridgeShareBps);
     }
 
-    function withdrawOther(address payable _recipient, uint256 _amount) external onlyOwner {
-        require(_amount <= otherBucketBalance, "FeeVault: insufficient other balance");
-        otherBucketBalance -= _amount;
-        
-        (bool success, ) = _recipient.call{value: _amount}("");
-        require(success, "FeeVault: transfer failed");
-        
-        emit OtherWithdrawn(_recipient, _amount);
+    function setOtherRecipient(address _otherRecipient) external onlyOwner {
+        require(_otherRecipient != address(0), "FeeVault: zero address");
+        otherRecipient = _otherRecipient;
+        emit OtherRecipientUpdated(_otherRecipient);
     }
 }
