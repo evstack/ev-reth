@@ -7,11 +7,11 @@ import {FeeVault} from "../src/FeeVault.sol";
 contract MockHypNativeMinter {
     event TransferRemoteCalled(uint32 destination, bytes32 recipient, uint256 amount);
 
-    function transferRemote(
-        uint32 _destination,
-        bytes32 _recipient,
-        uint256 _amount
-    ) external payable returns (bytes32 messageId) {
+    function transferRemote(uint32 _destination, bytes32 _recipient, uint256 _amount)
+        external
+        payable
+        returns (bytes32 messageId)
+    {
         require(msg.value == _amount, "MockHypNativeMinter: value mismatch");
         emit TransferRemoteCalled(_destination, _recipient, _amount);
         return bytes32(uint256(1)); // Return a dummy messageId
@@ -47,14 +47,14 @@ contract FeeVaultTest is Test {
 
     function test_Receive() public {
         uint256 amount = 1 ether;
-        (bool success, ) = address(feeVault).call{value: amount}("");
+        (bool success,) = address(feeVault).call{value: amount}("");
         assertTrue(success, "Transfer failed");
         assertEq(address(feeVault).balance, amount, "Balance mismatch");
     }
 
     function test_SendToCelestia_100PercentBridge() public {
         // Fund with minAmount
-        (bool success, ) = address(feeVault).call{value: minAmount}("");
+        (bool success,) = address(feeVault).call{value: minAmount}("");
         require(success);
 
         uint256 totalAmount = minAmount + fee;
@@ -77,13 +77,13 @@ contract FeeVaultTest is Test {
         // Set split to 50%
         feeVault.setBridgeShare(5000);
 
-        // Fund with 2 ether. 
+        // Fund with 2 ether.
         // Fee is 0.1 ether.
         // Total new funds = 2.1 ether.
         // Bridge = 1.05 ether. Other = 1.05 ether.
         // Min amount is 1 ether, so 1.05 >= 1.0 is OK.
         uint256 fundAmount = 2 ether;
-        (bool success, ) = address(feeVault).call{value: fundAmount}("");
+        (bool success,) = address(feeVault).call{value: fundAmount}("");
         require(success);
 
         uint256 totalNew = fundAmount + fee;
@@ -111,11 +111,11 @@ contract FeeVaultTest is Test {
 
     function test_SendToCelestia_BelowMinAmount_AfterSplit() public {
         feeVault.setBridgeShare(1000); // 10% bridge
-        
+
         // Fund with 2 ether. Total 2.1.
         // Bridge = 0.21. Other = 1.89.
         // Min amount is 1.0. 0.21 < 1.0. Should revert.
-        (bool success, ) = address(feeVault).call{value: 2 ether}("");
+        (bool success,) = address(feeVault).call{value: 2 ether}("");
         require(success);
 
         vm.prank(user);

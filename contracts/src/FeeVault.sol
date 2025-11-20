@@ -2,11 +2,10 @@
 pragma solidity ^0.8.24;
 
 interface IHypNativeMinter {
-    function transferRemote(
-        uint32 _destination,
-        bytes32 _recipient,
-        uint256 _amount
-    ) external payable returns (bytes32 messageId);
+    function transferRemote(uint32 _destination, bytes32 _recipient, uint256 _amount)
+        external
+        payable
+        returns (bytes32 messageId);
 }
 
 contract FeeVault {
@@ -47,9 +46,9 @@ contract FeeVault {
 
     function sendToCelestia() external payable {
         require(msg.value >= callFee, "FeeVault: insufficient fee");
-        
+
         uint256 currentBalance = address(this).balance;
-        
+
         // Calculate split
         uint256 bridgeAmount = (currentBalance * bridgeShareBps) / 10000;
         uint256 otherAmount = currentBalance - bridgeAmount;
@@ -61,16 +60,13 @@ contract FeeVault {
         // Send other amount if any
         if (otherAmount > 0) {
             require(otherRecipient != address(0), "FeeVault: other recipient not set");
-            (bool success, ) = otherRecipient.call{value: otherAmount}("");
+            (bool success,) = otherRecipient.call{value: otherAmount}("");
             require(success, "FeeVault: transfer failed");
         }
 
         // Bridge the bridge amount
-        bytes32 messageId = hypNativeMinter.transferRemote{value: bridgeAmount}(
-            destinationDomain,
-            recipientAddress,
-            bridgeAmount
-        );
+        bytes32 messageId =
+            hypNativeMinter.transferRemote{value: bridgeAmount}(destinationDomain, recipientAddress, bridgeAmount);
 
         emit SentToCelestia(bridgeAmount, recipientAddress, messageId);
     }

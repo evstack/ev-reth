@@ -1,7 +1,7 @@
 # FeeVault Design & Use Case
 
 ## Overview
-The `FeeVault` is a specialized smart contract designed to accumulate native tokens (ETH or gas tokens) and automatically split them between bridging to a specific destination chain (e.g., Celestia) and sending to a secondary recipient.
+The `FeeVault` is a specialized smart contract designed to accumulate native tokens (gas tokens) and automatically split them between bridging to a specific destination chain (e.g., Celestia) and sending to a secondary recipient.
 
 ## Use Case
 This contract serves as a **fee sink** and **bridging mechanism** for a rollup or chain that wants to redirect collected fees (e.g., EIP-1559 base fees) to another ecosystem while retaining a portion for other purposes (e.g., developer rewards, treasury).
