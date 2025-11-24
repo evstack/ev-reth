@@ -27,7 +27,7 @@ jobs:
       packages: write
       contents: read
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Install build dependencies
         run: |
           sudo apt-get update
