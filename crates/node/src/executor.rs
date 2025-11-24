@@ -1,7 +1,9 @@
 //! Helpers to build the ev-reth executor with EV-specific hooks applied.
 
 use alloy_evm::eth::{spec::EthExecutorSpec, EthEvmFactory};
-use ev_revm::{with_ev_handler, BaseFeeRedirect, EvEvmFactory};
+use ev_revm::{
+    with_ev_handler, BaseFeeRedirect, BaseFeeRedirectSettings, EvEvmFactory, MintPrecompileSettings,
+};
 use reth_chainspec::ChainSpec;
 use reth_ethereum::{
     chainspec::EthereumHardforks,
@@ -33,20 +35,23 @@ where
     let evolve_config = EvolvePayloadBuilderConfig::from_chain_spec(chain_spec.as_ref())?;
     evolve_config.validate()?;
 
-    let redirect = evolve_config.base_fee_sink.map(|sink| {
-        info!(
-            target = "ev-reth::executor",
-            fee_sink = ?sink,
-            "Base fee redirect enabled"
-        );
-        BaseFeeRedirect::new(sink)
-    });
+    let redirect = evolve_config
+        .base_fee_redirect_settings()
+        .map(|(sink, activation)| {
+            info!(
+                target = "ev-reth::executor",
+                fee_sink = ?sink,
+                activation_height = activation,
+                "Base fee redirect enabled"
+            );
+            BaseFeeRedirectSettings::new(BaseFeeRedirect::new(sink), activation)
+        });
 
-    Ok(with_ev_handler(
-        base_config,
-        redirect,
-        evolve_config.mint_admin,
-    ))
+    let mint_precompile = evolve_config
+        .mint_precompile_settings()
+        .map(|(admin, activation)| MintPrecompileSettings::new(admin, activation));
+
+    Ok(with_ev_handler(base_config, redirect, mint_precompile))
 }
 
 /// Thin wrapper so we can plug the EV executor into the node components builder.

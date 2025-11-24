@@ -133,13 +133,17 @@ The mint admin is configured in the chain specification. See `crates/node/src/co
   "config": {
     "chainId": 1234,
     "evolve": {
-      "mintAdmin": "0x1234567890123456789012345678901234567890"
+      "mintAdmin": "0x1234567890123456789012345678901234567890",
+      "mintPrecompileActivationHeight": 0
     }
   }
 }
 ```
 
 If no mint admin is specified, the precompile is still available but will reject all calls.
+Set `mintPrecompileActivationHeight` to the block where the precompile should become callable. For
+new networks keep it at `0` so the admin is active from genesis; existing chains can use a higher
+value to stage upgrades safely.
 
 ### Allowlist Management
 

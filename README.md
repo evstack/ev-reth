@@ -223,7 +223,8 @@ Add an `evolve` stanza to your chainspec under the `config` section:
 "config": {
   ...,
   "evolve": {
-    "baseFeeSink": "0xYourRecipientAddressHere"
+    "baseFeeSink": "0xYourRecipientAddressHere",
+    "baseFeeRedirectActivationHeight": 0
   }
 }
 ```
@@ -233,13 +234,18 @@ Rebuild (or restart) the node with the updated chainspec so the payload builder 
 You can see a working example in `etc/ev-reth-genesis.json`, which routes the base fee to
 `0x00000000000000000000000000000000000000fe` by default.
 
+Set `baseFeeRedirectActivationHeight` to the block where the new behavior should begin. Leave it at
+`0` for fresh chains that enable the redirect from genesis.
+
 What it does:
+
 - Intercepts the base fee during EVM execution (via the ev-revm handler)
 - Credits `base_fee_per_gas * gas_used` to the specified recipient for each transaction
 - The redirect happens at the EVM handler level, ensuring the state root reflects the credited balance
 - This effectively "unburns" the base fee on your network (Ethereum mainnet keeps burning the base fee by protocol design)
 
 Implementation details:
+
 - Uses the `ev-revm` crate to wrap the EVM with a custom handler
 - The handler intercepts the `reward_beneficiary` hook to redirect base fees
 - No runtime environment variables are required; the chainspec carries the policy alongside other fork settings
@@ -260,10 +266,12 @@ The txpool RPC extension can be configured with:
 - `max_txpool_gas`: Maximum cumulative gas for transactions to return (default: 30,000,000)
 
 Notes:
+
 - Both limits apply together. Selection stops when either cap is reached.
 - Set a limit to `0` to disable that constraint.
 
 CLI/env overrides:
+
 - None for txpool gas. The RPC follows the current block gas automatically.
 
 ### Gas Limits: Block vs Txpool
@@ -273,6 +281,7 @@ CLI/env overrides:
 - Relationship: These limits are aligned by default. Overriding the txpool cap makes them independent again; exact packing still depends on real execution.
 
 Changing limits on a running chain:
+
 - Per-block gas: Set `gasLimit` in Engine API payload attributes to change the block’s gas limit for that payload. Subsequent payloads will default to that new parent header gas limit unless overridden again.
 - Txpool gas cap: Follows the head block’s gas limit automatically. There is no fixed-cap override; change your block gas and the RPC alignment follows.
 

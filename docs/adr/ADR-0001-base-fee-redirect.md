@@ -39,7 +39,7 @@ Integration happens in three small steps:
 2. `with_ev_handler` swaps the factory inside `EthEvmConfig` before the payload builder ever requests an executor.
 3. `EvBuilder` mirrors `MainBuilder`, allowing code that builds EVMs from contexts to opt into the wrapper with a single method change.
 
-Configuration remains opt-in: operators add an `ev_reth` block under the chainspec’s `config` section (for example, `{ "config": { ..., "ev_reth": { "baseFeeSink": "0x…" }}}`). On startup the node deserializes that block into `EvolvePayloadBuilderConfig`, converts the optional sink address into a `BaseFeeRedirect`, and hands it to `with_ev_handler`. If the field is absent or fails validation, the wrapper records `None` and the handler leaves the base-fee path untouched.
+Configuration remains opt-in: operators add an `ev_reth` block under the chainspec’s `config` section (for example, `{ "config": { ..., "ev_reth": { "baseFeeSink": "0x…", "baseFeeRedirectActivationHeight": 0 }}}`). On startup the node deserializes that block into `EvolvePayloadBuilderConfig`, converts the optional sink address plus activation height into `BaseFeeRedirectSettings`, and hands those settings to `with_ev_handler`. If either field is absent or fails validation, the wrapper records `None` and the handler leaves the base-fee path untouched, allowing networks to stage upgrades at non-zero heights while still letting fresh chains enable the redirect from genesis.
 
 ## Consequences
 
