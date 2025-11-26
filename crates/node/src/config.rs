@@ -2,6 +2,9 @@ use alloy_primitives::Address;
 use reth_chainspec::ChainSpec;
 use serde::{Deserialize, Serialize};
 
+/// Default contract size limit in bytes (128KB).
+pub const DEFAULT_CONTRACT_SIZE_LIMIT: usize = 128 * 1024;
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct ChainspecEvolveConfig {
     #[serde(default, rename = "baseFeeSink")]
@@ -12,6 +15,9 @@ struct ChainspecEvolveConfig {
     pub mint_admin: Option<Address>,
     #[serde(default, rename = "mintPrecompileActivationHeight")]
     pub mint_precompile_activation_height: Option<u64>,
+    /// Maximum contract code size in bytes. Defaults to 128KB if not specified.
+    #[serde(default, rename = "contractSizeLimit")]
+    pub contract_size_limit: Option<usize>,
 }
 
 /// Configuration for the Evolve payload builder
@@ -29,6 +35,9 @@ pub struct EvolvePayloadBuilderConfig {
     /// Optional activation height for mint precompile; defaults to 0 when admin set.
     #[serde(default)]
     pub mint_precompile_activation_height: Option<u64>,
+    /// Maximum contract code size in bytes. Defaults to 128KB.
+    #[serde(default)]
+    pub contract_size_limit: Option<usize>,
 }
 
 impl EvolvePayloadBuilderConfig {
@@ -39,6 +48,7 @@ impl EvolvePayloadBuilderConfig {
             mint_admin: None,
             base_fee_redirect_activation_height: None,
             mint_precompile_activation_height: None,
+            contract_size_limit: None,
         }
     }
 
@@ -69,8 +79,16 @@ impl EvolvePayloadBuilderConfig {
             if config.mint_admin.is_some() && config.mint_precompile_activation_height.is_none() {
                 config.mint_precompile_activation_height = Some(0);
             }
+
+            config.contract_size_limit = extras.contract_size_limit;
         }
         Ok(config)
+    }
+
+    /// Returns the contract size limit, defaulting to 128KB.
+    pub fn contract_size_limit(&self) -> usize {
+        self.contract_size_limit
+            .unwrap_or(DEFAULT_CONTRACT_SIZE_LIMIT)
     }
 
     /// Validates the configuration
@@ -272,6 +290,7 @@ mod tests {
         assert_eq!(config.mint_admin, None);
         assert_eq!(config.base_fee_redirect_activation_height, None);
         assert_eq!(config.mint_precompile_activation_height, None);
+        assert_eq!(config.contract_size_limit, None);
     }
 
     #[test]
@@ -285,6 +304,7 @@ mod tests {
             mint_admin: Some(address!("00000000000000000000000000000000000000aa")),
             base_fee_redirect_activation_height: Some(0),
             mint_precompile_activation_height: Some(0),
+            contract_size_limit: None,
         };
         assert!(config_with_sink.validate().is_ok());
     }
@@ -297,6 +317,7 @@ mod tests {
             mint_admin: None,
             base_fee_redirect_activation_height: Some(5),
             mint_precompile_activation_height: None,
+            contract_size_limit: None,
         };
 
         assert_eq!(config.base_fee_sink_for_block(4), None);
@@ -329,5 +350,42 @@ mod tests {
         let config: ChainspecEvolveConfig = serde_json::from_value(json_without_sink).unwrap();
         assert_eq!(config.base_fee_sink, None);
         assert_eq!(config.mint_admin, None);
+    }
+
+    #[test]
+    fn test_contract_size_limit_default() {
+        // Test default contract size limit (128KB)
+        let config = EvolvePayloadBuilderConfig::new();
+        assert_eq!(config.contract_size_limit, None);
+        assert_eq!(config.contract_size_limit(), DEFAULT_CONTRACT_SIZE_LIMIT);
+        assert_eq!(config.contract_size_limit(), 128 * 1024);
+    }
+
+    #[test]
+    fn test_contract_size_limit_from_chainspec() {
+        // Test contract size limit from chainspec
+        let extras = json!({
+            "contractSizeLimit": 256000
+        });
+
+        let chainspec = create_test_chainspec_with_extras(Some(extras));
+        let config = EvolvePayloadBuilderConfig::from_chain_spec(&chainspec).unwrap();
+
+        assert_eq!(config.contract_size_limit, Some(256000));
+        assert_eq!(config.contract_size_limit(), 256000);
+    }
+
+    #[test]
+    fn test_contract_size_limit_not_set_uses_default() {
+        // Test that missing contractSizeLimit uses default
+        let extras = json!({
+            "baseFeeSink": "0x0000000000000000000000000000000000000001"
+        });
+
+        let chainspec = create_test_chainspec_with_extras(Some(extras));
+        let config = EvolvePayloadBuilderConfig::from_chain_spec(&chainspec).unwrap();
+
+        assert_eq!(config.contract_size_limit, None);
+        assert_eq!(config.contract_size_limit(), DEFAULT_CONTRACT_SIZE_LIMIT);
     }
 }

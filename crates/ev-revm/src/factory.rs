@@ -79,6 +79,8 @@ pub struct EvEvmFactory<F> {
     inner: F,
     redirect: Option<BaseFeeRedirectSettings>,
     mint_precompile: Option<MintPrecompileSettings>,
+    /// Maximum contract code size in bytes. When set, overrides the default EIP-170 limit.
+    limit_contract_code_size: Option<usize>,
 }
 
 impl<F> EvEvmFactory<F> {
@@ -87,11 +89,13 @@ impl<F> EvEvmFactory<F> {
         inner: F,
         redirect: Option<BaseFeeRedirectSettings>,
         mint_precompile: Option<MintPrecompileSettings>,
+        limit_contract_code_size: Option<usize>,
     ) -> Self {
         Self {
             inner,
             redirect,
             mint_precompile,
+            limit_contract_code_size,
         }
     }
 
@@ -141,9 +145,13 @@ impl EvmFactory for EvEvmFactory<EthEvmFactory> {
     fn create_evm<DB: Database>(
         &self,
         db: DB,
-        evm_env: EvmEnv<Self::Spec, Self::BlockEnv>,
+        mut evm_env: EvmEnv<Self::Spec, Self::BlockEnv>,
     ) -> Self::Evm<DB, NoOpInspector> {
         let block_number = evm_env.block_env.number;
+        // Apply custom contract size limit if configured
+        if let Some(limit) = self.limit_contract_code_size {
+            evm_env.cfg_env.limit_contract_code_size = Some(limit);
+        }
         let inner = self.inner.create_evm(db, evm_env);
         let mut evm = EvEvm::from_inner(inner, self.redirect_for_block(block_number), false);
         {
@@ -156,10 +164,14 @@ impl EvmFactory for EvEvmFactory<EthEvmFactory> {
     fn create_evm_with_inspector<DB: Database, I: Inspector<Self::Context<DB>>>(
         &self,
         db: DB,
-        input: EvmEnv<Self::Spec, Self::BlockEnv>,
+        mut input: EvmEnv<Self::Spec, Self::BlockEnv>,
         inspector: I,
     ) -> Self::Evm<DB, I> {
         let block_number = input.block_env.number;
+        // Apply custom contract size limit if configured
+        if let Some(limit) = self.limit_contract_code_size {
+            input.cfg_env.limit_contract_code_size = Some(limit);
+        }
         let inner = self.inner.create_evm_with_inspector(db, input, inspector);
         let mut evm = EvEvm::from_inner(inner, self.redirect_for_block(block_number), true);
         {
@@ -175,13 +187,18 @@ pub fn with_ev_handler<ChainSpec>(
     config: EthEvmConfig<ChainSpec, EthEvmFactory>,
     redirect: Option<BaseFeeRedirectSettings>,
     mint_precompile: Option<MintPrecompileSettings>,
+    limit_contract_code_size: Option<usize>,
 ) -> EthEvmConfig<ChainSpec, EvEvmFactory<EthEvmFactory>> {
     let EthEvmConfig {
         executor_factory,
         block_assembler,
     } = config;
-    let wrapped_factory =
-        EvEvmFactory::new(*executor_factory.evm_factory(), redirect, mint_precompile);
+    let wrapped_factory = EvEvmFactory::new(
+        *executor_factory.evm_factory(),
+        redirect,
+        mint_precompile,
+        limit_contract_code_size,
+    );
     let new_executor_factory = EthBlockExecutorFactory::new(
         *executor_factory.receipt_builder(),
         executor_factory.spec().clone(),
@@ -264,6 +281,7 @@ mod tests {
         let mut evm = EvEvmFactory::new(
             alloy_evm::eth::EthEvmFactory::default(),
             Some(BaseFeeRedirectSettings::new(redirect, 0)),
+            None,
             None,
         )
         .create_evm(state, evm_env.clone());
@@ -355,6 +373,7 @@ mod tests {
             alloy_evm::eth::EthEvmFactory::default(),
             None,
             Some(MintPrecompileSettings::new(contract, 0)),
+            None,
         )
         .create_evm(state, evm_env);
 
@@ -394,6 +413,7 @@ mod tests {
         let factory = EvEvmFactory::new(
             alloy_evm::eth::EthEvmFactory::default(),
             Some(BaseFeeRedirectSettings::new(BaseFeeRedirect::new(sink), 5)),
+            None,
             None,
         );
 
@@ -461,6 +481,7 @@ mod tests {
             alloy_evm::eth::EthEvmFactory::default(),
             None,
             Some(MintPrecompileSettings::new(contract, 3)),
+            None,
         );
 
         let tx_env = || crate::factory::TxEnv {

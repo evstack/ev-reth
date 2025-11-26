@@ -137,7 +137,13 @@ impl EvolveTestFixture {
         let mint_precompile = config
             .mint_precompile_settings()
             .map(|(admin, activation)| MintPrecompileSettings::new(admin, activation));
-        let wrapped_evm = with_ev_handler(evm_config, base_fee_redirect, mint_precompile);
+        let contract_size_limit = Some(config.contract_size_limit());
+        let wrapped_evm = with_ev_handler(
+            evm_config,
+            base_fee_redirect,
+            mint_precompile,
+            contract_size_limit,
+        );
 
         let builder = EvolvePayloadBuilder::new(Arc::new(provider.clone()), wrapped_evm, config);
 
