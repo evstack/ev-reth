@@ -387,7 +387,10 @@ mod tests {
         assert_eq!(config.contract_size_limit, None);
         assert_eq!(config.contract_size_limit_settings(), None);
         // When no custom limit is set, use EIP-170 default for any block
-        assert_eq!(config.contract_size_limit_for_block(0), DEFAULT_CONTRACT_SIZE_LIMIT);
+        assert_eq!(
+            config.contract_size_limit_for_block(0),
+            DEFAULT_CONTRACT_SIZE_LIMIT
+        );
         assert_eq!(config.contract_size_limit_for_block(0), 24 * 1024);
     }
 
@@ -419,8 +422,14 @@ mod tests {
         let config = EvolvePayloadBuilderConfig::from_chain_spec(&chainspec).unwrap();
 
         // Before activation: use EIP-170 default
-        assert_eq!(config.contract_size_limit_for_block(0), DEFAULT_CONTRACT_SIZE_LIMIT);
-        assert_eq!(config.contract_size_limit_for_block(99), DEFAULT_CONTRACT_SIZE_LIMIT);
+        assert_eq!(
+            config.contract_size_limit_for_block(0),
+            DEFAULT_CONTRACT_SIZE_LIMIT
+        );
+        assert_eq!(
+            config.contract_size_limit_for_block(99),
+            DEFAULT_CONTRACT_SIZE_LIMIT
+        );
 
         // At and after activation: use custom limit
         assert_eq!(config.contract_size_limit_for_block(100), 131072);
@@ -457,7 +466,13 @@ mod tests {
 
         assert_eq!(config.contract_size_limit, None);
         assert_eq!(config.contract_size_limit_settings(), None);
-        assert_eq!(config.contract_size_limit_for_block(0), DEFAULT_CONTRACT_SIZE_LIMIT);
-        assert_eq!(config.contract_size_limit_for_block(1000000), DEFAULT_CONTRACT_SIZE_LIMIT);
+        assert_eq!(
+            config.contract_size_limit_for_block(0),
+            DEFAULT_CONTRACT_SIZE_LIMIT
+        );
+        assert_eq!(
+            config.contract_size_limit_for_block(1000000),
+            DEFAULT_CONTRACT_SIZE_LIMIT
+        );
     }
 }
