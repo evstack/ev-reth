@@ -104,7 +104,6 @@ pub struct EvEvmFactory<F> {
     inner: F,
     redirect: Option<BaseFeeRedirectSettings>,
     mint_precompile: Option<MintPrecompileSettings>,
-    /// Custom contract size limit with activation height.
     contract_size_limit: Option<ContractSizeLimitSettings>,
 }
 
