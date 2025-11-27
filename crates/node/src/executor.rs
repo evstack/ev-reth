@@ -2,7 +2,8 @@
 
 use alloy_evm::eth::{spec::EthExecutorSpec, EthEvmFactory};
 use ev_revm::{
-    with_ev_handler, BaseFeeRedirect, BaseFeeRedirectSettings, EvEvmFactory, MintPrecompileSettings,
+    with_ev_handler, BaseFeeRedirect, BaseFeeRedirectSettings, ContractSizeLimitSettings,
+    EvEvmFactory, MintPrecompileSettings,
 };
 use reth_chainspec::ChainSpec;
 use reth_ethereum::{
@@ -51,12 +52,17 @@ where
         .mint_precompile_settings()
         .map(|(admin, activation)| MintPrecompileSettings::new(admin, activation));
 
-    let contract_size_limit = Some(evolve_config.contract_size_limit());
-    info!(
-        target = "ev-reth::executor",
-        limit_bytes = contract_size_limit,
-        "Contract size limit configured"
-    );
+    let contract_size_limit = evolve_config
+        .contract_size_limit_settings()
+        .map(|(limit, activation)| {
+            info!(
+                target = "ev-reth::executor",
+                limit_bytes = limit,
+                activation_height = activation,
+                "Custom contract size limit enabled"
+            );
+            ContractSizeLimitSettings::new(limit, activation)
+        });
 
     Ok(with_ev_handler(
         base_config,

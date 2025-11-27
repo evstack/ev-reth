@@ -73,14 +73,39 @@ impl MintPrecompileSettings {
     }
 }
 
+/// Settings for custom contract size limit with activation height.
+#[derive(Debug, Clone, Copy)]
+pub struct ContractSizeLimitSettings {
+    limit: usize,
+    activation_height: u64,
+}
+
+impl ContractSizeLimitSettings {
+    /// Creates a new settings object.
+    pub const fn new(limit: usize, activation_height: u64) -> Self {
+        Self {
+            limit,
+            activation_height,
+        }
+    }
+
+    const fn activation_height(&self) -> u64 {
+        self.activation_height
+    }
+
+    const fn limit(&self) -> usize {
+        self.limit
+    }
+}
+
 /// Wrapper around an existing `EvmFactory` that produces [`EvEvm`] instances.
 #[derive(Debug, Clone)]
 pub struct EvEvmFactory<F> {
     inner: F,
     redirect: Option<BaseFeeRedirectSettings>,
     mint_precompile: Option<MintPrecompileSettings>,
-    /// Maximum contract code size in bytes. When set, overrides the default EIP-170 limit.
-    limit_contract_code_size: Option<usize>,
+    /// Custom contract size limit with activation height.
+    contract_size_limit: Option<ContractSizeLimitSettings>,
 }
 
 impl<F> EvEvmFactory<F> {
@@ -89,14 +114,24 @@ impl<F> EvEvmFactory<F> {
         inner: F,
         redirect: Option<BaseFeeRedirectSettings>,
         mint_precompile: Option<MintPrecompileSettings>,
-        limit_contract_code_size: Option<usize>,
+        contract_size_limit: Option<ContractSizeLimitSettings>,
     ) -> Self {
         Self {
             inner,
             redirect,
             mint_precompile,
-            limit_contract_code_size,
+            contract_size_limit,
         }
+    }
+
+    fn contract_size_limit_for_block(&self, block_number: U256) -> Option<usize> {
+        self.contract_size_limit.and_then(|settings| {
+            if block_number >= U256::from(settings.activation_height()) {
+                Some(settings.limit())
+            } else {
+                None
+            }
+        })
     }
 
     fn install_mint_precompile(&self, precompiles: &mut PrecompilesMap, block_number: U256) {
@@ -148,8 +183,8 @@ impl EvmFactory for EvEvmFactory<EthEvmFactory> {
         mut evm_env: EvmEnv<Self::Spec, Self::BlockEnv>,
     ) -> Self::Evm<DB, NoOpInspector> {
         let block_number = evm_env.block_env.number;
-        // Apply custom contract size limit if configured
-        if let Some(limit) = self.limit_contract_code_size {
+        // Apply custom contract size limit if configured and active for this block
+        if let Some(limit) = self.contract_size_limit_for_block(block_number) {
             evm_env.cfg_env.limit_contract_code_size = Some(limit);
         }
         let inner = self.inner.create_evm(db, evm_env);
@@ -168,8 +203,8 @@ impl EvmFactory for EvEvmFactory<EthEvmFactory> {
         inspector: I,
     ) -> Self::Evm<DB, I> {
         let block_number = input.block_env.number;
-        // Apply custom contract size limit if configured
-        if let Some(limit) = self.limit_contract_code_size {
+        // Apply custom contract size limit if configured and active for this block
+        if let Some(limit) = self.contract_size_limit_for_block(block_number) {
             input.cfg_env.limit_contract_code_size = Some(limit);
         }
         let inner = self.inner.create_evm_with_inspector(db, input, inspector);
@@ -187,7 +222,7 @@ pub fn with_ev_handler<ChainSpec>(
     config: EthEvmConfig<ChainSpec, EthEvmFactory>,
     redirect: Option<BaseFeeRedirectSettings>,
     mint_precompile: Option<MintPrecompileSettings>,
-    limit_contract_code_size: Option<usize>,
+    contract_size_limit: Option<ContractSizeLimitSettings>,
 ) -> EthEvmConfig<ChainSpec, EvEvmFactory<EthEvmFactory>> {
     let EthEvmConfig {
         executor_factory,
@@ -197,7 +232,7 @@ pub fn with_ev_handler<ChainSpec>(
         *executor_factory.evm_factory(),
         redirect,
         mint_precompile,
-        limit_contract_code_size,
+        contract_size_limit,
     );
     let new_executor_factory = EthBlockExecutorFactory::new(
         *executor_factory.receipt_builder(),

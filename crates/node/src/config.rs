@@ -2,8 +2,8 @@ use alloy_primitives::Address;
 use reth_chainspec::ChainSpec;
 use serde::{Deserialize, Serialize};
 
-/// Default contract size limit in bytes (128KB).
-pub const DEFAULT_CONTRACT_SIZE_LIMIT: usize = 128 * 1024;
+/// Default contract size limit in bytes (24KB per EIP-170).
+pub const DEFAULT_CONTRACT_SIZE_LIMIT: usize = 24 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct ChainspecEvolveConfig {
@@ -15,9 +15,12 @@ struct ChainspecEvolveConfig {
     pub mint_admin: Option<Address>,
     #[serde(default, rename = "mintPrecompileActivationHeight")]
     pub mint_precompile_activation_height: Option<u64>,
-    /// Maximum contract code size in bytes. Defaults to 128KB if not specified.
+    /// Maximum contract code size in bytes. Defaults to 24KB (EIP-170) if not specified.
     #[serde(default, rename = "contractSizeLimit")]
     pub contract_size_limit: Option<usize>,
+    /// Block height at which the custom contract size limit activates.
+    #[serde(default, rename = "contractSizeLimitActivationHeight")]
+    pub contract_size_limit_activation_height: Option<u64>,
 }
 
 /// Configuration for the Evolve payload builder
@@ -35,9 +38,12 @@ pub struct EvolvePayloadBuilderConfig {
     /// Optional activation height for mint precompile; defaults to 0 when admin set.
     #[serde(default)]
     pub mint_precompile_activation_height: Option<u64>,
-    /// Maximum contract code size in bytes. Defaults to 128KB.
+    /// Maximum contract code size in bytes. Defaults to 24KB (EIP-170).
     #[serde(default)]
     pub contract_size_limit: Option<usize>,
+    /// Block height at which the custom contract size limit activates.
+    #[serde(default)]
+    pub contract_size_limit_activation_height: Option<u64>,
 }
 
 impl EvolvePayloadBuilderConfig {
@@ -49,6 +55,7 @@ impl EvolvePayloadBuilderConfig {
             base_fee_redirect_activation_height: None,
             mint_precompile_activation_height: None,
             contract_size_limit: None,
+            contract_size_limit_activation_height: None,
         }
     }
 
@@ -81,13 +88,32 @@ impl EvolvePayloadBuilderConfig {
             }
 
             config.contract_size_limit = extras.contract_size_limit;
+            config.contract_size_limit_activation_height =
+                extras.contract_size_limit_activation_height;
         }
         Ok(config)
     }
 
-    /// Returns the contract size limit, defaulting to 128KB.
-    pub fn contract_size_limit(&self) -> usize {
-        self.contract_size_limit
+    /// Returns the contract size limit settings (limit, `activation_height`) if configured.
+    /// Returns None if no custom limit is set (uses EIP-170 default).
+    pub fn contract_size_limit_settings(&self) -> Option<(usize, u64)> {
+        self.contract_size_limit.map(|limit| {
+            let activation = self.contract_size_limit_activation_height.unwrap_or(0);
+            (limit, activation)
+        })
+    }
+
+    /// Returns the contract size limit for a given block number.
+    /// Uses the custom limit if configured and active, otherwise returns EIP-170 default.
+    pub fn contract_size_limit_for_block(&self, block_number: u64) -> usize {
+        self.contract_size_limit_settings()
+            .and_then(|(limit, activation)| {
+                if block_number >= activation {
+                    Some(limit)
+                } else {
+                    None
+                }
+            })
             .unwrap_or(DEFAULT_CONTRACT_SIZE_LIMIT)
     }
 
@@ -305,6 +331,7 @@ mod tests {
             base_fee_redirect_activation_height: Some(0),
             mint_precompile_activation_height: Some(0),
             contract_size_limit: None,
+            contract_size_limit_activation_height: None,
         };
         assert!(config_with_sink.validate().is_ok());
     }
@@ -318,6 +345,7 @@ mod tests {
             base_fee_redirect_activation_height: Some(5),
             mint_precompile_activation_height: None,
             contract_size_limit: None,
+            contract_size_limit_activation_height: None,
         };
 
         assert_eq!(config.base_fee_sink_for_block(4), None);
@@ -354,30 +382,72 @@ mod tests {
 
     #[test]
     fn test_contract_size_limit_default() {
-        // Test default contract size limit (128KB)
+        // Test default contract size limit (24KB per EIP-170)
         let config = EvolvePayloadBuilderConfig::new();
         assert_eq!(config.contract_size_limit, None);
-        assert_eq!(config.contract_size_limit(), DEFAULT_CONTRACT_SIZE_LIMIT);
-        assert_eq!(config.contract_size_limit(), 128 * 1024);
+        assert_eq!(config.contract_size_limit_settings(), None);
+        // When no custom limit is set, use EIP-170 default for any block
+        assert_eq!(config.contract_size_limit_for_block(0), DEFAULT_CONTRACT_SIZE_LIMIT);
+        assert_eq!(config.contract_size_limit_for_block(0), 24 * 1024);
     }
 
     #[test]
     fn test_contract_size_limit_from_chainspec() {
-        // Test contract size limit from chainspec
+        // Test contract size limit from chainspec with activation height
         let extras = json!({
-            "contractSizeLimit": 256000
+            "contractSizeLimit": 131072,
+            "contractSizeLimitActivationHeight": 100
         });
 
         let chainspec = create_test_chainspec_with_extras(Some(extras));
         let config = EvolvePayloadBuilderConfig::from_chain_spec(&chainspec).unwrap();
 
-        assert_eq!(config.contract_size_limit, Some(256000));
-        assert_eq!(config.contract_size_limit(), 256000);
+        assert_eq!(config.contract_size_limit, Some(131072));
+        assert_eq!(config.contract_size_limit_activation_height, Some(100));
+        assert_eq!(config.contract_size_limit_settings(), Some((131072, 100)));
+    }
+
+    #[test]
+    fn test_contract_size_limit_respects_activation_height() {
+        // Test that contract size limit respects activation height
+        let extras = json!({
+            "contractSizeLimit": 131072,
+            "contractSizeLimitActivationHeight": 100
+        });
+
+        let chainspec = create_test_chainspec_with_extras(Some(extras));
+        let config = EvolvePayloadBuilderConfig::from_chain_spec(&chainspec).unwrap();
+
+        // Before activation: use EIP-170 default
+        assert_eq!(config.contract_size_limit_for_block(0), DEFAULT_CONTRACT_SIZE_LIMIT);
+        assert_eq!(config.contract_size_limit_for_block(99), DEFAULT_CONTRACT_SIZE_LIMIT);
+
+        // At and after activation: use custom limit
+        assert_eq!(config.contract_size_limit_for_block(100), 131072);
+        assert_eq!(config.contract_size_limit_for_block(1000), 131072);
+    }
+
+    #[test]
+    fn test_contract_size_limit_defaults_activation_to_zero() {
+        // Test that activation height defaults to 0 when limit is set but height is not
+        let extras = json!({
+            "contractSizeLimit": 131072
+        });
+
+        let chainspec = create_test_chainspec_with_extras(Some(extras));
+        let config = EvolvePayloadBuilderConfig::from_chain_spec(&chainspec).unwrap();
+
+        assert_eq!(config.contract_size_limit, Some(131072));
+        assert_eq!(config.contract_size_limit_activation_height, None);
+        // Settings method defaults activation to 0
+        assert_eq!(config.contract_size_limit_settings(), Some((131072, 0)));
+        // Limit is active from block 0
+        assert_eq!(config.contract_size_limit_for_block(0), 131072);
     }
 
     #[test]
     fn test_contract_size_limit_not_set_uses_default() {
-        // Test that missing contractSizeLimit uses default
+        // Test that missing contractSizeLimit uses EIP-170 default
         let extras = json!({
             "baseFeeSink": "0x0000000000000000000000000000000000000001"
         });
@@ -386,6 +456,8 @@ mod tests {
         let config = EvolvePayloadBuilderConfig::from_chain_spec(&chainspec).unwrap();
 
         assert_eq!(config.contract_size_limit, None);
-        assert_eq!(config.contract_size_limit(), DEFAULT_CONTRACT_SIZE_LIMIT);
+        assert_eq!(config.contract_size_limit_settings(), None);
+        assert_eq!(config.contract_size_limit_for_block(0), DEFAULT_CONTRACT_SIZE_LIMIT);
+        assert_eq!(config.contract_size_limit_for_block(1000000), DEFAULT_CONTRACT_SIZE_LIMIT);
     }
 }
