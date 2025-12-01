@@ -55,6 +55,24 @@ Custom RPC namespace `txpoolExt` that provides:
 - Configurable byte limit for transaction retrieval (default: 1.98 MB)
 - Efficient iteration that stops when reaching the byte limit
 
+### 6. Base Fee Redirect
+
+On vanilla Ethereum, EIP-1559 burns the base fee. For custom networks, ev-reth can redirect the base fee to a designated address:
+
+- Intercepts base fee during EVM execution via custom handler
+- Credits `base_fee_per_gas * gas_used` to a specified recipient
+- Configurable activation height for safe network upgrades
+- See [Configuration](#redirecting-the-base-fee-custom-networks-only) for setup details
+
+### 7. Custom Contract Size Limit
+
+Ethereum enforces a 24KB contract size limit per [EIP-170](https://eips.ethereum.org/EIPS/eip-170). For networks requiring larger contracts:
+
+- Configurable maximum contract code size (e.g., 128KB)
+- Activation height support for safe network upgrades
+- Standard EIP-170 limit applies before activation
+- See [Configuration](#custom-contract-size-limit) for setup details
+
 ## Installation
 
 ### Prerequisites
@@ -250,6 +268,36 @@ Implementation details:
 - The handler intercepts the `reward_beneficiary` hook to redirect base fees
 - No runtime environment variables are required; the chainspec carries the policy alongside other fork settings
 - When not configured, the EVM operates normally with standard fee burning
+
+### Custom Contract Size Limit
+
+By default, Ethereum enforces a 24KB contract size limit per [EIP-170](https://eips.ethereum.org/EIPS/eip-170). If your network requires larger contracts, `ev-reth` supports configuring a custom limit via the chainspec.
+
+Add the contract size settings to your chainspec under the `evolve` stanza:
+
+```json
+"config": {
+  ...,
+  "evolve": {
+    "contractSizeLimit": 131072,
+    "contractSizeLimitActivationHeight": 1000000
+  }
+}
+```
+
+Configuration options:
+
+- `contractSizeLimit`: Maximum contract code size in bytes (e.g., `131072` for 128KB)
+- `contractSizeLimitActivationHeight`: Block height at which the custom limit activates
+
+How it works:
+
+- Before the activation height: The standard EIP-170 limit (24KB) applies
+- At and after the activation height: The custom limit applies
+- If `contractSizeLimitActivationHeight` is omitted, it defaults to `0` (active from genesis)
+- If `contractSizeLimit` is not set, the EIP-170 default (24KB) is always used
+
+This design ensures safe upgrades for existing networks: contracts that were previously rejected due to size limits won't suddenly become deployable until the network explicitly activates the new limit at a specific block height.
 
 ### Payload Builder Configuration
 
