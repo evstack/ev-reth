@@ -7,7 +7,10 @@ use alloy_evm::{
     Database, EvmEnv, EvmFactory,
 };
 use alloy_primitives::Address;
-use ev_precompiles::mint::{MintPrecompile, MINT_PRECOMPILE_ADDR};
+use ev_precompiles::{
+    mint::{MintPrecompile, MINT_PRECOMPILE_ADDR},
+    token_duality::{TokenDualityConfig, TokenDualityPrecompile, TOKEN_DUALITY_PRECOMPILE_ADDR},
+};
 use reth_evm_ethereum::EthEvmConfig;
 use reth_revm::{
     inspector::NoOpInspector,
@@ -29,6 +32,7 @@ pub struct EvEvmFactory<F> {
     inner: F,
     redirect: Option<BaseFeeRedirect>,
     mint_admin: Option<Address>,
+    token_duality_config: Option<TokenDualityConfig>,
 }
 
 impl<F> EvEvmFactory<F> {
@@ -42,6 +46,22 @@ impl<F> EvEvmFactory<F> {
             inner,
             redirect,
             mint_admin,
+            token_duality_config: None,
+        }
+    }
+
+    /// Creates a new factory wrapper with all options including token duality.
+    pub const fn with_token_duality(
+        inner: F,
+        redirect: Option<BaseFeeRedirect>,
+        mint_admin: Option<Address>,
+        token_duality_config: Option<TokenDualityConfig>,
+    ) -> Self {
+        Self {
+            inner,
+            redirect,
+            mint_admin,
+            token_duality_config,
         }
     }
 
@@ -58,6 +78,31 @@ impl<F> EvEvmFactory<F> {
                 mint_for_call.call(input)
             }))
         });
+    }
+
+    fn install_token_duality_precompile(&self, precompiles: &mut PrecompilesMap) {
+        let Some(config) = self.token_duality_config.clone() else {
+            return;
+        };
+
+        // Create a new precompile instance per EVM to ensure block tracker isolation.
+        // Each EVM gets its own block tracker state, preventing cross-EVM interference
+        // during concurrent execution.
+        let precompile = Arc::new(TokenDualityPrecompile::new(config));
+        let id = TokenDualityPrecompile::id().clone();
+
+        precompiles.apply_precompile(&TOKEN_DUALITY_PRECOMPILE_ADDR, move |_| {
+            let precompile_for_call = Arc::clone(&precompile);
+            let id_for_call = id;
+            Some(DynPrecompile::new_stateful(id_for_call, move |input| {
+                precompile_for_call.call(input)
+            }))
+        });
+    }
+
+    fn install_precompiles(&self, precompiles: &mut PrecompilesMap) {
+        self.install_mint_precompile(precompiles);
+        self.install_token_duality_precompile(precompiles);
     }
 }
 
@@ -82,7 +127,7 @@ impl EvmFactory for EvEvmFactory<EthEvmFactory> {
         let mut evm = EvEvm::from_inner(inner, self.redirect, false);
         {
             let inner = evm.inner_mut();
-            self.install_mint_precompile(&mut inner.precompiles);
+            self.install_precompiles(&mut inner.precompiles);
         }
         evm
     }
@@ -97,7 +142,7 @@ impl EvmFactory for EvEvmFactory<EthEvmFactory> {
         let mut evm = EvEvm::from_inner(inner, self.redirect, true);
         {
             let inner = evm.inner_mut();
-            self.install_mint_precompile(&mut inner.precompiles);
+            self.install_precompiles(&mut inner.precompiles);
         }
         evm
     }

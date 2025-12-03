@@ -1,4 +1,4 @@
-use alloy_primitives::Address;
+use alloy_primitives::{Address, U256};
 use reth_chainspec::ChainSpec;
 use serde::{Deserialize, Serialize};
 
@@ -8,6 +8,12 @@ struct ChainspecEvolveConfig {
     pub base_fee_sink: Option<Address>,
     #[serde(default, rename = "mintAdmin")]
     pub mint_admin: Option<Address>,
+    #[serde(default, rename = "tokenDualityAdmin")]
+    pub token_duality_admin: Option<Address>,
+    #[serde(default, rename = "tokenDualityPerCallCap")]
+    pub token_duality_per_call_cap: Option<U256>,
+    #[serde(default, rename = "tokenDualityPerBlockCap")]
+    pub token_duality_per_block_cap: Option<U256>,
 }
 
 /// Configuration for the Evolve payload builder
@@ -19,6 +25,15 @@ pub struct EvolvePayloadBuilderConfig {
     /// Optional mint precompile admin address sourced from the chainspec.
     #[serde(default)]
     pub mint_admin: Option<Address>,
+    /// Optional token duality precompile admin address sourced from the chainspec.
+    #[serde(default)]
+    pub token_duality_admin: Option<Address>,
+    /// Optional per-call transfer cap for token duality precompile.
+    #[serde(default)]
+    pub token_duality_per_call_cap: Option<U256>,
+    /// Optional per-block transfer cap for token duality precompile.
+    #[serde(default)]
+    pub token_duality_per_block_cap: Option<U256>,
 }
 
 impl EvolvePayloadBuilderConfig {
@@ -27,6 +42,9 @@ impl EvolvePayloadBuilderConfig {
         Self {
             base_fee_sink: None,
             mint_admin: None,
+            token_duality_admin: None,
+            token_duality_per_call_cap: None,
+            token_duality_per_block_cap: None,
         }
     }
 
@@ -45,6 +63,12 @@ impl EvolvePayloadBuilderConfig {
                 extras
                     .mint_admin
                     .and_then(|addr| if addr.is_zero() { None } else { Some(addr) });
+            config.token_duality_admin =
+                extras
+                    .token_duality_admin
+                    .and_then(|addr| if addr.is_zero() { None } else { Some(addr) });
+            config.token_duality_per_call_cap = extras.token_duality_per_call_cap;
+            config.token_duality_per_block_cap = extras.token_duality_per_block_cap;
         }
         Ok(config)
     }
@@ -186,6 +210,9 @@ mod tests {
         let config = EvolvePayloadBuilderConfig::default();
         assert_eq!(config.base_fee_sink, None);
         assert_eq!(config.mint_admin, None);
+        assert_eq!(config.token_duality_admin, None);
+        assert_eq!(config.token_duality_per_call_cap, None);
+        assert_eq!(config.token_duality_per_block_cap, None);
     }
 
     #[test]
@@ -194,6 +221,9 @@ mod tests {
         let config = EvolvePayloadBuilderConfig::new();
         assert_eq!(config.base_fee_sink, None);
         assert_eq!(config.mint_admin, None);
+        assert_eq!(config.token_duality_admin, None);
+        assert_eq!(config.token_duality_per_call_cap, None);
+        assert_eq!(config.token_duality_per_block_cap, None);
     }
 
     #[test]
@@ -205,6 +235,9 @@ mod tests {
         let config_with_sink = EvolvePayloadBuilderConfig {
             base_fee_sink: Some(address!("0000000000000000000000000000000000000001")),
             mint_admin: Some(address!("00000000000000000000000000000000000000aa")),
+            token_duality_admin: Some(address!("00000000000000000000000000000000000000bb")),
+            token_duality_per_call_cap: Some(U256::from(1000)),
+            token_duality_per_block_cap: Some(U256::from(10000)),
         };
         assert!(config_with_sink.validate().is_ok());
     }
@@ -231,5 +264,76 @@ mod tests {
         let config: ChainspecEvolveConfig = serde_json::from_value(json_without_sink).unwrap();
         assert_eq!(config.base_fee_sink, None);
         assert_eq!(config.mint_admin, None);
+    }
+
+    #[test]
+    fn test_token_duality_admin_some_address() {
+        let token_duality_admin = address!("00000000000000000000000000000000000000fd");
+        let extras = json!({
+            "tokenDualityAdmin": token_duality_admin
+        });
+
+        let chainspec = create_test_chainspec_with_extras(Some(extras));
+        let config = EvolvePayloadBuilderConfig::from_chain_spec(&chainspec).unwrap();
+
+        assert_eq!(config.token_duality_admin, Some(token_duality_admin));
+        assert_eq!(config.token_duality_per_call_cap, None);
+        assert_eq!(config.token_duality_per_block_cap, None);
+    }
+
+    #[test]
+    fn test_token_duality_admin_zero_disables() {
+        let extras = json!({
+            "tokenDualityAdmin": "0x0000000000000000000000000000000000000000"
+        });
+
+        let chainspec = create_test_chainspec_with_extras(Some(extras));
+        let config = EvolvePayloadBuilderConfig::from_chain_spec(&chainspec).unwrap();
+
+        assert_eq!(config.token_duality_admin, None);
+    }
+
+    #[test]
+    fn test_token_duality_with_caps() {
+        let token_duality_admin = address!("00000000000000000000000000000000000000fd");
+        let extras = json!({
+            "tokenDualityAdmin": token_duality_admin,
+            "tokenDualityPerCallCap": "0x3e8",
+            "tokenDualityPerBlockCap": "0x2710"
+        });
+
+        let chainspec = create_test_chainspec_with_extras(Some(extras));
+        let config = EvolvePayloadBuilderConfig::from_chain_spec(&chainspec).unwrap();
+
+        assert_eq!(config.token_duality_admin, Some(token_duality_admin));
+        assert_eq!(config.token_duality_per_call_cap, Some(U256::from(1000)));
+        assert_eq!(config.token_duality_per_block_cap, Some(U256::from(10000)));
+    }
+
+    #[test]
+    fn test_full_config_deserialization() {
+        let json_full = json!({
+            "baseFeeSink": "0x0000000000000000000000000000000000000001",
+            "mintAdmin": "0x00000000000000000000000000000000000000aa",
+            "tokenDualityAdmin": "0x00000000000000000000000000000000000000fd",
+            "tokenDualityPerCallCap": "0x64",
+            "tokenDualityPerBlockCap": "0x3e8"
+        });
+
+        let config: ChainspecEvolveConfig = serde_json::from_value(json_full).unwrap();
+        assert_eq!(
+            config.base_fee_sink,
+            Some(address!("0000000000000000000000000000000000000001"))
+        );
+        assert_eq!(
+            config.mint_admin,
+            Some(address!("00000000000000000000000000000000000000aa"))
+        );
+        assert_eq!(
+            config.token_duality_admin,
+            Some(address!("00000000000000000000000000000000000000fd"))
+        );
+        assert_eq!(config.token_duality_per_call_cap, Some(U256::from(100)));
+        assert_eq!(config.token_duality_per_block_cap, Some(U256::from(1000)));
     }
 }
