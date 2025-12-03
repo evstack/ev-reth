@@ -1,4 +1,4 @@
-use alloy_primitives::Address;
+use alloy_primitives::{Address, U256};
 use reth_chainspec::ChainSpec;
 use serde::{Deserialize, Serialize};
 
@@ -15,6 +15,14 @@ struct ChainspecEvolveConfig {
     pub mint_admin: Option<Address>,
     #[serde(default, rename = "mintPrecompileActivationHeight")]
     pub mint_precompile_activation_height: Option<u64>,
+    #[serde(default, rename = "tokenDualityAdmin")]
+    pub token_duality_admin: Option<Address>,
+    #[serde(default, rename = "tokenDualityActivationHeight")]
+    pub token_duality_activation_height: Option<u64>,
+    #[serde(default, rename = "tokenDualityPerCallCap")]
+    pub token_duality_per_call_cap: Option<U256>,
+    #[serde(default, rename = "tokenDualityPerBlockCap")]
+    pub token_duality_per_block_cap: Option<U256>,
     /// Maximum contract code size in bytes. Defaults to 24KB (EIP-170) if not specified.
     #[serde(default, rename = "contractSizeLimit")]
     pub contract_size_limit: Option<usize>,
@@ -38,6 +46,18 @@ pub struct EvolvePayloadBuilderConfig {
     /// Optional activation height for mint precompile; defaults to 0 when admin set.
     #[serde(default)]
     pub mint_precompile_activation_height: Option<u64>,
+    /// Optional token duality precompile admin address sourced from the chainspec.
+    #[serde(default)]
+    pub token_duality_admin: Option<Address>,
+    /// Optional activation height for token duality precompile; defaults to 0 when admin set.
+    #[serde(default)]
+    pub token_duality_activation_height: Option<u64>,
+    /// Optional per-call transfer cap for token duality precompile.
+    #[serde(default)]
+    pub token_duality_per_call_cap: Option<U256>,
+    /// Optional per-block transfer cap for token duality precompile.
+    #[serde(default)]
+    pub token_duality_per_block_cap: Option<U256>,
     /// Maximum contract code size in bytes. Defaults to 24KB (EIP-170).
     #[serde(default)]
     pub contract_size_limit: Option<usize>,
@@ -54,6 +74,10 @@ impl EvolvePayloadBuilderConfig {
             mint_admin: None,
             base_fee_redirect_activation_height: None,
             mint_precompile_activation_height: None,
+            token_duality_admin: None,
+            token_duality_activation_height: None,
+            token_duality_per_call_cap: None,
+            token_duality_per_block_cap: None,
             contract_size_limit: None,
             contract_size_limit_activation_height: None,
         }
@@ -77,6 +101,14 @@ impl EvolvePayloadBuilderConfig {
                     .and_then(|addr| if addr.is_zero() { None } else { Some(addr) });
             config.mint_precompile_activation_height = extras.mint_precompile_activation_height;
 
+            config.token_duality_admin =
+                extras
+                    .token_duality_admin
+                    .and_then(|addr| if addr.is_zero() { None } else { Some(addr) });
+            config.token_duality_activation_height = extras.token_duality_activation_height;
+            config.token_duality_per_call_cap = extras.token_duality_per_call_cap;
+            config.token_duality_per_block_cap = extras.token_duality_per_block_cap;
+
             if config.base_fee_sink.is_some()
                 && config.base_fee_redirect_activation_height.is_none()
             {
@@ -85,6 +117,10 @@ impl EvolvePayloadBuilderConfig {
 
             if config.mint_admin.is_some() && config.mint_precompile_activation_height.is_none() {
                 config.mint_precompile_activation_height = Some(0);
+            }
+
+            if config.token_duality_admin.is_some() && config.token_duality_activation_height.is_none() {
+                config.token_duality_activation_height = Some(0);
             }
 
             config.contract_size_limit = extras.contract_size_limit;
@@ -135,6 +171,14 @@ impl EvolvePayloadBuilderConfig {
         self.mint_admin.map(|admin| {
             let activation = self.mint_precompile_activation_height.unwrap_or(0);
             (admin, activation)
+        })
+    }
+
+    /// Returns the token duality precompile settings (admin, activation_height, per_call_cap, per_block_cap).
+    pub fn token_duality_settings(&self) -> Option<(Address, u64, Option<U256>, Option<U256>)> {
+        self.token_duality_admin.map(|admin| {
+            let activation = self.token_duality_activation_height.unwrap_or(0);
+            (admin, activation, self.token_duality_per_call_cap, self.token_duality_per_block_cap)
         })
     }
 
@@ -306,6 +350,9 @@ mod tests {
         assert_eq!(config.mint_admin, None);
         assert_eq!(config.base_fee_redirect_activation_height, None);
         assert_eq!(config.mint_precompile_activation_height, None);
+        assert_eq!(config.token_duality_admin, None);
+        assert_eq!(config.token_duality_per_call_cap, None);
+        assert_eq!(config.token_duality_per_block_cap, None);
     }
 
     #[test]
@@ -317,6 +364,9 @@ mod tests {
         assert_eq!(config.base_fee_redirect_activation_height, None);
         assert_eq!(config.mint_precompile_activation_height, None);
         assert_eq!(config.contract_size_limit, None);
+        assert_eq!(config.token_duality_admin, None);
+        assert_eq!(config.token_duality_per_call_cap, None);
+        assert_eq!(config.token_duality_per_block_cap, None);
     }
 
     #[test]
@@ -330,6 +380,10 @@ mod tests {
             mint_admin: Some(address!("00000000000000000000000000000000000000aa")),
             base_fee_redirect_activation_height: Some(0),
             mint_precompile_activation_height: Some(0),
+            token_duality_admin: Some(address!("00000000000000000000000000000000000000bb")),
+            token_duality_activation_height: Some(0),
+            token_duality_per_call_cap: Some(U256::from(1000)),
+            token_duality_per_block_cap: Some(U256::from(10000)),
             contract_size_limit: None,
             contract_size_limit_activation_height: None,
         };
@@ -344,6 +398,10 @@ mod tests {
             mint_admin: None,
             base_fee_redirect_activation_height: Some(5),
             mint_precompile_activation_height: None,
+            token_duality_admin: None,
+            token_duality_activation_height: None,
+            token_duality_per_call_cap: None,
+            token_duality_per_block_cap: None,
             contract_size_limit: None,
             contract_size_limit_activation_height: None,
         };
@@ -474,5 +532,93 @@ mod tests {
             config.contract_size_limit_for_block(1000000),
             DEFAULT_CONTRACT_SIZE_LIMIT
         );
+    }
+
+    #[test]
+    fn test_token_duality_admin_some_address() {
+        let token_duality_admin = address!("00000000000000000000000000000000000000fd");
+        let extras = json!({
+            "tokenDualityAdmin": token_duality_admin
+        });
+
+        let chainspec = create_test_chainspec_with_extras(Some(extras));
+        let config = EvolvePayloadBuilderConfig::from_chain_spec(&chainspec).unwrap();
+
+        assert_eq!(config.token_duality_admin, Some(token_duality_admin));
+        assert_eq!(config.token_duality_activation_height, Some(0));
+        assert_eq!(config.token_duality_per_call_cap, None);
+        assert_eq!(config.token_duality_per_block_cap, None);
+    }
+
+    #[test]
+    fn test_token_duality_admin_zero_disables() {
+        let extras = json!({
+            "tokenDualityAdmin": "0x0000000000000000000000000000000000000000"
+        });
+
+        let chainspec = create_test_chainspec_with_extras(Some(extras));
+        let config = EvolvePayloadBuilderConfig::from_chain_spec(&chainspec).unwrap();
+
+        assert_eq!(config.token_duality_admin, None);
+        assert_eq!(config.token_duality_activation_height, None);
+    }
+
+    #[test]
+    fn test_token_duality_with_caps() {
+        let token_duality_admin = address!("00000000000000000000000000000000000000fd");
+        let extras = json!({
+            "tokenDualityAdmin": token_duality_admin,
+            "tokenDualityPerCallCap": "0x3e8",
+            "tokenDualityPerBlockCap": "0x2710"
+        });
+
+        let chainspec = create_test_chainspec_with_extras(Some(extras));
+        let config = EvolvePayloadBuilderConfig::from_chain_spec(&chainspec).unwrap();
+
+        assert_eq!(config.token_duality_admin, Some(token_duality_admin));
+        assert_eq!(config.token_duality_per_call_cap, Some(U256::from(1000)));
+        assert_eq!(config.token_duality_per_block_cap, Some(U256::from(10000)));
+    }
+
+    #[test]
+    fn test_token_duality_with_activation_height() {
+        let token_duality_admin = address!("00000000000000000000000000000000000000fd");
+        let extras = json!({
+            "tokenDualityAdmin": token_duality_admin,
+            "tokenDualityActivationHeight": 500
+        });
+
+        let chainspec = create_test_chainspec_with_extras(Some(extras));
+        let config = EvolvePayloadBuilderConfig::from_chain_spec(&chainspec).unwrap();
+
+        assert_eq!(config.token_duality_admin, Some(token_duality_admin));
+        assert_eq!(config.token_duality_activation_height, Some(500));
+    }
+
+    #[test]
+    fn test_full_config_deserialization() {
+        let json_full = json!({
+            "baseFeeSink": "0x0000000000000000000000000000000000000001",
+            "mintAdmin": "0x00000000000000000000000000000000000000aa",
+            "tokenDualityAdmin": "0x00000000000000000000000000000000000000fd",
+            "tokenDualityPerCallCap": "0x64",
+            "tokenDualityPerBlockCap": "0x3e8"
+        });
+
+        let config: ChainspecEvolveConfig = serde_json::from_value(json_full).unwrap();
+        assert_eq!(
+            config.base_fee_sink,
+            Some(address!("0000000000000000000000000000000000000001"))
+        );
+        assert_eq!(
+            config.mint_admin,
+            Some(address!("00000000000000000000000000000000000000aa"))
+        );
+        assert_eq!(
+            config.token_duality_admin,
+            Some(address!("00000000000000000000000000000000000000fd"))
+        );
+        assert_eq!(config.token_duality_per_call_cap, Some(U256::from(100)));
+        assert_eq!(config.token_duality_per_block_cap, Some(U256::from(1000)));
     }
 }
