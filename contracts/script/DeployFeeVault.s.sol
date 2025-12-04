@@ -64,16 +64,8 @@ contract DeployFeeVault is Script {
 
     /// @notice Compute the CREATE2 address for FeeVault deployment
     function computeAddress(bytes32 salt, address owner) public view returns (address) {
-        bytes32 bytecodeHash = keccak256(
-            abi.encodePacked(type(FeeVault).creationCode, abi.encode(owner))
-        );
-        return address(
-            uint160(
-                uint256(
-                    keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, bytecodeHash))
-                )
-            )
-        );
+        bytes32 bytecodeHash = keccak256(abi.encodePacked(type(FeeVault).creationCode, abi.encode(owner)));
+        return address(uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, bytecodeHash)))));
     }
 }
 
@@ -84,17 +76,10 @@ contract ComputeFeeVaultAddress is Script {
         bytes32 salt = vm.envOr("SALT", bytes32(0));
         address deployer = vm.envAddress("DEPLOYER");
 
-        bytes32 bytecodeHash = keccak256(
-            abi.encodePacked(type(FeeVault).creationCode, abi.encode(owner))
-        );
+        bytes32 bytecodeHash = keccak256(abi.encodePacked(type(FeeVault).creationCode, abi.encode(owner)));
 
-        address predicted = address(
-            uint160(
-                uint256(
-                    keccak256(abi.encodePacked(bytes1(0xff), deployer, salt, bytecodeHash))
-                )
-            )
-        );
+        address predicted =
+            address(uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), deployer, salt, bytecodeHash)))));
 
         console.log("========== FeeVault Address Computation ==========");
         console.log("Owner:", owner);
