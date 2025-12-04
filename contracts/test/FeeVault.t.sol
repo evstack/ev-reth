@@ -35,15 +35,18 @@ contract FeeVaultTest is Test {
         user = address(0x1);
         otherRecipient = address(0x99);
         mockMinter = new MockHypNativeMinter();
-        feeVault = new FeeVault(owner);
 
-        // Configure contract
+        feeVault = new FeeVault(
+            owner,
+            destination,
+            recipient,
+            minAmount,
+            fee,
+            10000, // 100% bridge share
+            otherRecipient
+        );
+
         feeVault.setHypNativeMinter(address(mockMinter));
-        feeVault.setRecipient(destination, recipient);
-        feeVault.setMinimumAmount(minAmount);
-        feeVault.setCallFee(fee);
-        feeVault.setOtherRecipient(otherRecipient);
-        // Default bridge share is 10000 (100%)
     }
 
     function test_Receive() public {
@@ -207,11 +210,15 @@ contract FeeVaultTest is Test {
 
     function test_SendToCelestia_MinterNotSet() public {
         // Deploy fresh vault without minter
-        FeeVault freshVault = new FeeVault(owner);
-        freshVault.setRecipient(destination, recipient);
-        freshVault.setMinimumAmount(minAmount);
-        freshVault.setCallFee(fee);
-        freshVault.setOtherRecipient(otherRecipient);
+        FeeVault freshVault = new FeeVault(
+            owner,
+            destination,
+            recipient,
+            minAmount,
+            fee,
+            10000,
+            otherRecipient
+        );
 
         (bool success,) = address(freshVault).call{value: minAmount}("");
         require(success);
