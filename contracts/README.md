@@ -33,16 +33,20 @@ The FeeVault uses CREATE2 for deterministic addresses across chains.
 
 ### Environment Variables
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `OWNER` | Yes | Owner address (can configure the vault) |
-| `SALT` | No | CREATE2 salt (default: `0x0`). Use any bytes32 value |
-| `DESTINATION_DOMAIN` | No | Hyperlane destination chain ID |
-| `RECIPIENT_ADDRESS` | No | Recipient on destination chain (bytes32, left-padded) |
-| `MINIMUM_AMOUNT` | No | Minimum wei to bridge |
-| `CALL_FEE` | No | Fee in wei for calling `sendToCelestia()` |
-| `BRIDGE_SHARE_BPS` | No | Basis points to bridge (default: 10000 = 100%) |
-| `OTHER_RECIPIENT` | No | Address to receive non-bridged portion |
+| Variable | Deploy | Operational | Description |
+|----------|--------|-------------|-------------|
+| `OWNER` | Required | - | Owner address (can configure the vault) |
+| `SALT` | Optional | - | CREATE2 salt (default: `0x0`). Use any bytes32 value |
+| `DESTINATION_DOMAIN` | Optional | Required | Hyperlane destination chain ID |
+| `RECIPIENT_ADDRESS` | Optional | Required | Recipient on destination chain (bytes32, left-padded) |
+| `MINIMUM_AMOUNT` | Optional | Optional | Minimum wei to bridge |
+| `CALL_FEE` | Optional | Optional | Fee in wei for calling `sendToCelestia()` |
+| `BRIDGE_SHARE_BPS` | Optional | Optional | Basis points to bridge (default: 10000 = 100%) |
+| `OTHER_RECIPIENT` | Optional | Required* | Address to receive non-bridged portion |
+
+*`OTHER_RECIPIENT` is required only if `BRIDGE_SHARE_BPS` < 10000
+
+**Note:** `HYP_NATIVE_MINTER` must be set via `setHypNativeMinter()` after deployment for the vault to be operational.
 
 ### Choosing a Salt
 
