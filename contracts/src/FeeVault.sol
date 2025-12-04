@@ -9,7 +9,7 @@ interface IHypNativeMinter {
 }
 
 contract FeeVault {
-    IHypNativeMinter public immutable hypNativeMinter;
+    IHypNativeMinter public hypNativeMinter;
 
     address public owner;
     uint32 public destinationDomain;
@@ -23,6 +23,7 @@ contract FeeVault {
 
     event SentToCelestia(uint256 amount, bytes32 recipient, bytes32 messageId);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    event HypNativeMinterUpdated(address hypNativeMinter);
     event RecipientUpdated(uint32 destinationDomain, bytes32 recipientAddress);
     event MinimumAmountUpdated(uint256 minimumAmount);
     event CallFeeUpdated(uint256 callFee);
@@ -35,8 +36,7 @@ contract FeeVault {
         _;
     }
 
-    constructor(address _hypNativeMinter, address _owner) {
-        hypNativeMinter = IHypNativeMinter(_hypNativeMinter);
+    constructor(address _owner) {
         owner = _owner;
         bridgeShareBps = 10000; // Default to 100% bridge
         emit OwnershipTransferred(address(0), _owner);
@@ -45,6 +45,7 @@ contract FeeVault {
     receive() external payable {}
 
     function sendToCelestia() external payable {
+        require(address(hypNativeMinter) != address(0), "FeeVault: minter not set");
         require(msg.value >= callFee, "FeeVault: insufficient fee");
 
         uint256 currentBalance = address(this).balance;
@@ -105,5 +106,11 @@ contract FeeVault {
         require(_otherRecipient != address(0), "FeeVault: zero address");
         otherRecipient = _otherRecipient;
         emit OtherRecipientUpdated(_otherRecipient);
+    }
+
+    function setHypNativeMinter(address _hypNativeMinter) external onlyOwner {
+        require(_hypNativeMinter != address(0), "FeeVault: zero address");
+        hypNativeMinter = IHypNativeMinter(_hypNativeMinter);
+        emit HypNativeMinterUpdated(_hypNativeMinter);
     }
 }
