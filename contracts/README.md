@@ -118,9 +118,12 @@ The `recipientAddress` must be a bytes32. To convert a bech32 Cosmos address:
 Example using cast:
 
 ```shell
-# If you have the raw 20-byte hex address
-cast to-bytes32 0x1234567890abcdef1234567890abcdef12345678
+# Left-pad a 20-byte address to 32 bytes
+cast pad --left --len 32 1234567890abcdef1234567890abcdef12345678
+# Output: 0x0000000000000000000000001234567890abcdef1234567890abcdef12345678
 ```
+
+Note: When calling `transferRemote()` via cast, you may need to omit the `0x` prefix depending on your invocation method.
 
 ## Admin Functions
 
