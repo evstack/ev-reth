@@ -35,9 +35,10 @@ contract FeeVaultTest is Test {
         user = address(0x1);
         otherRecipient = address(0x99);
         mockMinter = new MockHypNativeMinter();
-        feeVault = new FeeVault(address(mockMinter), owner);
+        feeVault = new FeeVault(owner);
 
         // Configure contract
+        feeVault.setHypNativeMinter(address(mockMinter));
         feeVault.setRecipient(destination, recipient);
         feeVault.setMinimumAmount(minAmount);
         feeVault.setCallFee(fee);
@@ -187,5 +188,37 @@ contract FeeVaultTest is Test {
         vm.prank(user);
         vm.expectRevert("FeeVault: caller is not the owner");
         feeVault.setOtherRecipient(user);
+
+        vm.prank(user);
+        vm.expectRevert("FeeVault: caller is not the owner");
+        feeVault.setHypNativeMinter(address(0x123));
+    }
+
+    function test_SetHypNativeMinter() public {
+        MockHypNativeMinter newMinter = new MockHypNativeMinter();
+        feeVault.setHypNativeMinter(address(newMinter));
+        assertEq(address(feeVault.hypNativeMinter()), address(newMinter));
+    }
+
+    function test_SetHypNativeMinter_ZeroAddress() public {
+        vm.expectRevert("FeeVault: zero address");
+        feeVault.setHypNativeMinter(address(0));
+    }
+
+    function test_SendToCelestia_MinterNotSet() public {
+        // Deploy fresh vault without minter
+        FeeVault freshVault = new FeeVault(owner);
+        freshVault.setRecipient(destination, recipient);
+        freshVault.setMinimumAmount(minAmount);
+        freshVault.setCallFee(fee);
+        freshVault.setOtherRecipient(otherRecipient);
+
+        (bool success,) = address(freshVault).call{value: minAmount}("");
+        require(success);
+
+        vm.prank(user);
+        vm.deal(user, fee);
+        vm.expectRevert("FeeVault: minter not set");
+        freshVault.sendToCelestia{value: fee}();
     }
 }
