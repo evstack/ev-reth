@@ -8,7 +8,10 @@ use std::sync::Arc;
 use alloy_consensus::{transaction::SignerRecoverable, TxLegacy, TypedTransaction};
 use alloy_genesis::Genesis;
 use alloy_primitives::{Address, Bytes, ChainId, Signature, TxKind, B256, U256};
-use ev_revm::{with_ev_handler, BaseFeeRedirect, BaseFeeRedirectSettings, MintPrecompileSettings};
+use ev_revm::{
+    with_ev_handler, BaseFeeRedirect, BaseFeeRedirectSettings, ContractSizeLimitSettings,
+    MintPrecompileSettings,
+};
 use eyre::Result;
 use reth_chainspec::{ChainSpec, ChainSpecBuilder};
 use reth_ethereum_primitives::TransactionSigned;
@@ -137,7 +140,15 @@ impl EvolveTestFixture {
         let mint_precompile = config
             .mint_precompile_settings()
             .map(|(admin, activation)| MintPrecompileSettings::new(admin, activation));
-        let wrapped_evm = with_ev_handler(evm_config, base_fee_redirect, mint_precompile);
+        let contract_size_limit = config
+            .contract_size_limit_settings()
+            .map(|(limit, activation)| ContractSizeLimitSettings::new(limit, activation));
+        let wrapped_evm = with_ev_handler(
+            evm_config,
+            base_fee_redirect,
+            mint_precompile,
+            contract_size_limit,
+        );
 
         let builder = EvolvePayloadBuilder::new(Arc::new(provider.clone()), wrapped_evm, config);
 
