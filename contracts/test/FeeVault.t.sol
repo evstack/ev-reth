@@ -210,15 +210,7 @@ contract FeeVaultTest is Test {
 
     function test_SendToCelestia_MinterNotSet() public {
         // Deploy fresh vault without minter
-        FeeVault freshVault = new FeeVault(
-            owner,
-            destination,
-            recipient,
-            minAmount,
-            fee,
-            10000,
-            otherRecipient
-        );
+        FeeVault freshVault = new FeeVault(owner, destination, recipient, minAmount, fee, 10000, otherRecipient);
 
         (bool success,) = address(freshVault).call{value: minAmount}("");
         require(success);

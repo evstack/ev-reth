@@ -22,13 +22,7 @@ contract DeployFeeVault is Script {
 
         // Deploy FeeVault with CREATE2
         FeeVault feeVault = new FeeVault{salt: salt}(
-            owner,
-            destinationDomain,
-            recipientAddress,
-            minimumAmount,
-            callFee,
-            bridgeShareBps,
-            otherRecipient
+            owner, destinationDomain, recipientAddress, minimumAmount, callFee, bridgeShareBps, otherRecipient
         );
 
         vm.stopBroadcast();
@@ -64,20 +58,13 @@ contract ComputeFeeVaultAddress is Script {
             abi.encodePacked(
                 type(FeeVault).creationCode,
                 abi.encode(
-                    owner,
-                    destinationDomain,
-                    recipientAddress,
-                    minimumAmount,
-                    callFee,
-                    bridgeShareBps,
-                    otherRecipient
+                    owner, destinationDomain, recipientAddress, minimumAmount, callFee, bridgeShareBps, otherRecipient
                 )
             )
         );
 
-        address predicted = address(
-            uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), deployer, salt, initCodeHash))))
-        );
+        address predicted =
+            address(uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), deployer, salt, initCodeHash)))));
 
         console.log("========== FeeVault Address Computation ==========");
         console.log("Deployer (EOA):", deployer);
