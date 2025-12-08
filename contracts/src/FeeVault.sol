@@ -36,9 +36,26 @@ contract FeeVault {
         _;
     }
 
-    constructor(address _owner) {
+    constructor(
+        address _owner,
+        uint32 _destinationDomain,
+        bytes32 _recipientAddress,
+        uint256 _minimumAmount,
+        uint256 _callFee,
+        uint256 _bridgeShareBps,
+        address _otherRecipient
+    ) {
+        require(_owner != address(0), "FeeVault: owner is the zero address");
+        require(_bridgeShareBps <= 10000, "FeeVault: invalid bps");
+
         owner = _owner;
-        bridgeShareBps = 10000; // Default to 100% bridge
+        destinationDomain = _destinationDomain;
+        recipientAddress = _recipientAddress;
+        minimumAmount = _minimumAmount;
+        callFee = _callFee;
+        bridgeShareBps = _bridgeShareBps == 0 ? 10000 : _bridgeShareBps;
+        otherRecipient = _otherRecipient;
+
         emit OwnershipTransferred(address(0), _owner);
     }
 
