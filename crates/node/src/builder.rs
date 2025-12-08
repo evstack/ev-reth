@@ -2,7 +2,7 @@ use crate::config::EvolvePayloadBuilderConfig;
 use alloy_consensus::transaction::Transaction;
 use alloy_evm::eth::EthEvmFactory;
 use alloy_primitives::Address;
-use ev_revm::EvEvmFactory;
+use ev_revm::{BytecodeCache, CachedDatabase, EvEvmFactory, PinnedStorageCache};
 use evolve_ev_reth::EvolvePayloadAttributes;
 use reth_chainspec::{ChainSpec, ChainSpecProvider};
 use reth_errors::RethError;
@@ -29,6 +29,10 @@ pub struct EvolvePayloadBuilder<Client> {
     pub evm_config: EvolveEthEvmConfig,
     /// Parsed Evolve-specific configuration
     pub config: EvolvePayloadBuilderConfig,
+    /// Shared bytecode cache for caching contract bytecode across payloads
+    bytecode_cache: Arc<BytecodeCache>,
+    /// Shared pinned storage cache for hot contracts (configured via chainspec)
+    pinned_storage: Arc<PinnedStorageCache>,
 }
 
 impl<Client> EvolvePayloadBuilder<Client>
@@ -40,11 +44,24 @@ where
         + Sync
         + 'static,
 {
+    /// Default bytecode cache capacity (number of unique contracts to cache)
+    const DEFAULT_BYTECODE_CACHE_CAPACITY: usize = 10_000;
+
     /// Creates a new instance of `EvolvePayloadBuilder`
     pub fn new(
         client: Arc<Client>,
         evm_config: EvolveEthEvmConfig,
         config: EvolvePayloadBuilderConfig,
+    ) -> Self {
+        Self::with_cache_capacity(client, evm_config, config, Self::DEFAULT_BYTECODE_CACHE_CAPACITY)
+    }
+
+    /// Creates a new instance of `EvolvePayloadBuilder` with custom bytecode cache capacity
+    pub fn with_cache_capacity(
+        client: Arc<Client>,
+        evm_config: EvolveEthEvmConfig,
+        config: EvolvePayloadBuilderConfig,
+        bytecode_cache_capacity: usize,
     ) -> Self {
         if let Some((sink, activation)) = config.base_fee_redirect_settings() {
             info!(
@@ -55,10 +72,30 @@ where
             );
         }
 
+        info!(
+            target: "ev-reth",
+            cache_capacity = bytecode_cache_capacity,
+            "Bytecode cache initialized"
+        );
+
+        // Initialize pinned storage cache from config
+        let pinned_contracts = config.pinned_contracts().to_vec();
+        if !pinned_contracts.is_empty() {
+            info!(
+                target: "ev-reth",
+                contract_count = pinned_contracts.len(),
+                contracts = ?pinned_contracts,
+                "Pinned storage cache initialized for hot contracts"
+            );
+        }
+        let pinned_storage = Arc::new(PinnedStorageCache::new(pinned_contracts));
+
         Self {
             client,
             evm_config,
             config,
+            bytecode_cache: Arc::new(BytecodeCache::new(bytecode_cache_capacity)),
+            pinned_storage,
         }
     }
 
@@ -75,10 +112,21 @@ where
         // Get the latest state provider
         let state_provider = self.client.latest().map_err(PayloadBuilderError::other)?;
 
-        // Create a database from the state provider
-        let db = StateProviderDatabase::new(&state_provider);
+        // IMPORTANT: Clear pinned storage cache between blocks to avoid stale state.
+        // Storage is mutable (unlike bytecode), so we must invalidate cached values
+        // when starting a new block to ensure we read the latest committed state.
+        // The cache will be re-populated during this block's execution.
+        self.pinned_storage.clear();
+
+        // Create a database from the state provider with bytecode and storage caching
+        let inner_db = StateProviderDatabase::new(&state_provider);
+        let cached_db = CachedDatabase::with_pinned_storage(
+            inner_db,
+            Arc::clone(&self.bytecode_cache),
+            Arc::clone(&self.pinned_storage),
+        );
         let mut state_db = State::builder()
-            .with_database(db)
+            .with_database(cached_db)
             .with_bundle_update()
             .build();
 
