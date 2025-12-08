@@ -45,6 +45,7 @@ contract FeeVault {
         uint256 _bridgeShareBps,
         address _otherRecipient
     ) {
+        require(_owner != address(0), "FeeVault: owner is the zero address");
         require(_bridgeShareBps <= 10000, "FeeVault: invalid bps");
 
         owner = _owner;
