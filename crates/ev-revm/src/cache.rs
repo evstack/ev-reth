@@ -20,7 +20,7 @@ use std::{
 /// avoiding repeated database lookups for frequently-called contracts.
 #[derive(Debug)]
 pub struct BytecodeCache {
-    /// The actual cache storage, protected by a `RwLock`` for thread-safety.
+    /// The actual cache storage, protected by a `RwLock` for thread-safety.
     /// Values are Arc'd to allow cheap cloning when returning cached bytecode.
     cache: RwLock<LruCache>,
     /// Maximum number of entries before eviction
@@ -30,7 +30,7 @@ pub struct BytecodeCache {
 /// Simple LRU cache implementation
 #[derive(Debug)]
 struct LruCache {
-    /// Map from code hash to (bytecode, `access_order``)
+    /// Map from code hash to (bytecode, `access_order`)
     entries: HashMap<B256, (Arc<Bytecode>, u64)>,
     /// Counter for tracking access order
     access_counter: u64,
@@ -187,7 +187,7 @@ impl<DB> CachedDatabase<DB> {
     /// # Arguments
     /// * `inner` - The underlying database to wrap
     /// * `bytecode_cache` - Shared bytecode cache (can be shared across multiple databases)
-    pub fn new(inner: DB, bytecode_cache: Arc<BytecodeCache>) -> Self {
+    pub const fn new(inner: DB, bytecode_cache: Arc<BytecodeCache>) -> Self {
         Self {
             inner,
             bytecode_cache,

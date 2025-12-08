@@ -242,6 +242,7 @@ fn bench_realistic_workload(c: &mut Criterion) {
     group.finish();
 }
 
+#[allow(missing_docs)]
 criterion_group!(
     benches,
     bench_bytecode_cache_hit,

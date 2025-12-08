@@ -21,10 +21,6 @@ struct ChainspecEvolveConfig {
     /// Block height at which the custom contract size limit activates.
     #[serde(default, rename = "contractSizeLimitActivationHeight")]
     pub contract_size_limit_activation_height: Option<u64>,
-    /// Contract addresses whose storage should be pinned in RAM for fast access.
-    /// These are typically hot contracts like DEXes, bridges, or popular tokens.
-    #[serde(default, rename = "pinnedContracts")]
-    pub pinned_contracts: Vec<Address>,
 }
 
 /// Configuration for the Evolve payload builder
@@ -48,9 +44,6 @@ pub struct EvolvePayloadBuilderConfig {
     /// Block height at which the custom contract size limit activates.
     #[serde(default)]
     pub contract_size_limit_activation_height: Option<u64>,
-    /// Contract addresses whose storage should be pinned in RAM for fast access.
-    #[serde(default)]
-    pub pinned_contracts: Vec<Address>,
 }
 
 impl EvolvePayloadBuilderConfig {
@@ -63,7 +56,6 @@ impl EvolvePayloadBuilderConfig {
             mint_precompile_activation_height: None,
             contract_size_limit: None,
             contract_size_limit_activation_height: None,
-            pinned_contracts: Vec::new(),
         }
     }
 
@@ -98,19 +90,8 @@ impl EvolvePayloadBuilderConfig {
             config.contract_size_limit = extras.contract_size_limit;
             config.contract_size_limit_activation_height =
                 extras.contract_size_limit_activation_height;
-            config.pinned_contracts = extras.pinned_contracts;
         }
         Ok(config)
-    }
-
-    /// Returns the list of contract addresses whose storage should be pinned in RAM.
-    pub fn pinned_contracts(&self) -> &[Address] {
-        &self.pinned_contracts
-    }
-
-    /// Returns true if the given address is configured for storage pinning.
-    pub fn is_pinned_contract(&self, address: &Address) -> bool {
-        self.pinned_contracts.contains(address)
     }
 
     /// Returns the contract size limit settings (limit, `activation_height`) if configured.
@@ -351,7 +332,6 @@ mod tests {
             mint_precompile_activation_height: Some(0),
             contract_size_limit: None,
             contract_size_limit_activation_height: None,
-            pinned_contracts: vec![],
         };
         assert!(config_with_sink.validate().is_ok());
     }
@@ -366,7 +346,6 @@ mod tests {
             mint_precompile_activation_height: None,
             contract_size_limit: None,
             contract_size_limit_activation_height: None,
-            pinned_contracts: vec![],
         };
 
         assert_eq!(config.base_fee_sink_for_block(4), None);
@@ -495,57 +474,5 @@ mod tests {
             config.contract_size_limit_for_block(1000000),
             DEFAULT_CONTRACT_SIZE_LIMIT
         );
-    }
-
-    #[test]
-    fn test_pinned_contracts_empty_by_default() {
-        let config = EvolvePayloadBuilderConfig::new();
-        assert!(config.pinned_contracts().is_empty());
-        assert!(!config.is_pinned_contract(&address!("0000000000000000000000000000000000000001")));
-    }
-
-    #[test]
-    fn test_pinned_contracts_from_chainspec() {
-        let contract1 = address!("0000000000000000000000000000000000000001");
-        let contract2 = address!("0000000000000000000000000000000000000002");
-        let extras = json!({
-            "pinnedContracts": [
-                "0x0000000000000000000000000000000000000001",
-                "0x0000000000000000000000000000000000000002"
-            ]
-        });
-
-        let chainspec = create_test_chainspec_with_extras(Some(extras));
-        let config = EvolvePayloadBuilderConfig::from_chain_spec(&chainspec).unwrap();
-
-        assert_eq!(config.pinned_contracts().len(), 2);
-        assert!(config.is_pinned_contract(&contract1));
-        assert!(config.is_pinned_contract(&contract2));
-        assert!(!config.is_pinned_contract(&address!("0000000000000000000000000000000000000003")));
-    }
-
-    #[test]
-    fn test_pinned_contracts_empty_array() {
-        let extras = json!({
-            "pinnedContracts": []
-        });
-
-        let chainspec = create_test_chainspec_with_extras(Some(extras));
-        let config = EvolvePayloadBuilderConfig::from_chain_spec(&chainspec).unwrap();
-
-        assert!(config.pinned_contracts().is_empty());
-    }
-
-    #[test]
-    fn test_pinned_contracts_not_specified() {
-        // When pinnedContracts is not specified at all
-        let extras = json!({
-            "baseFeeSink": "0x0000000000000000000000000000000000000001"
-        });
-
-        let chainspec = create_test_chainspec_with_extras(Some(extras));
-        let config = EvolvePayloadBuilderConfig::from_chain_spec(&chainspec).unwrap();
-
-        assert!(config.pinned_contracts().is_empty());
     }
 }
