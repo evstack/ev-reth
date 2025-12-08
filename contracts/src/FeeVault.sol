@@ -37,6 +37,7 @@ contract FeeVault {
     }
 
     constructor(address _owner) {
+        require(_owner != address(0), "FeeVault: owner is the zero address");
         owner = _owner;
         bridgeShareBps = 10000; // Default to 100% bridge
         emit OwnershipTransferred(address(0), _owner);
