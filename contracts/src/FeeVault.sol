@@ -130,4 +130,31 @@ contract FeeVault {
         hypNativeMinter = IHypNativeMinter(_hypNativeMinter);
         emit HypNativeMinterUpdated(_hypNativeMinter);
     }
+
+    /// @notice Return the full configuration currently stored in the contract.
+    function getConfig()
+        external
+        view
+        returns (
+            address _owner,
+            uint32 _destinationDomain,
+            bytes32 _recipientAddress,
+            uint256 _minimumAmount,
+            uint256 _callFee,
+            uint256 _bridgeShareBps,
+            address _otherRecipient,
+            address _hypNativeMinter
+        )
+    {
+        return (
+            owner,
+            destinationDomain,
+            recipientAddress,
+            minimumAmount,
+            callFee,
+            bridgeShareBps,
+            otherRecipient,
+            address(hypNativeMinter)
+        );
+    }
 }

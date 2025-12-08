@@ -49,6 +49,28 @@ contract FeeVaultTest is Test {
         feeVault.setHypNativeMinter(address(mockMinter));
     }
 
+    function test_GetConfig() public {
+        (
+            address cfgOwner,
+            uint32 cfgDestination,
+            bytes32 cfgRecipient,
+            uint256 cfgMinAmount,
+            uint256 cfgCallFee,
+            uint256 cfgBridgeShare,
+            address cfgOtherRecipient,
+            address cfgHypNativeMinter
+        ) = feeVault.getConfig();
+
+        assertEq(cfgOwner, owner);
+        assertEq(cfgDestination, destination);
+        assertEq(cfgRecipient, recipient);
+        assertEq(cfgMinAmount, minAmount);
+        assertEq(cfgCallFee, fee);
+        assertEq(cfgBridgeShare, 10000);
+        assertEq(cfgOtherRecipient, otherRecipient);
+        assertEq(cfgHypNativeMinter, address(mockMinter));
+    }
+
     function test_Receive() public {
         uint256 amount = 1 ether;
         (bool success,) = address(feeVault).call{value: amount}("");
