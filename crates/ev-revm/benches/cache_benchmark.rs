@@ -136,7 +136,7 @@ fn bench_bytecode_cache_miss_vs_hit(c: &mut Criterion) {
         b.iter(|| {
             for i in 0..num_contracts {
                 let code_hash = B256::repeat_byte((i % 256) as u8);
-                let result = db.code_by_hash(code_hash);
+                let _result = db.code_by_hash(code_hash);
             }
         })
     });
@@ -156,7 +156,7 @@ fn bench_bytecode_cache_miss_vs_hit(c: &mut Criterion) {
         b.iter(|| {
             for i in 0..num_contracts {
                 let code_hash = B256::repeat_byte((i % 256) as u8);
-                let result = cached_db.code_by_hash(code_hash);
+                let _result = cached_db.code_by_hash(code_hash);
             }
         })
     });
@@ -184,7 +184,7 @@ fn bench_bytecode_cache_eviction(c: &mut Criterion) {
             for _ in 0..num_contracts {
                 let i = rng.gen_range(0..num_contracts);
                 let code_hash = B256::repeat_byte((i % 256) as u8);
-                let result = cached_db.code_by_hash(code_hash);
+                let _result = cached_db.code_by_hash(code_hash);
             }
         })
     });
@@ -198,7 +198,7 @@ fn bench_bytecode_cache_eviction(c: &mut Criterion) {
         b.iter(|| {
             for i in 0..num_contracts {
                 let code_hash = B256::repeat_byte((i % 256) as u8);
-                let result = cached_db.code_by_hash(code_hash);
+                let _result = cached_db.code_by_hash(code_hash);
             }
         })
     });
@@ -234,7 +234,7 @@ fn bench_realistic_workload(c: &mut Criterion) {
                     rng.gen_range(10..num_contracts) // Cold contract
                 };
                 let code_hash = B256::repeat_byte((i % 256) as u8);
-                let result = cached_db.code_by_hash(code_hash);
+                let _result = cached_db.code_by_hash(code_hash);
             }
         })
     });

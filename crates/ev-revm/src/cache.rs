@@ -20,7 +20,7 @@ use std::{
 /// avoiding repeated database lookups for frequently-called contracts.
 #[derive(Debug)]
 pub struct BytecodeCache {
-    /// The actual cache storage, protected by a RwLock for thread-safety.
+    /// The actual cache storage, protected by a `RwLock`` for thread-safety.
     /// Values are Arc'd to allow cheap cloning when returning cached bytecode.
     cache: RwLock<LruCache>,
     /// Maximum number of entries before eviction
@@ -30,7 +30,7 @@ pub struct BytecodeCache {
 /// Simple LRU cache implementation
 #[derive(Debug)]
 struct LruCache {
-    /// Map from code hash to (bytecode, access_order)
+    /// Map from code hash to (bytecode, `access_order``)
     entries: HashMap<B256, (Arc<Bytecode>, u64)>,
     /// Counter for tracking access order
     access_counter: u64,
@@ -195,7 +195,7 @@ impl<DB> CachedDatabase<DB> {
     }
 
     /// Returns a reference to the underlying database.
-    pub fn inner(&self) -> &DB {
+    pub const fn inner(&self) -> &DB {
         &self.inner
     }
 
@@ -210,12 +210,12 @@ impl<DB> CachedDatabase<DB> {
     }
 
     /// Returns a reference to the bytecode cache.
-    pub fn bytecode_cache(&self) -> &Arc<BytecodeCache> {
+    pub const fn bytecode_cache(&self) -> &Arc<BytecodeCache> {
         &self.bytecode_cache
     }
 
     /// Returns a reference to the bytecode cache (alias for backwards compatibility).
-    pub fn cache(&self) -> &Arc<BytecodeCache> {
+    pub const fn cache(&self) -> &Arc<BytecodeCache> {
         &self.bytecode_cache
     }
 }
@@ -262,7 +262,7 @@ mod tests {
 
         // Create a test bytecode
         let code_hash = B256::repeat_byte(0x42);
-        let bytecode = Bytecode::new_raw(bytes!("6080604052").into());
+        let bytecode = Bytecode::new_raw(bytes!("6080604052"));
 
         // Initially not in cache
         assert!(cache.get(&code_hash).is_none());
@@ -389,7 +389,7 @@ mod tests {
     #[test]
     fn test_cached_database_cache_hit() {
         let code_hash = B256::repeat_byte(0x42);
-        let bytecode = Bytecode::new_raw(bytes!("6080604052").into());
+        let bytecode = Bytecode::new_raw(bytes!("6080604052"));
 
         let mock_db = MockDatabase::new().with_bytecode(code_hash, bytecode.clone());
         let cache = Arc::new(BytecodeCache::new(100));
