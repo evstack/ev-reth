@@ -456,3 +456,24 @@ This project builds upon the excellent work of:
 
 - [Reth](https://github.com/paradigmxyz/reth) - The Rust Ethereum client
 - [Evolve](https://ev.xyz/) - The modular rollup framework
+
+### Canonical Block Hash Activation
+
+Legacy deployments allowed application-level hashes to flow through the Engine API, which meant
+Reth had to ignore block-hash mismatches and upstream tooling flagged every block as a fork. Newer
+networks can opt-in to canonical keccak block hashes by setting `hashRewireActivationHeight` inside
+the `evolve` section of the chainspec:
+
+```json
+"config": {
+  ...,
+  "evolve": {
+    "hashRewireActivationHeight": 0
+  }
+}
+```
+
+Set the activation height to the first block where canonical hashes should be enforced (use `0` for
+fresh networks). Before the activation height the node continues to bypass hash mismatches so
+existing chains keep working; after activation, the node rejects malformed payloads and the reported
+block hash always matches the standard Engine API expectations.

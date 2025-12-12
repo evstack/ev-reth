@@ -21,6 +21,9 @@ struct ChainspecEvolveConfig {
     /// Block height at which the custom contract size limit activates.
     #[serde(default, rename = "contractSizeLimitActivationHeight")]
     pub contract_size_limit_activation_height: Option<u64>,
+    /// Block height at which canonical hash rewiring activates.
+    #[serde(default, rename = "hashRewireActivationHeight")]
+    pub hash_rewire_activation_height: Option<u64>,
 }
 
 /// Configuration for the Evolve payload builder
@@ -44,6 +47,9 @@ pub struct EvolvePayloadBuilderConfig {
     /// Block height at which the custom contract size limit activates.
     #[serde(default)]
     pub contract_size_limit_activation_height: Option<u64>,
+    /// Block height at which canonical hash rewiring activates.
+    #[serde(default)]
+    pub hash_rewire_activation_height: Option<u64>,
 }
 
 impl EvolvePayloadBuilderConfig {
@@ -56,6 +62,7 @@ impl EvolvePayloadBuilderConfig {
             mint_precompile_activation_height: None,
             contract_size_limit: None,
             contract_size_limit_activation_height: None,
+            hash_rewire_activation_height: None,
         }
     }
 
@@ -90,6 +97,7 @@ impl EvolvePayloadBuilderConfig {
             config.contract_size_limit = extras.contract_size_limit;
             config.contract_size_limit_activation_height =
                 extras.contract_size_limit_activation_height;
+            config.hash_rewire_activation_height = extras.hash_rewire_activation_height;
         }
         Ok(config)
     }
@@ -142,6 +150,16 @@ impl EvolvePayloadBuilderConfig {
     pub fn base_fee_sink_for_block(&self, block_number: u64) -> Option<Address> {
         self.base_fee_redirect_settings()
             .and_then(|(sink, activation)| (block_number >= activation).then_some(sink))
+    }
+
+    /// Returns the configured hash rewire activation height if present.
+    pub const fn hash_rewire_settings(&self) -> Option<u64> {
+        self.hash_rewire_activation_height
+    }
+
+    /// Returns true if the canonical hash rewiring should be active for the provided block.
+    pub const fn is_hash_rewire_active_for_block(&self, block_number: u64) -> bool {
+        matches!(self.hash_rewire_activation_height, Some(activation) if block_number >= activation)
     }
 }
 
@@ -221,7 +239,8 @@ mod tests {
             "baseFeeSink": sink,
             "baseFeeRedirectActivationHeight": 42,
             "mintAdmin": admin,
-            "mintPrecompileActivationHeight": 64
+            "mintPrecompileActivationHeight": 64,
+            "hashRewireActivationHeight": 128
         });
 
         let chainspec = create_test_chainspec_with_extras(Some(extras));
@@ -231,6 +250,7 @@ mod tests {
         assert_eq!(config.base_fee_redirect_activation_height, Some(42));
         assert_eq!(config.mint_admin, Some(admin));
         assert_eq!(config.mint_precompile_activation_height, Some(64));
+        assert_eq!(config.hash_rewire_activation_height, Some(128));
     }
 
     #[test]
@@ -256,6 +276,7 @@ mod tests {
 
         assert_eq!(config.base_fee_sink, None);
         assert_eq!(config.base_fee_redirect_activation_height, None);
+        assert_eq!(config.hash_rewire_activation_height, None);
     }
 
     #[test]
@@ -268,6 +289,7 @@ mod tests {
         assert_eq!(config.mint_admin, None);
         assert_eq!(config.base_fee_redirect_activation_height, None);
         assert_eq!(config.mint_precompile_activation_height, None);
+        assert_eq!(config.hash_rewire_activation_height, None);
     }
 
     #[test]
@@ -306,6 +328,7 @@ mod tests {
         assert_eq!(config.mint_admin, None);
         assert_eq!(config.base_fee_redirect_activation_height, None);
         assert_eq!(config.mint_precompile_activation_height, None);
+        assert_eq!(config.hash_rewire_activation_height, None);
     }
 
     #[test]
@@ -317,6 +340,7 @@ mod tests {
         assert_eq!(config.base_fee_redirect_activation_height, None);
         assert_eq!(config.mint_precompile_activation_height, None);
         assert_eq!(config.contract_size_limit, None);
+        assert_eq!(config.hash_rewire_activation_height, None);
     }
 
     #[test]
@@ -332,6 +356,7 @@ mod tests {
             mint_precompile_activation_height: Some(0),
             contract_size_limit: None,
             contract_size_limit_activation_height: None,
+            hash_rewire_activation_height: None,
         };
         assert!(config_with_sink.validate().is_ok());
     }
@@ -346,6 +371,7 @@ mod tests {
             mint_precompile_activation_height: None,
             contract_size_limit: None,
             contract_size_limit_activation_height: None,
+            hash_rewire_activation_height: None,
         };
 
         assert_eq!(config.base_fee_sink_for_block(4), None);
@@ -373,11 +399,13 @@ mod tests {
             config.mint_admin,
             Some(address!("00000000000000000000000000000000000000aa"))
         );
+        assert_eq!(config.hash_rewire_activation_height, None);
 
         let json_without_sink = json!({});
         let config: ChainspecEvolveConfig = serde_json::from_value(json_without_sink).unwrap();
         assert_eq!(config.base_fee_sink, None);
         assert_eq!(config.mint_admin, None);
+        assert_eq!(config.hash_rewire_activation_height, None);
     }
 
     #[test]
@@ -474,5 +502,19 @@ mod tests {
             config.contract_size_limit_for_block(1000000),
             DEFAULT_CONTRACT_SIZE_LIMIT
         );
+    }
+
+    #[test]
+    fn test_hash_rewire_activation_height_parsed() {
+        let extras = json!({
+            "hashRewireActivationHeight": 500
+        });
+
+        let chainspec = create_test_chainspec_with_extras(Some(extras));
+        let config = EvolvePayloadBuilderConfig::from_chain_spec(&chainspec).unwrap();
+
+        assert_eq!(config.hash_rewire_activation_height, Some(500));
+        assert!(config.is_hash_rewire_active_for_block(600));
+        assert!(!config.is_hash_rewire_active_for_block(400));
     }
 }
