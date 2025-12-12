@@ -24,3 +24,4 @@ bytes = "1.5.0"
 eyre = "0.6.11"
 thiserror = "1.0.58"
 tracing = { workspace = true }
+parking_lot = { workspace = true }
