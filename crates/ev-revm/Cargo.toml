@@ -22,6 +22,12 @@ ev-precompiles = { path = "../ev-precompiles" }
 
 [dev-dependencies]
 alloy-sol-types.workspace = true
+criterion.workspace = true
+rand.workspace = true
+
+[[bench]]
+name = "cache_benchmark"
+harness = false
 
 [lints]
 workspace = true

@@ -138,6 +138,7 @@ rand = "0.8"
 tempfile = "3.10"
 hex = "0.4"
 url = "2.5"
+criterion = { version = "0.5", features = ["html_reports"] }
 
 [workspace.lints]
 rust.missing_debug_implementations = "warn"
