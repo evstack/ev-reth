@@ -53,17 +53,17 @@ v0.2.0 introduces a native token minting precompile that allows authorized addre
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `mintPrecompileAdmin` | `address` | Admin address that can manage the allowlist and mint/burn tokens |
+| `mintAdmin` | `address` | Admin address that can manage the allowlist and mint/burn tokens |
 | `mintPrecompileActivationHeight` | `number` | Block height at which the precompile becomes active |
 
 ```json
 "evolve": {
-  "mintPrecompileAdmin": "0xYourAdminAddressHere",
+  "mintAdmin": "0xYourAdminAddressHere",
   "mintPrecompileActivationHeight": 0
 }
 ```
 
-Set `mintPrecompileAdmin` to `0x0000000000000000000000000000000000000000` to disable the minting precompile entirely.
+Set `mintAdmin` to `0x0000000000000000000000000000000000000000` to disable the minting precompile entirely.
 
 For existing networks, set `mintPrecompileActivationHeight` to a future block to ensure archival nodes remain compatible with historical state.
 
@@ -96,7 +96,7 @@ Here's a complete example chainspec for v0.2.0 with all new configuration option
     "evolve": {
       "baseFeeSink": "0x00000000000000000000000000000000000000fe",
       "baseFeeRedirectActivationHeight": 0,
-      "mintPrecompileAdmin": "0xYourAdminAddressHere",
+      "mintAdmin": "0xYourAdminAddressHere",
       "mintPrecompileActivationHeight": 0,
       "contractSizeLimit": 131072,
       "contractSizeLimitActivationHeight": 0
@@ -116,7 +116,7 @@ For networks already running v0.1.x, use activation heights to safely introduce 
 "evolve": {
   "baseFeeSink": "0x00000000000000000000000000000000000000fe",
   "baseFeeRedirectActivationHeight": 20000000,
-  "mintPrecompileAdmin": "0xYourAdminAddressHere",
+  "mintAdmin": "0xYourAdminAddressHere",
   "mintPrecompileActivationHeight": 20000000,
   "contractSizeLimit": 131072,
   "contractSizeLimitActivationHeight": 20000000
@@ -132,7 +132,7 @@ This ensures:
 ## Migration Checklist
 
 - [ ] Update chainspec with `osakaTime` set to a future timestamp
-- [ ] Add `mintPrecompileAdmin` if native token minting is needed
+- [ ] Add `mintAdmin` if native token minting is needed
 - [ ] Add `mintPrecompileActivationHeight` (use future block for existing networks)
 - [ ] Review all activation heights for existing network compatibility
 - [ ] Test chainspec changes on a local/testnet deployment
