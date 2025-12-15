@@ -58,7 +58,7 @@ jobs:
           Compress-Archive -Path ev-reth.exe -DestinationPath ../../../ev-reth-${{ matrix.target }}.zip
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: ev-reth-${{ matrix.target }}
           path: |
