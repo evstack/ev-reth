@@ -177,7 +177,12 @@ where
             }
         }
 
-        // Finish building the block - this calculates the proper state root
+        // Finish building the block. This computes the *current block's* post-state root.
+        //
+        // Ethereum clients expect `header.state_root` to equal the post-state after executing the
+        // transactions in this block on top of the parent state. Accidentally using the parent
+        // (height-1) state root here can make downstream execution clients think each block is on
+        // a different fork, even when the chain is otherwise canonical.
         let BlockBuilderOutcome {
             execution_result: _,
             hashed_state: _,
@@ -189,6 +194,9 @@ where
 
         let mut sealed_block = block.sealed_block().clone();
 
+        // Legacy mode: preserve historical behavior where the Engine API block hash did not match
+        // the canonical keccak header hash. We intentionally re-seal with an alternate hash while
+        // keeping the Ethereum `state_root` intact for normal state-root validation.
         if !self.config.is_hash_rewire_active_for_block(block_number) {
             let legacy_hash = sealed_block.header().state_root;
             let legacy_block = sealed_block.clone_block();

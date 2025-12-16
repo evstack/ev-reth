@@ -48,6 +48,14 @@ pub struct EvolvePayloadBuilderConfig {
     #[serde(default)]
     pub contract_size_limit_activation_height: Option<u64>,
     /// Block height at which canonical hash rewiring activates.
+    ///
+    /// Before activation, ev-reth operates in "legacy" mode to support deployments that flowed an
+    /// application-level hash through Engine API payloads. In that mode the node may bypass block
+    /// hash mismatches and re-seal blocks with an alternate hash for compatibility.
+    ///
+    /// After activation, the node enforces canonical keccak block hashes as expected by standard
+    /// Ethereum tooling. Note that `header.state_root` always follows Ethereum semantics (the
+    /// current block's post-state root), independent of this setting.
     #[serde(default)]
     pub hash_rewire_activation_height: Option<u64>,
 }

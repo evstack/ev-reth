@@ -464,6 +464,12 @@ Reth had to ignore block-hash mismatches and upstream tooling flagged every bloc
 networks can opt-in to canonical keccak block hashes by setting `hashRewireActivationHeight` inside
 the `evolve` section of the chainspec:
 
+Separately, Ethereum clients expect `stateRoot` to be the current block's post-state root (after
+executing this block's transactions on top of the parent). If an integration accidentally supplies
+the parent (height-1) root instead, execution clients can report persistent "forks" that are really
+just state-root mismatches. ev-reth computes and exposes the canonical post-state root so state-root
+validation behaves like standard Ethereum.
+
 ```json
 "config": {
   ...,
