@@ -51,7 +51,7 @@ RUN cargo build --profile $BUILD_PROFILE --bin ev-reth --manifest-path bin/ev-re
 RUN ls -la /app/target/$BUILD_PROFILE/ev-reth
 RUN cp /app/target/$BUILD_PROFILE/ev-reth /ev-reth
 
-FROM ubuntu:22.04 AS runtime
+FROM ubuntu:24.04 AS runtime
 
 RUN apt-get update && \
     apt-get install -y ca-certificates curl jq libssl-dev pkg-config strace && \
