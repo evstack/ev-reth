@@ -346,7 +346,7 @@ All standard Reth configuration options are supported. Key options for Evolve in
 
 ### Project Structure
 
-```
+```tree
 ev-reth/
 ├── bin/
 │   └── ev-reth/                  # Main binary
