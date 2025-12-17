@@ -192,16 +192,7 @@ where
             .finish(&state_provider)
             .map_err(PayloadBuilderError::other)?;
 
-        let mut sealed_block = block.sealed_block().clone();
-
-        // Legacy mode: preserve historical behavior where the Engine API block hash did not match
-        // the canonical keccak header hash. We intentionally re-seal with an alternate hash while
-        // keeping the Ethereum `state_root` intact for normal state-root validation.
-        if !self.config.is_hash_rewire_active_for_block(block_number) {
-            let legacy_hash = sealed_block.header().state_root;
-            let legacy_block = sealed_block.clone_block();
-            sealed_block = SealedBlock::new_unchecked(legacy_block, legacy_hash);
-        }
+        let sealed_block = block.sealed_block().clone();
 
         tracing::info!(
                     block_number = sealed_block.number,

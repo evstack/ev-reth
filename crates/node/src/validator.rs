@@ -25,6 +25,17 @@ use crate::{
 };
 
 /// Evolve engine validator that handles custom payload validation.
+///
+/// This validator extends the standard Ethereum payload validation with support for
+/// legacy block hash compatibility. See [`EvolvePayloadBuilderConfig::canonical_hash_activation_height`]
+/// for details on the migration strategy.
+///
+/// # Block Hash Validation
+///
+/// Early versions of ev-node passed block hashes from height H-1 instead of H,
+/// causing block explorers (e.g., Blockscout) to show all blocks as forks. This
+/// validator can bypass hash mismatch errors for historical blocks while enforcing
+/// canonical validation for new blocks, controlled by `canonical_hash_activation_height`.
 #[derive(Debug, Clone)]
 pub struct EvolveEngineValidator {
     inner: EthereumExecutionPayloadValidator<ChainSpec>,
@@ -56,7 +67,6 @@ impl PayloadValidator<EvolveEngineTypes> for EvolveEngineValidator {
     ) -> Result<RecoveredBlock<Self::Block>, NewPayloadError> {
         info!("Evolve engine validator: validating payload");
 
-        // Use inner validator but with custom evolve handling.
         match self.inner.ensure_well_formed_payload(payload.clone()) {
             Ok(sealed_block) => {
                 info!("Evolve engine validator: payload validation succeeded");
@@ -65,29 +75,44 @@ impl PayloadValidator<EvolveEngineTypes> for EvolveEngineValidator {
                     .map_err(|e| NewPayloadError::Other(e.into()))
             }
             Err(err) => {
-                // Log the error for debugging.
                 tracing::debug!("Evolve payload validation error: {:?}", err);
 
-                // Check if this is a block hash mismatch error - bypass it for evolve.
+                // Handle block hash mismatch errors specially for legacy compatibility.
+                //
+                // Background: Early versions of ev-node passed block hashes from height H-1
+                // instead of H when communicating with ev-reth via the Engine API. This caused
+                // block hashes to not match the canonical Ethereum block hash (keccak256 of
+                // RLP-encoded header), resulting in block explorers like Blockscout incorrectly
+                // displaying every block as a fork due to parent hash mismatches.
+                //
+                // For existing networks with historical blocks containing these non-canonical
+                // hashes, we need to bypass this validation to allow nodes to sync from genesis.
+                // The `canonical_hash_activation_height` config controls when to start enforcing
+                // canonical hashes for new blocks.
                 if matches!(err, alloy_rpc_types::engine::PayloadError::BlockHash { .. }) {
                     let block_number = payload.payload.block_number();
-                    if self.config.is_hash_rewire_active_for_block(block_number) {
+
+                    // If canonical hash enforcement is active for this block, reject the mismatch
+                    if self.config.is_canonical_hash_enforced(block_number) {
                         tracing::warn!(
                             block_number,
-                            "canonical hash rewiring active; rejecting mismatched block hash"
+                            "canonical hash enforcement active; rejecting mismatched block hash"
                         );
                         return Err(NewPayloadError::Eth(err));
                     }
 
-                    info!("Evolve engine validator: bypassing block hash mismatch for ev-reth");
-                    // For evolve, we trust the payload builder - just parse the block without hash validation.
+                    // Legacy mode: bypass hash mismatch to allow syncing historical blocks.
+                    // Re-seal the block with the correct canonical hash (keccak256 of header).
+                    info!(
+                        block_number,
+                        "bypassing block hash mismatch (legacy mode before activation height)"
+                    );
                     let ExecutionData { payload, sidecar } = payload;
                     let sealed_block = payload.try_into_block_with_sidecar(&sidecar)?.seal_slow();
                     sealed_block
                         .try_recover()
                         .map_err(|e| NewPayloadError::Other(e.into()))
                 } else {
-                    // For other errors, re-throw them.
                     Err(NewPayloadError::Eth(err))
                 }
             }
@@ -168,10 +193,10 @@ mod tests {
     use reth_chainspec::ChainSpecBuilder;
     use reth_primitives::{Block, SealedBlock};
 
-    fn validator_with_activation(height: Option<u64>) -> EvolveEngineValidator {
+    fn validator_with_activation(activation_height: Option<u64>) -> EvolveEngineValidator {
         let chain_spec = Arc::new(ChainSpecBuilder::mainnet().build());
         let mut config = EvolvePayloadBuilderConfig::new();
-        config.hash_rewire_activation_height = height;
+        config.canonical_hash_activation_height = activation_height;
         EvolveEngineValidator::new(chain_spec, config)
     }
 
@@ -185,18 +210,35 @@ mod tests {
     }
 
     #[test]
-    fn legacy_bypass_allows_mismatch_before_activation() {
-        let validator = validator_with_activation(None);
+    fn test_legacy_mode_bypasses_hash_mismatch() {
+        // When activation height is set in the future, legacy mode should bypass hash mismatches
+        let validator = validator_with_activation(Some(1000));
         let payload = mismatched_payload();
 
         validator
             .ensure_well_formed_payload(payload)
-            .expect("hash mismatch should be bypassed before activation");
+            .expect("hash mismatch should be bypassed in legacy mode");
     }
 
     #[test]
-    fn canonical_mode_rejects_mismatch_after_activation() {
+    fn test_canonical_mode_rejects_hash_mismatch() {
+        // When activation height is 0 (or in the past), canonical mode should reject mismatches
         let validator = validator_with_activation(Some(0));
+        let payload = mismatched_payload();
+
+        let result = validator.ensure_well_formed_payload(payload);
+        assert!(matches!(
+            result,
+            Err(NewPayloadError::Eth(
+                alloy_rpc_types::engine::PayloadError::BlockHash { .. }
+            ))
+        ));
+    }
+
+    #[test]
+    fn test_default_enforces_canonical_hash() {
+        // When no activation height is set, canonical validation should be enforced (default)
+        let validator = validator_with_activation(None);
         let payload = mismatched_payload();
 
         let result = validator.ensure_well_formed_payload(payload);
