@@ -21,32 +21,6 @@ struct ChainspecEvolveConfig {
     /// Block height at which the custom contract size limit activates.
     #[serde(default, rename = "contractSizeLimitActivationHeight")]
     pub contract_size_limit_activation_height: Option<u64>,
-    /// Block height at which canonical block hash enforcement activates.
-    ///
-    /// # Background
-    ///
-    /// Early versions of ev-node passed block hashes from height H-1 instead of H
-    /// when communicating with ev-reth via the Engine API. This caused block hashes
-    /// to not match the canonical Ethereum block hash (keccak256 of RLP-encoded header),
-    /// resulting in block explorers like Blockscout incorrectly displaying every block
-    /// as a fork due to parent hash mismatches.
-    ///
-    /// # Migration Strategy
-    ///
-    /// For existing networks with historical blocks containing non-canonical hashes:
-    /// - Set this to a future block height where the fix will activate
-    /// - Before the activation height: hash mismatches are bypassed (legacy mode)
-    /// - At and after the activation height: canonical hash validation is enforced
-    ///
-    /// This allows nodes to sync from genesis on networks with historical hash
-    /// mismatches while ensuring new blocks use correct canonical hashes.
-    ///
-    /// # Default Behavior
-    ///
-    /// If not set, canonical hash validation is enforced from genesis (block 0).
-    /// This is the correct setting for new networks without legacy data.
-    #[serde(default, rename = "canonicalHashActivationHeight")]
-    pub canonical_hash_activation_height: Option<u64>,
 }
 
 /// Configuration for the Evolve payload builder
@@ -70,32 +44,6 @@ pub struct EvolvePayloadBuilderConfig {
     /// Block height at which the custom contract size limit activates.
     #[serde(default)]
     pub contract_size_limit_activation_height: Option<u64>,
-    /// Block height at which canonical block hash enforcement activates.
-    ///
-    /// # Background
-    ///
-    /// Early versions of ev-node passed block hashes from height H-1 instead of H
-    /// when communicating with ev-reth via the Engine API. This caused block hashes
-    /// to not match the canonical Ethereum block hash (keccak256 of RLP-encoded header),
-    /// resulting in block explorers like Blockscout incorrectly displaying every block
-    /// as a fork due to parent hash mismatches.
-    ///
-    /// # Migration Strategy
-    ///
-    /// For existing networks with historical blocks containing non-canonical hashes:
-    /// - Set this to a future block height where the fix will activate
-    /// - Before the activation height: hash mismatches are bypassed (legacy mode)
-    /// - At and after the activation height: canonical hash validation is enforced
-    ///
-    /// This allows nodes to sync from genesis on networks with historical hash
-    /// mismatches while ensuring new blocks use correct canonical hashes.
-    ///
-    /// # Default Behavior
-    ///
-    /// If not set, canonical hash validation is enforced from genesis (block 0).
-    /// This is the correct setting for new networks without legacy data.
-    #[serde(default)]
-    pub canonical_hash_activation_height: Option<u64>,
 }
 
 impl EvolvePayloadBuilderConfig {
@@ -108,7 +56,6 @@ impl EvolvePayloadBuilderConfig {
             mint_precompile_activation_height: None,
             contract_size_limit: None,
             contract_size_limit_activation_height: None,
-            canonical_hash_activation_height: None,
         }
     }
 
@@ -143,7 +90,6 @@ impl EvolvePayloadBuilderConfig {
             config.contract_size_limit = extras.contract_size_limit;
             config.contract_size_limit_activation_height =
                 extras.contract_size_limit_activation_height;
-            config.canonical_hash_activation_height = extras.canonical_hash_activation_height;
         }
         Ok(config)
     }
@@ -196,29 +142,6 @@ impl EvolvePayloadBuilderConfig {
     pub fn base_fee_sink_for_block(&self, block_number: u64) -> Option<Address> {
         self.base_fee_redirect_settings()
             .and_then(|(sink, activation)| (block_number >= activation).then_some(sink))
-    }
-
-    /// Returns true if canonical block hash validation should be enforced for the given block.
-    ///
-    /// This method controls whether the validator should reject blocks with hash mismatches
-    /// or bypass the check for legacy compatibility.
-    ///
-    /// # Returns
-    ///
-    /// - `true`: Enforce canonical hash validation (reject mismatches)
-    /// - `false`: Bypass hash validation (legacy mode for historical blocks)
-    ///
-    /// # Logic
-    ///
-    /// - If `canonical_hash_activation_height` is `None`: Always enforce (new networks)
-    /// - If `canonical_hash_activation_height` is `Some(N)`:
-    ///   - `block_number < N`: Don't enforce (legacy mode)
-    ///   - `block_number >= N`: Enforce (canonical mode)
-    pub const fn is_canonical_hash_enforced(&self, block_number: u64) -> bool {
-        match self.canonical_hash_activation_height {
-            Some(activation) => block_number >= activation,
-            None => true, // Default: enforce canonical hashes from genesis
-        }
     }
 }
 
@@ -409,7 +332,6 @@ mod tests {
             mint_precompile_activation_height: Some(0),
             contract_size_limit: None,
             contract_size_limit_activation_height: None,
-            canonical_hash_activation_height: None,
         };
         assert!(config_with_sink.validate().is_ok());
     }
@@ -424,7 +346,6 @@ mod tests {
             mint_precompile_activation_height: None,
             contract_size_limit: None,
             contract_size_limit_activation_height: None,
-            canonical_hash_activation_height: None,
         };
 
         assert_eq!(config.base_fee_sink_for_block(4), None);
@@ -555,29 +476,4 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_canonical_hash_activation_from_chainspec() {
-        let extras = json!({
-            "canonicalHashActivationHeight": 500
-        });
-
-        let chainspec = create_test_chainspec_with_extras(Some(extras));
-        let config = EvolvePayloadBuilderConfig::from_chain_spec(&chainspec).unwrap();
-
-        assert_eq!(config.canonical_hash_activation_height, Some(500));
-        // Before activation: legacy mode (not enforced)
-        assert!(!config.is_canonical_hash_enforced(499));
-        // At and after activation: canonical mode (enforced)
-        assert!(config.is_canonical_hash_enforced(500));
-        assert!(config.is_canonical_hash_enforced(600));
-    }
-
-    #[test]
-    fn test_canonical_hash_default_enforces_from_genesis() {
-        // When not configured, canonical hashes should be enforced from genesis
-        let config = EvolvePayloadBuilderConfig::new();
-        assert_eq!(config.canonical_hash_activation_height, None);
-        assert!(config.is_canonical_hash_enforced(0));
-        assert!(config.is_canonical_hash_enforced(1000));
-    }
 }
