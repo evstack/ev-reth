@@ -14,7 +14,7 @@ use reth_revm::{
     revm::{
         context::{
             result::{EVMError, HaltReason},
-            BlockEnv, TxEnv,
+            TxEnv,
         },
         context_interface::result::InvalidTransaction,
         primitives::hardfork::SpecId,
@@ -173,13 +173,12 @@ impl EvmFactory for EvEvmFactory<EthEvmFactory> {
         EVMError<DBError, InvalidTransaction>;
     type HaltReason = HaltReason;
     type Spec = SpecId;
-    type BlockEnv = BlockEnv;
     type Precompiles = PrecompilesMap;
 
     fn create_evm<DB: Database>(
         &self,
         db: DB,
-        mut evm_env: EvmEnv<Self::Spec, Self::BlockEnv>,
+        mut evm_env: EvmEnv<Self::Spec>,
     ) -> Self::Evm<DB, NoOpInspector> {
         let block_number = evm_env.block_env.number;
         // Apply custom contract size limit if configured and active for this block
@@ -198,7 +197,7 @@ impl EvmFactory for EvEvmFactory<EthEvmFactory> {
     fn create_evm_with_inspector<DB: Database, I: Inspector<Self::Context<DB>>>(
         &self,
         db: DB,
-        mut input: EvmEnv<Self::Spec, Self::BlockEnv>,
+        mut input: EvmEnv<Self::Spec>,
         inspector: I,
     ) -> Self::Evm<DB, I> {
         let block_number = input.block_env.number;
@@ -303,7 +302,7 @@ mod tests {
             },
         );
 
-        let mut evm_env: alloy_evm::EvmEnv<SpecId, BlockEnv> = EvmEnv::default();
+        let mut evm_env: alloy_evm::EvmEnv<SpecId> = EvmEnv::default();
         evm_env.cfg_env.chain_id = 1;
         evm_env.cfg_env.spec = SpecId::CANCUN;
         evm_env.block_env.basefee = 100;
@@ -396,7 +395,7 @@ mod tests {
             },
         );
 
-        let mut evm_env: alloy_evm::EvmEnv<SpecId, BlockEnv> = EvmEnv::default();
+        let mut evm_env: alloy_evm::EvmEnv<SpecId> = EvmEnv::default();
         evm_env.cfg_env.chain_id = 1;
         evm_env.cfg_env.spec = SpecId::CANCUN;
         evm_env.block_env.gas_limit = 30_000_000;
@@ -451,7 +450,7 @@ mod tests {
             None,
         );
 
-        let mut before_env: alloy_evm::EvmEnv<SpecId, BlockEnv> = EvmEnv::default();
+        let mut before_env: alloy_evm::EvmEnv<SpecId> = EvmEnv::default();
         before_env.cfg_env.chain_id = 1;
         before_env.cfg_env.spec = SpecId::CANCUN;
         before_env.block_env.number = U256::from(4);
@@ -530,7 +529,7 @@ mod tests {
             ..Default::default()
         };
 
-        let mut before_env: alloy_evm::EvmEnv<SpecId, BlockEnv> = EvmEnv::default();
+        let mut before_env: alloy_evm::EvmEnv<SpecId> = EvmEnv::default();
         before_env.cfg_env.chain_id = 1;
         before_env.cfg_env.spec = SpecId::CANCUN;
         before_env.block_env.number = U256::from(2);
@@ -547,7 +546,7 @@ mod tests {
             "precompile must not mint before activation height"
         );
 
-        let mut after_env: alloy_evm::EvmEnv<SpecId, BlockEnv> = EvmEnv::default();
+        let mut after_env: alloy_evm::EvmEnv<SpecId> = EvmEnv::default();
         after_env.cfg_env.chain_id = 1;
         after_env.cfg_env.spec = SpecId::CANCUN;
         after_env.block_env.number = U256::from(3);

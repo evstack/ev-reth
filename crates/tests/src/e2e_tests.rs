@@ -22,7 +22,6 @@ use reth_e2e_test_utils::{
     transaction::TransactionTestContext,
     wallet::Wallet,
 };
-use reth_primitives::TransactionSigned;
 use reth_rpc_api::clients::{EngineApiClient, EthApiClient};
 
 use crate::common::{
@@ -276,7 +275,6 @@ async fn test_e2e_base_fee_sink_receives_base_fee() -> Result<()> {
         Block,
         Receipt,
         Header,
-        TransactionSigned,
     >::balance(
         &env.node_clients[0].rpc, fee_sink, Some(BlockId::latest())
     )
@@ -366,7 +364,6 @@ async fn test_e2e_base_fee_sink_receives_base_fee() -> Result<()> {
         Block,
         Receipt,
         Header,
-        TransactionSigned,
     >::balance(
         &env.node_clients[0].rpc, fee_sink, Some(BlockId::latest())
     )
@@ -450,7 +447,6 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
         Block,
         Receipt,
         Header,
-        TransactionSigned,
     >::balance(
         &env.node_clients[0].rpc,
         new_wallet_address,
@@ -514,7 +510,6 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
         Block,
         Receipt,
         Header,
-        TransactionSigned,
     >::transaction_receipt(
         &env.node_clients[0].rpc, *allowlist_envelope.tx_hash()
     )
@@ -531,7 +526,6 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
         Block,
         Receipt,
         Header,
-        TransactionSigned,
     >::storage_at(
         &env.node_clients[0].rpc,
         MINT_PRECOMPILE_ADDR,
@@ -584,7 +578,6 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
         Block,
         Receipt,
         Header,
-        TransactionSigned,
     >::transaction_receipt(
         &env.node_clients[0].rpc, *mint_envelope.tx_hash()
     )
@@ -606,7 +599,6 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
         Block,
         Receipt,
         Header,
-        TransactionSigned,
     >::balance(
         &env.node_clients[0].rpc,
         new_wallet_address,
@@ -662,7 +654,6 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
         Block,
         Receipt,
         Header,
-        TransactionSigned,
     >::transaction_receipt(
         &env.node_clients[0].rpc, *burn_envelope.tx_hash()
     )
@@ -680,7 +671,6 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
             Block,
             Receipt,
             Header,
-            TransactionSigned,
         >::call(
             &env.node_clients[0].rpc,
             burn_tx.clone(),
@@ -700,7 +690,6 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
         Block,
         Receipt,
         Header,
-        TransactionSigned,
     >::balance(
         &env.node_clients[0].rpc,
         new_wallet_address,
@@ -754,7 +743,6 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
         Block,
         Receipt,
         Header,
-        TransactionSigned,
     >::transaction_receipt(
         &env.node_clients[0].rpc, *remove_envelope.tx_hash()
     )
@@ -808,7 +796,6 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
         Block,
         Receipt,
         Header,
-        TransactionSigned,
     >::transaction_receipt(
         &env.node_clients[0].rpc, *unauthorized_envelope.tx_hash()
     )
@@ -826,7 +813,6 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
         Block,
         Receipt,
         Header,
-        TransactionSigned,
     >::balance(
         &env.node_clients[0].rpc,
         new_wallet_address,
@@ -906,7 +892,6 @@ async fn test_e2e_mint_precompile_via_contract() -> Result<()> {
         Block,
         Receipt,
         Header,
-        TransactionSigned,
     >::balance(
         &env.node_clients[0].rpc,
         recipient_address,
@@ -1012,7 +997,6 @@ async fn test_e2e_mint_precompile_via_contract() -> Result<()> {
         Block,
         Receipt,
         Header,
-        TransactionSigned,
     >::transaction_receipt(&env.node_clients[0].rpc, mint_tx_hash)
     .await?
     .expect("mint transaction receipt available");
@@ -1032,7 +1016,6 @@ async fn test_e2e_mint_precompile_via_contract() -> Result<()> {
         Block,
         Receipt,
         Header,
-        TransactionSigned,
     >::balance(
         &env.node_clients[0].rpc,
         recipient_address,
@@ -1045,7 +1028,6 @@ async fn test_e2e_mint_precompile_via_contract() -> Result<()> {
         Block,
         Receipt,
         Header,
-        TransactionSigned,
     >::balance(
         &env.node_clients[0].rpc,
         recipient_address,
@@ -1058,7 +1040,6 @@ async fn test_e2e_mint_precompile_via_contract() -> Result<()> {
         Block,
         Receipt,
         Header,
-        TransactionSigned,
     >::balance(
         &env.node_clients[0].rpc,
         contract_address,
@@ -1122,7 +1103,6 @@ async fn test_e2e_mint_precompile_via_contract() -> Result<()> {
         Block,
         Receipt,
         Header,
-        TransactionSigned,
     >::balance(
         &env.node_clients[0].rpc,
         recipient_address,

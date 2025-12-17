@@ -26,7 +26,6 @@ use reth_e2e_test_utils::{
     transaction::TransactionTestContext,
     wallet::Wallet,
 };
-use reth_primitives::TransactionSigned;
 use reth_rpc_api::clients::{EngineApiClient, EthApiClient};
 
 async fn make_transfer_batch(
@@ -206,7 +205,6 @@ async fn test_e2e_engine_api_fork_choice_with_transactions() -> Result<()> {
                     Block,
                     Receipt,
                     Header,
-                    TransactionSigned,
                 >::transaction_receipt(&env.node_clients[0].rpc, tx_hash)
                 .await?
                 .expect("transaction receipt should exist");
