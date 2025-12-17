@@ -198,16 +198,17 @@ async fn test_e2e_engine_api_fork_choice_with_transactions() -> Result<()> {
                 TxEnvelope::decode_2718(&mut raw_slice).expect("transaction should decode");
             let tx_hash = *tx_envelope.tx_hash();
 
-            let receipt: Receipt =
-                EthApiClient::<
-                    TransactionRequest,
-                    Transaction,
-                    Block,
-                    Receipt,
-                    Header,
-                >::transaction_receipt(&env.node_clients[0].rpc, tx_hash)
-                .await?
-                .expect("transaction receipt should exist");
+            let receipt: Receipt = EthApiClient::<
+                TransactionRequest,
+                Transaction,
+                Block,
+                Receipt,
+                Header,
+            >::transaction_receipt(
+                &env.node_clients[0].rpc, tx_hash
+            )
+            .await?
+            .expect("transaction receipt should exist");
             assert!(receipt.status(), "{label} transaction should succeed");
         }
     }
