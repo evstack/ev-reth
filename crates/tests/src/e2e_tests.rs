@@ -22,7 +22,6 @@ use reth_e2e_test_utils::{
     transaction::TransactionTestContext,
     wallet::Wallet,
 };
-use reth_primitives::TransactionSigned;
 use reth_rpc_api::clients::{EngineApiClient, EthApiClient};
 
 use crate::common::{
@@ -270,17 +269,13 @@ async fn test_e2e_base_fee_sink_receives_base_fee() -> Result<()> {
     let mut env = Environment::<EvolveEngineTypes>::default();
     setup.apply::<EvolveNode>(&mut env).await?;
 
-    let initial_balance = EthApiClient::<
-        TransactionRequest,
-        Transaction,
-        Block,
-        Receipt,
-        Header,
-        TransactionSigned,
-    >::balance(
-        &env.node_clients[0].rpc, fee_sink, Some(BlockId::latest())
-    )
-    .await?;
+    let initial_balance =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+            &env.node_clients[0].rpc,
+            fee_sink,
+            Some(BlockId::latest()),
+        )
+        .await?;
 
     let parent_block = env.node_clients[0]
         .get_block_by_number(BlockNumberOrTag::Latest)
@@ -360,17 +355,13 @@ async fn test_e2e_base_fee_sink_receives_base_fee() -> Result<()> {
     let expected_tip = tip_per_gas * U256::from(gas_used);
     let expected_total_credit = expected_base_fee + expected_tip;
 
-    let final_balance: U256 = EthApiClient::<
-        TransactionRequest,
-        Transaction,
-        Block,
-        Receipt,
-        Header,
-        TransactionSigned,
-    >::balance(
-        &env.node_clients[0].rpc, fee_sink, Some(BlockId::latest())
-    )
-    .await?;
+    let final_balance: U256 =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+            &env.node_clients[0].rpc,
+            fee_sink,
+            Some(BlockId::latest()),
+        )
+        .await?;
 
     let credited = final_balance.saturating_sub(initial_balance);
     assert_eq!(
@@ -444,19 +435,13 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
     setup.apply::<EvolveNode>(&mut env).await?;
 
     // Check initial balance of new wallet (should be zero since not in genesis).
-    let initial_balance = EthApiClient::<
-        TransactionRequest,
-        Transaction,
-        Block,
-        Receipt,
-        Header,
-        TransactionSigned,
-    >::balance(
-        &env.node_clients[0].rpc,
-        new_wallet_address,
-        Some(BlockId::latest()),
-    )
-    .await?;
+    let initial_balance =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+            &env.node_clients[0].rpc,
+            new_wallet_address,
+            Some(BlockId::latest()),
+        )
+        .await?;
     println!("New wallet initial balance: {}", initial_balance);
     assert_eq!(
         initial_balance,
@@ -514,7 +499,6 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
         Block,
         Receipt,
         Header,
-        TransactionSigned,
     >::transaction_receipt(
         &env.node_clients[0].rpc, *allowlist_envelope.tx_hash()
     )
@@ -525,20 +509,14 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
         "allowlist transaction should succeed"
     );
     let allowlist_slot = operator_address.into_word();
-    let allowlist_storage = EthApiClient::<
-        TransactionRequest,
-        Transaction,
-        Block,
-        Receipt,
-        Header,
-        TransactionSigned,
-    >::storage_at(
-        &env.node_clients[0].rpc,
-        MINT_PRECOMPILE_ADDR,
-        allowlist_slot.into(),
-        Some(BlockId::latest()),
-    )
-    .await?;
+    let allowlist_storage =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::storage_at(
+            &env.node_clients[0].rpc,
+            MINT_PRECOMPILE_ADDR,
+            allowlist_slot.into(),
+            Some(BlockId::latest()),
+        )
+        .await?;
     println!("Allowlist slot value after add: {allowlist_storage:?}");
 
     // Mint tokens to the new wallet directly via the precompile using the operator.
@@ -584,7 +562,6 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
         Block,
         Receipt,
         Header,
-        TransactionSigned,
     >::transaction_receipt(
         &env.node_clients[0].rpc, *mint_envelope.tx_hash()
     )
@@ -600,19 +577,13 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
         "mint precompile transaction should succeed"
     );
 
-    let balance_after_mint = EthApiClient::<
-        TransactionRequest,
-        Transaction,
-        Block,
-        Receipt,
-        Header,
-        TransactionSigned,
-    >::balance(
-        &env.node_clients[0].rpc,
-        new_wallet_address,
-        Some(BlockId::latest()),
-    )
-    .await?;
+    let balance_after_mint =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+            &env.node_clients[0].rpc,
+            new_wallet_address,
+            Some(BlockId::latest()),
+        )
+        .await?;
     println!("New wallet balance after mint: {}", balance_after_mint);
     assert_eq!(
         balance_after_mint, mint_amount,
@@ -662,7 +633,6 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
         Block,
         Receipt,
         Header,
-        TransactionSigned,
     >::transaction_receipt(
         &env.node_clients[0].rpc, *burn_envelope.tx_hash()
     )
@@ -674,39 +644,27 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
         burn_receipt.logs
     );
     if !burn_receipt.status() {
-        let revert_preview = EthApiClient::<
-            TransactionRequest,
-            Transaction,
-            Block,
-            Receipt,
-            Header,
-            TransactionSigned,
-        >::call(
-            &env.node_clients[0].rpc,
-            burn_tx.clone(),
-            Some(BlockId::latest()),
-            None,
-            None,
-        )
-        .await;
+        let revert_preview =
+            EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::call(
+                &env.node_clients[0].rpc,
+                burn_tx.clone(),
+                Some(BlockId::latest()),
+                None,
+                None,
+            )
+            .await;
         println!("Burn eth_call result: {revert_preview:?}");
         panic!("burn precompile transaction should succeed");
     }
 
     let expected_after_burn = mint_amount - burn_amount;
-    let balance_after_burn = EthApiClient::<
-        TransactionRequest,
-        Transaction,
-        Block,
-        Receipt,
-        Header,
-        TransactionSigned,
-    >::balance(
-        &env.node_clients[0].rpc,
-        new_wallet_address,
-        Some(BlockId::latest()),
-    )
-    .await?;
+    let balance_after_burn =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+            &env.node_clients[0].rpc,
+            new_wallet_address,
+            Some(BlockId::latest()),
+        )
+        .await?;
     println!("New wallet balance after burn: {}", balance_after_burn);
     assert_eq!(
         balance_after_burn, expected_after_burn,
@@ -754,7 +712,6 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
         Block,
         Receipt,
         Header,
-        TransactionSigned,
     >::transaction_receipt(
         &env.node_clients[0].rpc, *remove_envelope.tx_hash()
     )
@@ -808,7 +765,6 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
         Block,
         Receipt,
         Header,
-        TransactionSigned,
     >::transaction_receipt(
         &env.node_clients[0].rpc, *unauthorized_envelope.tx_hash()
     )
@@ -820,19 +776,13 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
     );
 
     // Ensure balance unchanged after failed mint.
-    let final_balance = EthApiClient::<
-        TransactionRequest,
-        Transaction,
-        Block,
-        Receipt,
-        Header,
-        TransactionSigned,
-    >::balance(
-        &env.node_clients[0].rpc,
-        new_wallet_address,
-        Some(BlockId::latest()),
-    )
-    .await?;
+    let final_balance =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+            &env.node_clients[0].rpc,
+            new_wallet_address,
+            Some(BlockId::latest()),
+        )
+        .await?;
     assert_eq!(
         final_balance, expected_after_burn,
         "failed mint must not change recipient balance"
@@ -900,19 +850,13 @@ async fn test_e2e_mint_precompile_via_contract() -> Result<()> {
     let mut env = Environment::<EvolveEngineTypes>::default();
     setup.apply::<EvolveNode>(&mut env).await?;
 
-    let recipient_initial_balance = EthApiClient::<
-        TransactionRequest,
-        Transaction,
-        Block,
-        Receipt,
-        Header,
-        TransactionSigned,
-    >::balance(
-        &env.node_clients[0].rpc,
-        recipient_address,
-        Some(BlockId::latest()),
-    )
-    .await?;
+    let recipient_initial_balance =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+            &env.node_clients[0].rpc,
+            recipient_address,
+            Some(BlockId::latest()),
+        )
+        .await?;
 
     let parent_block = env.node_clients[0]
         .get_block_by_number(BlockNumberOrTag::Latest)
@@ -1012,7 +956,6 @@ async fn test_e2e_mint_precompile_via_contract() -> Result<()> {
         Block,
         Receipt,
         Header,
-        TransactionSigned,
     >::transaction_receipt(&env.node_clients[0].rpc, mint_tx_hash)
     .await?
     .expect("mint transaction receipt available");
@@ -1026,45 +969,27 @@ async fn test_e2e_mint_precompile_via_contract() -> Result<()> {
         "mint proxy transaction reverted on execution"
     );
 
-    let balance_after_mint: U256 = EthApiClient::<
-        TransactionRequest,
-        Transaction,
-        Block,
-        Receipt,
-        Header,
-        TransactionSigned,
-    >::balance(
-        &env.node_clients[0].rpc,
-        recipient_address,
-        Some(BlockId::latest()),
-    )
-    .await?;
-    let balance_at_block = EthApiClient::<
-        TransactionRequest,
-        Transaction,
-        Block,
-        Receipt,
-        Header,
-        TransactionSigned,
-    >::balance(
-        &env.node_clients[0].rpc,
-        recipient_address,
-        Some(BlockId::Number(BlockNumberOrTag::Number(parent_number))),
-    )
-    .await?;
-    let contract_balance_after_mint = EthApiClient::<
-        TransactionRequest,
-        Transaction,
-        Block,
-        Receipt,
-        Header,
-        TransactionSigned,
-    >::balance(
-        &env.node_clients[0].rpc,
-        contract_address,
-        Some(BlockId::latest()),
-    )
-    .await?;
+    let balance_after_mint: U256 =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+            &env.node_clients[0].rpc,
+            recipient_address,
+            Some(BlockId::latest()),
+        )
+        .await?;
+    let balance_at_block =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+            &env.node_clients[0].rpc,
+            recipient_address,
+            Some(BlockId::Number(BlockNumberOrTag::Number(parent_number))),
+        )
+        .await?;
+    let contract_balance_after_mint =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+            &env.node_clients[0].rpc,
+            contract_address,
+            Some(BlockId::latest()),
+        )
+        .await?;
     println!(
         "mintee balance diff: {} -> {} (latest) | {} (@block {}), contract balance now: {}",
         recipient_initial_balance,
@@ -1116,19 +1041,13 @@ async fn test_e2e_mint_precompile_via_contract() -> Result<()> {
     )
     .await?;
 
-    let final_balance = EthApiClient::<
-        TransactionRequest,
-        Transaction,
-        Block,
-        Receipt,
-        Header,
-        TransactionSigned,
-    >::balance(
-        &env.node_clients[0].rpc,
-        recipient_address,
-        Some(BlockId::latest()),
-    )
-    .await?;
+    let final_balance =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+            &env.node_clients[0].rpc,
+            recipient_address,
+            Some(BlockId::latest()),
+        )
+        .await?;
     assert_eq!(
         final_balance,
         recipient_initial_balance + mint_amount - burn_amount,
