@@ -161,6 +161,7 @@ define docker_build_push
 		--tag $(DOCKER_IMAGE_NAME):$(1) \
 		--tag $(DOCKER_IMAGE_NAME):$(2) \
 		--provenance=false \
+		--sbom=false \
 		--push
 endef
 
