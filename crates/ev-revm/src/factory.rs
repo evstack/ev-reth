@@ -7,7 +7,10 @@ use alloy_evm::{
     Database, EvmEnv, EvmFactory,
 };
 use alloy_primitives::{Address, U256};
-use ev_precompiles::mint::{MintPrecompile, MINT_PRECOMPILE_ADDR};
+use ev_precompiles::{
+    mint::{MintPrecompile, MINT_PRECOMPILE_ADDR},
+    token_duality::{TokenDualityConfig, TokenDualityPrecompile, TOKEN_DUALITY_PRECOMPILE_ADDR},
+};
 use reth_evm_ethereum::EthEvmConfig;
 use reth_revm::{
     inspector::NoOpInspector,
@@ -73,6 +76,31 @@ impl MintPrecompileSettings {
     }
 }
 
+/// Settings for enabling the token duality precompile at a specific block height.
+#[derive(Debug, Clone)]
+pub struct TokenDualitySettings {
+    config: TokenDualityConfig,
+    activation_height: u64,
+}
+
+impl TokenDualitySettings {
+    /// Creates a new settings object.
+    pub fn new(config: TokenDualityConfig, activation_height: u64) -> Self {
+        Self {
+            config,
+            activation_height,
+        }
+    }
+
+    const fn activation_height(&self) -> u64 {
+        self.activation_height
+    }
+
+    fn config(&self) -> TokenDualityConfig {
+        self.config.clone()
+    }
+}
+
 /// Settings for custom contract size limit with activation height.
 #[derive(Debug, Clone, Copy)]
 pub struct ContractSizeLimitSettings {
@@ -104,6 +132,7 @@ pub struct EvEvmFactory<F> {
     inner: F,
     redirect: Option<BaseFeeRedirectSettings>,
     mint_precompile: Option<MintPrecompileSettings>,
+    token_duality: Option<TokenDualitySettings>,
     contract_size_limit: Option<ContractSizeLimitSettings>,
 }
 
@@ -119,6 +148,24 @@ impl<F> EvEvmFactory<F> {
             inner,
             redirect,
             mint_precompile,
+            token_duality: None,
+            contract_size_limit,
+        }
+    }
+
+    /// Creates a new factory wrapper with all options including token duality.
+    pub fn with_token_duality(
+        inner: F,
+        redirect: Option<BaseFeeRedirectSettings>,
+        mint_precompile: Option<MintPrecompileSettings>,
+        token_duality: Option<TokenDualitySettings>,
+        contract_size_limit: Option<ContractSizeLimitSettings>,
+    ) -> Self {
+        Self {
+            inner,
+            redirect,
+            mint_precompile,
+            token_duality,
             contract_size_limit,
         }
     }
@@ -153,6 +200,29 @@ impl<F> EvEvmFactory<F> {
         });
     }
 
+    fn install_token_duality_precompile(&self, precompiles: &mut PrecompilesMap, block_number: U256) {
+        let Some(ref settings) = self.token_duality else {
+            return;
+        };
+        if block_number < U256::from(settings.activation_height()) {
+            return;
+        }
+
+        // Create a new precompile instance per EVM to ensure block tracker isolation.
+        // Each EVM gets its own block tracker state, preventing cross-EVM interference
+        // during concurrent execution.
+        let precompile = Arc::new(TokenDualityPrecompile::new(settings.config()));
+        let id = TokenDualityPrecompile::id().clone();
+
+        precompiles.apply_precompile(&TOKEN_DUALITY_PRECOMPILE_ADDR, move |_| {
+            let precompile_for_call = Arc::clone(&precompile);
+            let id_for_call = id;
+            Some(DynPrecompile::new_stateful(id_for_call, move |input| {
+                precompile_for_call.call(input)
+            }))
+        });
+    }
+
     fn redirect_for_block(&self, block_number: U256) -> Option<BaseFeeRedirect> {
         self.redirect.and_then(|settings| {
             if block_number >= U256::from(settings.activation_height()) {
@@ -161,6 +231,11 @@ impl<F> EvEvmFactory<F> {
                 None
             }
         })
+    }
+
+    fn install_precompiles(&self, precompiles: &mut PrecompilesMap, block_number: U256) {
+        self.install_mint_precompile(precompiles, block_number);
+        self.install_token_duality_precompile(precompiles, block_number);
     }
 }
 
@@ -189,7 +264,7 @@ impl EvmFactory for EvEvmFactory<EthEvmFactory> {
         let mut evm = EvEvm::from_inner(inner, self.redirect_for_block(block_number), false);
         {
             let inner = evm.inner_mut();
-            self.install_mint_precompile(&mut inner.precompiles, block_number);
+            self.install_precompiles(&mut inner.precompiles, block_number);
         }
         evm
     }
@@ -209,7 +284,7 @@ impl EvmFactory for EvEvmFactory<EthEvmFactory> {
         let mut evm = EvEvm::from_inner(inner, self.redirect_for_block(block_number), true);
         {
             let inner = evm.inner_mut();
-            self.install_mint_precompile(&mut inner.precompiles, block_number);
+            self.install_precompiles(&mut inner.precompiles, block_number);
         }
         evm
     }
