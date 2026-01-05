@@ -81,8 +81,9 @@ pub enum EvRethTxEnvelope {
     Eip1559(Signed<TxEip1559>),
     #[envelope(ty = 3)]
     Eip4844(Signed<TxEip4844>),
+    /// EvReth sponsorship transaction (type 0x76)
     #[envelope(ty = 0x76, typed = SponsorTransaction)]
-    Sponsor(SponsorSigned),
+    Sponsorship(SponsorSigned),
 }
 
 pub struct SponsorTransaction {
