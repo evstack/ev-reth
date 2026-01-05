@@ -12,10 +12,6 @@ description = "Common utilities and constants for ev-reth"
 # Core dependencies
 serde = { workspace = true, features = ["derive"] }
 tracing.workspace = true
-alloy-consensus.workspace = true
-alloy-eips.workspace = true
-alloy-primitives.workspace = true
-alloy-rlp.workspace = true
 
 [lints]
 workspace = true
