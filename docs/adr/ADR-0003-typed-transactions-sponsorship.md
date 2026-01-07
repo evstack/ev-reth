@@ -8,9 +8,6 @@
 
 DRAFT Not Implemented
 
-> Please have a look at the [PROCESS](./PROCESS.md#adr-status) page.
-> Use DRAFT if the ADR is in a draft stage (draft PR) or PROPOSED if it's in review.
-
 ## Abstract
 
 This ADR proposes a simplified way to sponsor transactions in reth by using
@@ -38,10 +35,6 @@ the executor, without changing the execution semantics of the underlying call.
 At the same time, it must remain compatible with existing tooling, avoid
 breaking current transaction flows, and be straightforward to implement in
 reth's transaction validation and propagation layers.
-
-## Alternatives
-
-TODO
 
 ## Decision
 
@@ -157,6 +150,27 @@ impl EvNodeTransaction {
         self.rlp_encode_fields_with_sender(sender, &mut buf);
         keccak256(&buf)
     }
+}
+```
+
+3. Add validation at two layers.
+   - Decode/attributes (stateless): validate sponsor signature + hash + required
+     fields when decoding Engine API transactions in
+     `crates/node/src/attributes.rs`.
+   - Pre-execution (stateful): validate sponsor balance/nonce/limits right
+     before `execute_transaction` in `crates/node/src/builder.rs`.
+
+```rust
+// attributes.rs (stateless)
+let tx = TransactionSigned::network_decode(&mut tx_bytes.as_ref())?;
+if let Some(ev_tx) = tx.as_evnodetx() {
+    ev_tx.validate_sponsor_sig()?;
+}
+
+// builder.rs (stateful)
+let recovered_tx = tx.try_clone_into_recovered()?;
+if let Some(ev_tx) = recovered_tx.as_evnodetx() {
+    ev_tx.validate_sponsor_state(&state_provider)?;
 }
 ```
 
