@@ -174,6 +174,21 @@ if let Some(ev_tx) = recovered_tx.as_evnodetx() {
 }
 ```
 
+4. Charge gas to the sponsor during execution.
+   - Resolve `fee_payer` from the sponsorship signature, then use it as the
+     balance source for gas accounting while keeping `msg.sender` as the user.
+   - Implement the debit in the execution handler path (stateful), not in the
+     txpool.
+   - In ev-node, this lives in `crates/ev-revm/src/handler.rs` inside
+     `validate_against_state_and_deduct_caller`.
+
+```rust
+// execution handler (stateful)
+let fee_payer = tx.fee_payer()?;
+let fee_token = resolve_fee_token(tx, fee_payer)?;
+debit_fee_payer(fee_payer, fee_token, gas_cost)?;
+```
+
 ## Consequences
 
 > This section describes the resulting context, after applying the decision. All
