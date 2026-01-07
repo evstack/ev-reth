@@ -106,6 +106,60 @@ pub struct EvNodeTransaction {
 }
 ```
 
+2. Define payload encoding and signing rules for `EvNodeTransaction`.
+   - Implement RLP encoding/decoding for the payload fields (no type byte).
+   - Implement `Typed2718` to return `0x76`.
+   - Implement `SignableTransaction` to define `encode_for_signing` and
+     `payload_len_for_signature` for the user signature.
+   - Define `signature_hash()` for the user signature (type byte + payload).
+   - Define `fee_payer_signature_hash(sender)` for sponsorship, including
+     `fee_token` and replacing the signature field with the sender address.
+   - Recover the sponsor address from `fee_payer_signature` during validation.
+
+```rust
+impl Typed2718 for EvNodeTransaction {
+    fn ty(&self) -> u8 {
+        0x76
+    }
+}
+
+impl SignableTransaction<Signature> for EvNodeTransaction {
+    fn set_chain_id(&mut self, chain_id: u64) {
+        self.chain_id = chain_id;
+    }
+
+    fn encode_for_signing(&self, out: &mut dyn alloy_rlp::BufMut) {
+        // Type byte, then RLP payload (fields only).
+        out.put_u8(self.ty());
+        // rlp_encode_fields(...) should write all payload fields in order.
+        let payload_len = self.rlp_encoded_fields_length();
+        rlp_header(payload_len).encode(out);
+        self.rlp_encode_fields(out);
+    }
+
+    fn payload_len_for_signature(&self) -> usize {
+        1 + rlp_header(self.rlp_encoded_fields_length()).length_with_payload()
+    }
+}
+
+impl EvNodeTransaction {
+    pub fn signature_hash(&self) -> B256 {
+        let mut buf = Vec::new();
+        self.encode_for_signing(&mut buf);
+        keccak256(&buf)
+    }
+
+    pub fn fee_payer_signature_hash(&self, sender: Address) -> B256 {
+        let mut buf = Vec::new();
+        buf.put_u8(0xF7); // Magic byte for sponsor signature (example).
+        let payload_len = self.rlp_encoded_fields_length_with_sender(sender);
+        rlp_header(payload_len).encode(&mut buf);
+        self.rlp_encode_fields_with_sender(sender, &mut buf);
+        keccak256(&buf)
+    }
+}
+```
+
 ## Consequences
 
 > This section describes the resulting context, after applying the decision. All
