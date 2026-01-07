@@ -52,7 +52,9 @@ transaction in ev-reth. The new type (0x76) encodes both the execution call
 and a separate sponsor authorization, enabling a sponsor account to pay fees
 while preserving normal EVM execution semantics for the user call. The type is
 added to the transaction envelope, validated in the txpool, and executed by
-charging the sponsor while the sender remains the call origin.
+charging the sponsor while the sender remains the call origin. The transaction
+itself uses the standard secp256k1 signature wrapper (`Signed<T>`), so we do
+not introduce a custom signed wrapper type.
 
 ## Implementation Plan
 
@@ -61,6 +63,8 @@ charging the sponsor while the sender remains the call origin.
      with a sponsorship transaction type (0x76) and a typed wrapper.
    - The sponsorship transaction is specific to ev-reth and is not a wrapper
      around an existing type: it carries explicit sponsor authorization fields.
+   - The user signature uses the standard `Signed<T>` wrapper (secp256k1),
+     while the sponsor authorization is included as explicit fields.
 
 ```rust
 #[derive(Clone, Debug, alloy_consensus::TransactionEnvelope)]
@@ -81,13 +85,21 @@ pub enum EvRethTxEnvelope {
     Eip1559(Signed<TxEip1559>),
     #[envelope(ty = 3)]
     Eip4844(Signed<TxEip4844>),
-    #[envelope(ty = 0x76, typed = SponsorTransaction)]
-    Sponsor(SponsorSigned),
+    #[envelope(ty = 0x76, typed = EvNodeTransaction)]
+    EvNodeTx(Signed<EvNodeTransaction>),
 }
 
-pub struct SponsorTransaction {
-    // User/executor call fields (sender remains call origin)
+pub struct EvNodeTransaction {
+    // These mirror EIP-1559 fields to stay compatible with the standard.
     pub chain_id: u64,
+    pub nonce: u64,
+    pub max_priority_fee_per_gas: u128,
+    pub max_fee_per_gas: u128,
+    pub gas_limit: u64,
+    pub to: TxKind,
+    pub value: U256,
+    pub data: Bytes,
+    pub access_list: AccessList,
     // Sponsorship fields (payer is separate)
     pub fee_payer_signature: Signature,
     pub fee_token: Address,
