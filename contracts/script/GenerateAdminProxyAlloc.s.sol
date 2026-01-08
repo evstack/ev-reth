@@ -62,7 +62,7 @@ contract GenerateAdminProxyAlloc is Script {
         console.log("");
         console.log("Then update chainspec config:");
         console.log("");
-        console.log('{');
+        console.log("{");
         console.log('  "config": {');
         console.log('    "evolve": {');
         console.log('      "mintAdmin": "0x000000000000000000000000000000000000Ad00",');
