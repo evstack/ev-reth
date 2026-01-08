@@ -3,18 +3,22 @@ pragma solidity ^0.8.24;
 
 /// @title AdminProxy
 /// @notice A proxy contract for managing admin rights to precompiles and other contracts.
-/// @dev Deployed at genesis with zero owner, allowing first-come claim. Supports two-step
+/// @dev Deployed at genesis with owner set via storage slot. Supports two-step
 /// ownership transfer for safe handoff to multisigs or other governance contracts.
 ///
 /// This contract solves the bootstrap problem where admin addresses (e.g., multisigs)
 /// are not known at genesis time. The proxy is set as admin in the chainspec, and
-/// ownership can be claimed and transferred post-genesis.
+/// an initial EOA owner is set in genesis storage. Post-genesis, ownership can be
+/// transferred to a multisig.
+///
+/// Storage Layout:
+///   - Slot 0: owner (address)
+///   - Slot 1: pendingOwner (address)
 ///
 /// Usage:
-/// 1. Deploy at genesis with zero owner (via genesis alloc)
+/// 1. Deploy at genesis via alloc with owner set in storage slot 0
 /// 2. Set proxy address as `mintAdmin` in chainspec and as FeeVault owner
-/// 3. Post-genesis: call claimOwnership() to become initial owner
-/// 4. Deploy multisig, then transferOwnership() -> acceptOwnership() to hand off
+/// 3. Post-genesis: deploy multisig, then transferOwnership() -> acceptOwnership()
 contract AdminProxy {
     /// @notice Current owner of the proxy
     address public owner;
@@ -51,18 +55,9 @@ contract AdminProxy {
         _;
     }
 
-    /// @notice Initialize with zero owner - first caller can claim ownership
-    constructor() {
-        owner = address(0);
-    }
-
-    /// @notice Claim ownership when owner is zero (genesis bootstrap)
-    /// @dev Can only be called once, when owner is address(0)
-    function claimOwnership() external {
-        if (owner != address(0)) revert NotOwner();
-        owner = msg.sender;
-        emit OwnershipTransferred(address(0), msg.sender);
-    }
+    /// @notice Constructor is empty - owner is set via genesis storage slot 0
+    /// @dev When deploying at genesis, set storage["0x0"] to the owner address
+    constructor() {}
 
     /// @notice Start two-step ownership transfer
     /// @param newOwner Address of the new owner (e.g., multisig)

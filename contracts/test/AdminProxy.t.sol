@@ -68,6 +68,9 @@ contract AdminProxyTest is Test {
     address public bob = address(0x2);
     address public multisig = address(0x3);
 
+    // Storage slot for owner (slot 0)
+    bytes32 constant OWNER_SLOT = bytes32(uint256(0));
+
     event OwnershipTransferStarted(address indexed previousOwner, address indexed newOwner);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
     event Executed(address indexed target, bytes data, bytes result);
@@ -77,34 +80,26 @@ contract AdminProxyTest is Test {
         target = new MockTarget();
     }
 
+    /// @dev Helper to set owner via storage (simulating genesis)
+    function _setOwnerViaStorage(address _owner) internal {
+        vm.store(address(proxy), OWNER_SLOT, bytes32(uint256(uint160(_owner))));
+    }
+
     // ============ Ownership Tests ============
 
     function test_InitialOwnerIsZero() public view {
         assertEq(proxy.owner(), address(0));
     }
 
-    function test_ClaimOwnership() public {
-        vm.prank(alice);
-        vm.expectEmit(true, true, false, false);
-        emit OwnershipTransferred(address(0), alice);
-        proxy.claimOwnership();
-
+    function test_OwnerSetViaStorage() public {
+        // Simulate genesis by setting owner in storage
+        _setOwnerViaStorage(alice);
         assertEq(proxy.owner(), alice);
     }
 
-    function test_ClaimOwnership_RevertWhenAlreadyClaimed() public {
-        vm.prank(alice);
-        proxy.claimOwnership();
-
-        vm.prank(bob);
-        vm.expectRevert(AdminProxy.NotOwner.selector);
-        proxy.claimOwnership();
-    }
-
     function test_TransferOwnership_TwoStep() public {
-        // Alice claims ownership
-        vm.prank(alice);
-        proxy.claimOwnership();
+        // Set alice as owner via storage (genesis simulation)
+        _setOwnerViaStorage(alice);
 
         // Alice initiates transfer to bob
         vm.prank(alice);
@@ -126,8 +121,7 @@ contract AdminProxyTest is Test {
     }
 
     function test_TransferOwnership_RevertZeroAddress() public {
-        vm.prank(alice);
-        proxy.claimOwnership();
+        _setOwnerViaStorage(alice);
 
         vm.prank(alice);
         vm.expectRevert(AdminProxy.ZeroAddress.selector);
@@ -135,8 +129,7 @@ contract AdminProxyTest is Test {
     }
 
     function test_AcceptOwnership_RevertNotPending() public {
-        vm.prank(alice);
-        proxy.claimOwnership();
+        _setOwnerViaStorage(alice);
 
         vm.prank(alice);
         proxy.transferOwnership(bob);
@@ -149,8 +142,7 @@ contract AdminProxyTest is Test {
     }
 
     function test_CancelTransfer() public {
-        vm.prank(alice);
-        proxy.claimOwnership();
+        _setOwnerViaStorage(alice);
 
         vm.prank(alice);
         proxy.transferOwnership(bob);
@@ -167,19 +159,31 @@ contract AdminProxyTest is Test {
     }
 
     function test_TransferOwnership_RevertNotOwner() public {
-        vm.prank(alice);
-        proxy.claimOwnership();
+        _setOwnerViaStorage(alice);
 
         vm.prank(bob);
         vm.expectRevert(AdminProxy.NotOwner.selector);
         proxy.transferOwnership(bob);
     }
 
+    function test_OwnerZero_CannotCallOwnerFunctions() public {
+        // Owner is zero (not set)
+        assertEq(proxy.owner(), address(0));
+
+        // Nobody can call owner functions
+        vm.prank(alice);
+        vm.expectRevert(AdminProxy.NotOwner.selector);
+        proxy.transferOwnership(alice);
+
+        vm.prank(alice);
+        vm.expectRevert(AdminProxy.NotOwner.selector);
+        proxy.execute(address(target), abi.encodeCall(MockTarget.setValue, (42)));
+    }
+
     // ============ Execute Tests ============
 
     function test_Execute() public {
-        vm.prank(alice);
-        proxy.claimOwnership();
+        _setOwnerViaStorage(alice);
 
         bytes memory data = abi.encodeCall(MockTarget.setValue, (42));
 
@@ -193,8 +197,7 @@ contract AdminProxyTest is Test {
     }
 
     function test_Execute_ReturnsData() public {
-        vm.prank(alice);
-        proxy.claimOwnership();
+        _setOwnerViaStorage(alice);
 
         // First set a value
         vm.prank(alice);
@@ -209,8 +212,7 @@ contract AdminProxyTest is Test {
     }
 
     function test_Execute_RevertNotOwner() public {
-        vm.prank(alice);
-        proxy.claimOwnership();
+        _setOwnerViaStorage(alice);
 
         vm.prank(bob);
         vm.expectRevert(AdminProxy.NotOwner.selector);
@@ -218,8 +220,7 @@ contract AdminProxyTest is Test {
     }
 
     function test_Execute_PropagatesRevert() public {
-        vm.prank(alice);
-        proxy.claimOwnership();
+        _setOwnerViaStorage(alice);
 
         // The revert data is ABI-encoded as Error(string), not raw bytes
         bytes memory expectedRevertData = abi.encodeWithSignature("Error(string)", "MockTarget: intentional revert");
@@ -232,8 +233,7 @@ contract AdminProxyTest is Test {
     // ============ ExecuteBatch Tests ============
 
     function test_ExecuteBatch() public {
-        vm.prank(alice);
-        proxy.claimOwnership();
+        _setOwnerViaStorage(alice);
 
         MockTarget target2 = new MockTarget();
 
@@ -253,8 +253,7 @@ contract AdminProxyTest is Test {
     }
 
     function test_ExecuteBatch_RevertLengthMismatch() public {
-        vm.prank(alice);
-        proxy.claimOwnership();
+        _setOwnerViaStorage(alice);
 
         address[] memory targets = new address[](2);
         bytes[] memory datas = new bytes[](1);
@@ -265,8 +264,7 @@ contract AdminProxyTest is Test {
     }
 
     function test_ExecuteBatch_RevertOnAnyFailure() public {
-        vm.prank(alice);
-        proxy.claimOwnership();
+        _setOwnerViaStorage(alice);
 
         address[] memory targets = new address[](2);
         targets[0] = address(target);
@@ -287,8 +285,7 @@ contract AdminProxyTest is Test {
     // ============ ExecuteWithValue Tests ============
 
     function test_ExecuteWithValue() public {
-        vm.prank(alice);
-        proxy.claimOwnership();
+        _setOwnerViaStorage(alice);
 
         // Fund the proxy
         vm.deal(address(proxy), 1 ether);
@@ -312,9 +309,8 @@ contract AdminProxyTest is Test {
         // Deploy mint precompile with proxy as admin
         mintPrecompile = new MockMintPrecompile(address(proxy));
 
-        // Alice claims proxy ownership
-        vm.prank(alice);
-        proxy.claimOwnership();
+        // Set alice as owner via storage (simulating genesis)
+        _setOwnerViaStorage(alice);
 
         // Alice uses proxy to add bob to allowlist
         vm.prank(alice);
@@ -332,9 +328,8 @@ contract AdminProxyTest is Test {
         // Simulate genesis -> multisig flow
         mintPrecompile = new MockMintPrecompile(address(proxy));
 
-        // 1. Alice (EOA) claims ownership post-genesis
-        vm.prank(alice);
-        proxy.claimOwnership();
+        // 1. Alice is set as owner at genesis (via storage)
+        _setOwnerViaStorage(alice);
 
         // 2. Alice does some admin work
         vm.prank(alice);
@@ -375,9 +370,8 @@ contract AdminProxyTest is Test {
             address(0x99)
         );
 
-        // Alice claims proxy ownership
-        vm.prank(alice);
-        proxy.claimOwnership();
+        // Set alice as owner via storage (simulating genesis)
+        _setOwnerViaStorage(alice);
 
         // Alice uses proxy to update FeeVault config
         vm.prank(alice);
@@ -394,8 +388,7 @@ contract AdminProxyTest is Test {
     function test_Integration_BatchAllowlistUpdates() public {
         mintPrecompile = new MockMintPrecompile(address(proxy));
 
-        vm.prank(alice);
-        proxy.claimOwnership();
+        _setOwnerViaStorage(alice);
 
         // Batch add multiple addresses to allowlist
         address[] memory targets = new address[](3);
@@ -419,5 +412,42 @@ contract AdminProxyTest is Test {
         assertTrue(mintPrecompile.allowlist(user1));
         assertTrue(mintPrecompile.allowlist(user2));
         assertTrue(mintPrecompile.allowlist(user3));
+    }
+
+    // ============ Genesis Simulation Tests ============
+
+    function test_GenesisSimulation_FullFlow() public {
+        // This test simulates exactly what happens at genesis and post-genesis
+
+        // 1. At genesis: proxy is deployed at a specific address with owner set in storage
+        // We simulate this by deploying and then setting storage
+        AdminProxy genesisProxy = new AdminProxy();
+
+        // Set owner to alice (EOA) at genesis via storage slot 0
+        address genesisOwner = address(0xAAAA);
+        vm.store(address(genesisProxy), OWNER_SLOT, bytes32(uint256(uint160(genesisOwner))));
+
+        // Verify owner was set
+        assertEq(genesisProxy.owner(), genesisOwner);
+        assertEq(genesisProxy.pendingOwner(), address(0));
+
+        // 2. Post-genesis: owner can immediately use the proxy
+        MockMintPrecompile precompile = new MockMintPrecompile(address(genesisProxy));
+
+        vm.prank(genesisOwner);
+        genesisProxy.execute(address(precompile), abi.encodeCall(MockMintPrecompile.addToAllowList, (address(0xBBBB))));
+
+        assertTrue(precompile.allowlist(address(0xBBBB)));
+
+        // 3. Later: transfer to multisig
+        address multisigAddr = address(0xCCCC);
+
+        vm.prank(genesisOwner);
+        genesisProxy.transferOwnership(multisigAddr);
+
+        vm.prank(multisigAddr);
+        genesisProxy.acceptOwnership();
+
+        assertEq(genesisProxy.owner(), multisigAddr);
     }
 }
