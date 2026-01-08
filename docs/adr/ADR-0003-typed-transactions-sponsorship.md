@@ -10,7 +10,7 @@ DRAFT Not Implemented
 
 ## Abstract
 
-This ADR proposes a canonical EvNode transaction type that includes gas
+This ADR proposes an additional EvNode transaction type that includes gas
 sponsorship as a first-class capability, using EIP-2718 typed transactions.
 The idea is to define a typed transaction format that separates the gas payer
 from the executor so the cost can be covered without altering the normal
@@ -38,8 +38,8 @@ reth's transaction validation and propagation layers.
 
 ## Decision
 
-We will introduce a new canonical EvNode transaction type using EIP-2718
-typed transactions. This type (0x76) encodes both the execution call and an
+We will introduce a new EvNode transaction type using EIP-2718 typed
+transactions. This type (0x76) encodes both the execution call and an
 optional sponsor authorization, enabling a sponsor account to pay fees while
 preserving normal EVM execution semantics for the user call. It is not a
 "sponsorship-only" transaction; it is an additional EvNode transaction format
@@ -51,13 +51,10 @@ a custom signed wrapper type.
 ## Implementation Plan
 
 1. Define the consensus transaction envelope and type.
-   - Add a crate-local envelope enum that derives `TransactionEnvelope` and
-     declares the tx type name (e.g. `EvRethTxType`) for all supported variants.
-   - Use `#[envelope(ty = 0x76)]` to register the
-     custom typed transaction and ensure the type byte does not collide.
-   - Keep the custom transaction as a concrete struct (not a wrapper), so its
-     fields and ordering are explicitly defined at the consensus layer.
-   - The user signature remains the standard `Signed<T>` wrapper (secp256k1).
+   - Define the `EvNodeTransaction` struct and `EvRethTxEnvelope` enum in
+     `crates/primitives`, using `Signed<T>` for the executor signature.
+   - Register the new typed transaction with `#[envelope(ty = 0x76)]` and keep
+     the consensus field ordering explicit in the struct.
 
 ```rust
 #[derive(Clone, Debug, alloy_consensus::TransactionEnvelope)]
