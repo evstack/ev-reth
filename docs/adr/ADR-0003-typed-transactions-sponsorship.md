@@ -44,10 +44,9 @@ optional sponsor authorization, enabling a sponsor account to pay fees while
 preserving normal EVM execution semantics for the user call. It is not a
 "sponsorship-only" transaction; it is an additional EvNode transaction format
 and sponsorship is an optional capability. Other transaction types remain
-supported and this type is not the sole or primary format. The type is added to
-the transaction envelope. The transaction itself uses the standard secp256k1
-signature wrapper (`Signed<T>`), so we do not introduce a custom signed wrapper
-type.
+supported and this type is not the sole or primary format. The transaction itself
+uses the standard secp256k1 signature wrapper (`Signed<T>`), so we do not introduce
+a custom signed wrapper type.
 
 ## Implementation Plan
 
