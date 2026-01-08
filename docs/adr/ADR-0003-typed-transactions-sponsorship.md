@@ -52,7 +52,7 @@ envelope. The transaction itself uses the standard secp256k1 signature wrapper
 1. Define the consensus transaction envelope and type.
    - Add a crate-local envelope enum that derives `TransactionEnvelope` and
      declares the tx type name (e.g. `EvRethTxType`) for all supported variants.
-   - Use `#[envelope(ty = 0x76]` to register the
+   - Use `#[envelope(ty = 0x76)]` to register the
      custom typed transaction and ensure the type byte does not collide.
    - Keep the custom transaction as a concrete struct (not a wrapper), so its
      fields and ordering are explicitly defined at the consensus layer.
@@ -100,7 +100,7 @@ pub struct EvNodeTransaction {
     pub gas_limit: u64,
     pub max_fee_per_gas: u128,
     pub max_priority_fee_per_gas: u128,
-    pub to: Address,
+    pub to: TxKind,
     pub value: U256,
     pub data: Bytes,
     pub access_list: AccessList,
@@ -285,7 +285,7 @@ impl FromRecoveredTx<EvNodeTransaction> for TxEnv {
             gas_limit: tx.gas_limit,
             gas_price: tx.max_fee_per_gas,
             gas_priority_fee: Some(tx.max_priority_fee_per_gas),
-            kind: TxKind::Call(tx.to),
+            kind: tx.to,
             value: tx.value,
             data: tx.data.clone(),
             access_list: tx.access_list.clone(),
