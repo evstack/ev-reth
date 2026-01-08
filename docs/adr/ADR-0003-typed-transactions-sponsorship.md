@@ -103,114 +103,31 @@ pub struct EvNodeTransaction {
     pub data: Bytes,
     pub access_list: AccessList,
     // Sponsorship fields (payer is separate, optional capability)
-    pub fee_payer_signature: Option<Signature>,
     pub fee_token: Option<Address>,
+    pub fee_payer_signature: Option<Signature>,
 }
 ```
 
-2. Specify the transaction encoding and signing payload.
-   - Define the exact RLP field ordering for `EvNodeTransaction`, including
-     how optional sponsorship fields are represented.
-   - Declare the signing payload for both the executor signature and the
-     optional sponsor authorization. This must include the EIP-2718 type byte
-     and the correct chain_id replay protection.
-   - Document how `tx_hash` is computed and ensure the hashing matches
-     `Signed<T>` expectations in reth/alloy.
-   - Make the executor vs sponsor signing domains explicit to avoid circular
-     signatures: the executor signature (Signed<T>) MUST NOT include the final
-     `fee_payer_signature` bytes. Use a fixed placeholder (or empty) when
-     computing the executor preimage, and a separate sponsor preimage that
-     commits to the executor address and the chosen `fee_token`. The sponsor
-     signs after the executor and fills `fee_payer_signature` last.
-
-Example (non-normative, tempo-style signing):
-
-```rust
-const SPONSOR_DOMAIN_BYTE: u8 = 0x78;
-const EMPTY_STRING_CODE: u8 = 0x80;
-
-impl EvNodeTransaction {
-    fn rlp_encoded_fields_length(
-        &self,
-        signature_length: impl FnOnce(&Option<Signature>) -> usize,
-        skip_fee_token: bool,
-    ) -> usize {
-        self.chain_id.length()
-            + self.nonce.length()
-            + self.max_priority_fee_per_gas.length()
-            + self.max_fee_per_gas.length()
-            + self.gas_limit.length()
-            + self.to.length()
-            + self.value.length()
-            + self.data.length()
-            + self.access_list.length()
-            + if !skip_fee_token && self.fee_token.is_some() {
-                self.fee_token.length()
-            } else {
-                1 // EMPTY_STRING_CODE
-            }
-            + signature_length(&self.fee_payer_signature)
-    }
-
-    fn rlp_encode_fields(
-        &self,
-        out: &mut dyn alloy_rlp::BufMut,
-        encode_signature: impl FnOnce(&Option<Signature>, &mut dyn alloy_rlp::BufMut),
-        skip_fee_token: bool,
-    ) {
-        self.chain_id.encode(out);
-        self.nonce.encode(out);
-        self.max_priority_fee_per_gas.encode(out);
-        self.max_fee_per_gas.encode(out);
-        self.gas_limit.encode(out);
-        self.to.encode(out);
-        self.value.encode(out);
-        self.data.encode(out);
-        self.access_list.encode(out);
-
-        if !skip_fee_token && let Some(addr) = self.fee_token {
-            addr.encode(out);
-        } else {
-            out.put_u8(EMPTY_STRING_CODE);
-        }
-
-        encode_signature(&self.fee_payer_signature, out);
-    }
-
-    pub fn fee_payer_signature_hash(&self, executor: Address) -> B256 {
-        let payload_length = self.rlp_encoded_fields_length(|_| executor.length(), false);
-        let mut out = Vec::with_capacity(1 + rlp_header(payload_length).length_with_payload());
-        out.put_u8(SPONSOR_DOMAIN_BYTE);
-        rlp_header(payload_length).encode(&mut out);
-        self.rlp_encode_fields(
-            &mut out,
-            |_, out| executor.encode(out),
-            false, // fee_token is always included for sponsor signature
-        );
-        keccak256(&out)
-    }
-}
-
-impl SignableTransaction<Signature> for EvNodeTransaction {
-    fn encode_for_signing(&self, out: &mut dyn alloy_rlp::BufMut) {
-        let skip_fee_token = self.fee_payer_signature.is_some();
-        out.put_u8(Self::tx_type().ty());
-        let payload_length = self.rlp_encoded_fields_length(|_| 1, skip_fee_token);
-        rlp_header(payload_length).encode(out);
-        self.rlp_encode_fields(
-            out,
-            |signature, out| {
-                if signature.is_some() {
-                    out.put_u8(0); // placeholder byte for sponsor signature
-                } else {
-                    out.put_u8(EMPTY_STRING_CODE);
-                }
-            },
-            skip_fee_token,
-        );
-    }
-}
-```
+2. Specify encoding + signing preimages (keep deterministic signing).
+   - Define the exact RLP field order for `EvNodeTransaction`:
+     `chain_id, nonce, max_priority_fee_per_gas, max_fee_per_gas, gas_limit, to,
+      value, data, access_list, fee_token, fee_payer_signature`.
+     This order is consensus-critical; if encoding is derived from struct field
+     order, the struct must match this ordering exactly.
+   - Encode optional fields deterministically:
+     - `fee_token`: always encoded; if `None`, encode `0x80` (empty string).
+     - `fee_payer_signature`: always encoded; if `None`, encode `0x80`.
+   - Executor signature preimage (EIP-2718):
+     - `0x76 || rlp(fields...)` with `fee_payer_signature` encoded as `0x80`
+       regardless of whether a sponsor will sign later.
+   - Sponsor signature preimage (separate domain):
+     - `SPONSOR_DOMAIN_BYTE || rlp(fields...)` where `fee_payer_signature` is
+       replaced by the executor address, and `fee_token` is encoded as above.
+   - `tx_hash` uses standard EIP-2718 hashing:
+     - `keccak256(0x76 || rlp(fields...))` with the *final* `fee_payer_signature`.
+   - Ensure the signed type implements the `SignedTransaction` requirements
+     (`Encodable`, `Decodable`, `Encodable2718`, `Decodable2718`, `Transaction`,
+     `SignerRecoverable`, `TxHashRef`, `InMemorySize`, `IsTyped2718`/`Typed2718`).
 
 3. Add the tx type identifier and compact encoding.
    - Register the new type id in the custom `TxType` enum and compact codec
