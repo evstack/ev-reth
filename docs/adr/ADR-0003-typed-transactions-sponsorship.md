@@ -307,5 +307,5 @@ builder-level pre-check is optional.
 
 ## References
 
-* https://github.com/tempoxyz/tempo
 * https://github.com/tempoxyz/tempo/blob/main/docs/pages/protocol/transactions/spec-tempo-transaction.mdx
+* https://github.com/paradigmxyz/reth/tree/main/examples/custom-node
