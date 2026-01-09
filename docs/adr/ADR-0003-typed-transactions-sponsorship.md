@@ -143,7 +143,7 @@ pub struct EvNodeTransaction {
      - `0x76 || rlp(fields...)` with `fee_payer = 0x80` and
        `fee_payer_signature = 0x80` regardless of whether a sponsor will sign.
    - Sponsor signature preimage (domain: `0x78`):
-     - `0x78 || rlp(fields...)` where `fee_payer` is set to the executor address
+     - `0x78 || rlp(fields...)` where `fee_payer` is set to the sponsor address
        and `fee_payer_signature = 0x80`.
    - `tx_hash` uses standard EIP-2718 hashing:
      - `keccak256(0x76 || rlp(fields...))` with the *final* `fee_payer_signature`.
@@ -156,6 +156,8 @@ pub struct EvNodeTransaction {
        `TxHashRef`, `InMemorySize`, `IsTyped2718`/`Typed2718`).
 
 3. Optional sponsorship behavior.
+   - `fee_payer` and `fee_payer_signature` must be both `None` or both `Some`;
+     mixed presence is invalid.
    - If `fee_payer_signature` is `None`, the payer is the executor and validation
      follows the standard EIP-1559 path.
    - If `fee_payer_signature` is `Some`, the payer is the sponsor and the sponsor
