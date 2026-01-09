@@ -15,8 +15,9 @@ sponsorship as a first-class capability, using EIP-2718 typed transactions.
 The idea is to define a typed transaction format that separates the gas payer
 from the executor so the cost can be covered without altering the normal
 execution flow. This reduces complexity for users and integrations. The design
-defines custom primitives and wrappers locally in this repo and then injects
-them into node components, without modifying reth.
+defines custom primitives and wrappers locally in this repo and then wires a
+custom `NodeTypes` configuration so the node consumes those primitives end to
+end, without modifying reth.
 
 ## Context
 
@@ -37,11 +38,15 @@ the executor, without changing the execution semantics of the underlying call.
 At the same time, it must remain compatible with existing tooling, avoid
 breaking current transaction flows, and be straightforward to implement in
 reth's transaction validation and propagation layers.
-This ADR assumes EvNode does not use the transaction pool: 0x76 transactions
-are accepted only via Engine API/payload building paths. As a result, there is
-no pool-level validation for this type; validation occurs during decode and
-execution. The pool and `eth_sendRawTransaction` paths are explicitly out of
-scope for this ADR.
+This ADR assumes EvNode uses a custom `NodeTypes` with custom primitives (as in
+Reth's custom-node example). This is required so that typed transaction decoding
+and execution can operate on `EvTxEnvelope` end to end. The standard
+`reth_ethereum::EthPrimitives` path is not sufficient for this feature.
+This ADR also assumes EvNode does not use the transaction pool for 0x76
+transactions: they are accepted only via Engine API/payload building paths. As
+a result, there is no pool-level validation for this type; validation occurs
+during decode and execution. The pool and `eth_sendRawTransaction` paths are
+explicitly out of scope for this ADR.
 
 ## Decision
 
@@ -57,7 +62,8 @@ wrapper and signature hashing logic.
 The executor is the canonical sender (`from`) and owns the nonce; EVM execution
 semantics (CALLER) are always based on the executor. The sponsor only pays fees.
 Implementation will define local transaction primitives and envelopes in this
-repo and inject them into node builders, without modifying reth crates.
+repo and wire a custom `NodeTypes`/`NodePrimitives` configuration (Tempo-style)
+so all node components consume those types, without modifying reth crates.
 
 ## Implementation Plan
 
@@ -68,6 +74,9 @@ repo and inject them into node builders, without modifying reth crates.
      `EvTxEnvelope` enum in that crate, using a custom signed wrapper.
    - Register the new typed transaction with `#[envelope(ty = 0x76)]` and keep
      the consensus field ordering explicit in the struct.
+   - Define `EvPrimitives` (or equivalent) and ensure it becomes the node's
+     `NodeTypes::Primitives` and storage envelope type (e.g.
+     `EthStorage<EvTxEnvelope, EvHeader>`).
 
 ```rust
 #[derive(Clone, Debug, alloy_consensus::TransactionEnvelope)]
@@ -178,6 +187,11 @@ pub enum EvTxType {
    - Ensure `from` in RPC and EVM is always the executor (nonce owner).
    - Add execution logic for the new variant in the block executor and
      receipt builder, including any additional receipt fields.
+   - Update the handler that performs balance checks and fee deduction so
+     the sponsor (not the executor) pays for gas when sponsorship is present.
+     This requires a custom handler or hook that replaces
+     `validate_against_state_and_deduct_caller` and `reimburse_caller`
+     behavior for the 0x76 variant.
    - If sponsorship requires execution-time data beyond the standard
      `revm::context::TxEnv`, introduce a custom TxEnv; otherwise map directly
      into the standard `TxEnv`.
@@ -237,6 +251,11 @@ Note: in this repo, the Engine API decode/validation currently happens in
 `crates/node/src/attributes.rs` within
 `PayloadBuilderAttributes::try_new` (the `attributes.transactions` decoding),
 and currently uses `TransactionSigned::network_decode`.
+This needs to be replaced with `EvTxEnvelope::decode_2718_exact` (or equivalent)
+and the builder attributes must store the custom signed/envelope type instead
+of `reth_primitives::TransactionSigned`. This implies `EvolveNode` must use
+custom `NodeTypes::Primitives` so the payload builder and executor operate on
+the same envelope type.
 
 7. Define sponsorship validation and failure modes.
    - Specify the sponsor authorization format, signature verification, and
@@ -270,6 +289,9 @@ builder-level pre-check is optional.
 8. RPC and receipts.
    - Expose an optional `feePayer` (or `sponsor`) field for 0x76 in
      transaction objects for observability; `from` remains the executor.
+   - This requires a custom RPC type layer (Tempo-style `EthApiBuilder` and
+     RPC types bound to the custom primitives). The standard Ethereum RPC
+     response structs in reth do not include these fields.
    - If receipts are extended, include the same optional field; otherwise
      receipts remain standard.
 
