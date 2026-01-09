@@ -35,6 +35,10 @@ the executor, without changing the execution semantics of the underlying call.
 At the same time, it must remain compatible with existing tooling, avoid
 breaking current transaction flows, and be straightforward to implement in
 reth's transaction validation and propagation layers.
+This ADR assumes EvNode does not use the transaction pool: 0x76 transactions
+are accepted only via Engine API/payload building paths. As a result, there is
+no pool-level validation for this type; validation occurs during decode and
+execution.
 
 ## Decision
 
