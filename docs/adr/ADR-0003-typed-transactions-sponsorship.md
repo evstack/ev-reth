@@ -44,15 +44,15 @@ optional sponsor authorization, enabling a sponsor account to pay fees while
 preserving normal EVM execution semantics for the user call. It is not a
 "sponsorship-only" transaction; it is an additional EvNode transaction format
 and sponsorship is an optional capability. Other transaction types remain
-supported and this type is not the sole or primary format. The transaction itself
-uses the standard secp256k1 signature wrapper (`Signed<T>`), so we do not introduce
-a custom signed wrapper type.
+supported and this type is not the sole or primary format. The transaction uses
+separate executor and sponsor signature domains, so it requires a custom signed
+wrapper and signature hashing logic.
 
 ## Implementation Plan
 
 1. Define the consensus transaction envelope and type.
    - Define the `EvNodeTransaction` struct and `EvRethTxEnvelope` enum in
-     `crates/primitives`, using `Signed<T>` for the executor signature.
+     `crates/primitives`, using a custom signed wrapper.
    - Register the new typed transaction with `#[envelope(ty = 0x76)]` and keep
      the consensus field ordering explicit in the struct.
 
@@ -76,7 +76,7 @@ pub enum EvRethTxEnvelope {
     #[envelope(ty = 3)]
     Eip4844(Signed<TxEip4844>),
     #[envelope(ty = 0x76]
-    EvNode(Signed<EvNodeTransaction>),
+    EvNode(EvNodeSignedTx),
 }
 
 #[derive(
@@ -115,19 +115,29 @@ pub struct EvNodeTransaction {
      order, the struct must match this ordering exactly.
    - Encode optional fields deterministically:
      - `fee_payer_signature`: always encoded; if `None`, encode `0x80`.
-   - Executor signature preimage (EIP-2718):
-     - `0x76 || rlp(fields...)` with `fee_payer_signature` encoded as `0x80`
+   - Executor signature preimage (domain: `0x76`):
+     - `0x76 || rlp(fields...)` with `fee_payer_signature = 0x80`
        regardless of whether a sponsor will sign later.
-   - Sponsor signature preimage (separate domain):
-     - `SPONSOR_DOMAIN_BYTE || rlp(fields...)` where `fee_payer_signature` is
-       replaced by the executor address.
+   - Sponsor signature preimage (domain: `0x78`):
+     - `0x78 || rlp(fields...)` where `fee_payer_signature` is replaced by the
+       executor address.
    - `tx_hash` uses standard EIP-2718 hashing:
      - `keccak256(0x76 || rlp(fields...))` with the *final* `fee_payer_signature`.
-   - Ensure the signed type implements the `SignedTransaction` requirements
-     (`Encodable`, `Decodable`, `Encodable2718`, `Decodable2718`, `Transaction`,
-     `SignerRecoverable`, `TxHashRef`, `InMemorySize`, `IsTyped2718`/`Typed2718`).
+   - Ensure the custom signed type exposes:
+     - `executor_signature_hash()` (placeholder sponsor signature)
+     - `sponsor_signature_hash()` (executor address in sponsor slot)
+     - `recover_executor()` and `recover_sponsor()` as applicable
+     - trait implementations required by Reth for pool/consensus encoding
+       (`Encodable`, `Decodable`, `Encodable2718`, `Decodable2718`, `Transaction`,
+       `TxHashRef`, `InMemorySize`, `IsTyped2718`/`Typed2718`).
 
-3. Add the tx type identifier and compact encoding.
+3. Optional sponsorship behavior.
+   - If `fee_payer_signature` is `None`, the payer is the executor and validation
+     follows the standard EIP-1559 path.
+   - If `fee_payer_signature` is `Some`, the payer is the sponsor and the sponsor
+     signature must be valid for the sponsor domain and bound to the executor.
+
+4. Add the tx type identifier and compact encoding.
    - Register the new type id in the custom `TxType` enum and compact codec
      (extended identifier if needed), so storage/network encoding works.
    - Ensure `TransactionEnvelope` derives cover both the canonical and pooled
@@ -178,7 +188,7 @@ impl Compact for EvRethTxType {
 }
 ```
 
-4. Map the new tx to EVM execution.
+5. Map the new tx to EVM execution.
    - Define `TxEnv` mapping for executor vs sponsor, including gas price and
      fee fields when a sponsor is present.
    - Add execution logic for the new variant in the block executor and
@@ -218,7 +228,7 @@ match tx.tx() {
 }
 ```
 
-5. Decode in Engine API payloads and validate.
+6. Decode in Engine API payloads and validate.
    - Update the payload transaction iterator to decode the custom type using
      2718 decoding, recover signer, and preserve the encoded bytes.
    - Add fast, stateless validation for sponsorship fields during payload
@@ -242,7 +252,7 @@ Note: in this repo, the Engine API decode/validation currently happens in
 `crates/node/src/attributes.rs` within
 `PayloadBuilderAttributes::try_new` (the `attributes.transactions` decoding).
 
-6. Define sponsorship validation and failure modes.
+7. Define sponsorship validation and failure modes.
    - Specify the sponsor authorization format, signature verification, and
      constraints (e.g. max fee caps).
    - Define stateful validation and exact behavior when sponsor auth is
