@@ -103,7 +103,6 @@ pub struct EvNodeTransaction {
     pub data: Bytes,
     pub access_list: AccessList,
     // Sponsorship fields (payer is separate, optional capability)
-    pub fee_token: Option<Address>,
     pub fee_payer_signature: Option<Signature>,
 }
 ```
@@ -111,18 +110,17 @@ pub struct EvNodeTransaction {
 2. Specify encoding + signing preimages (keep deterministic signing).
    - Define the exact RLP field order for `EvNodeTransaction`:
      `chain_id, nonce, max_priority_fee_per_gas, max_fee_per_gas, gas_limit, to,
-      value, data, access_list, fee_token, fee_payer_signature`.
+      value, data, access_list, fee_payer_signature`.
      This order is consensus-critical; if encoding is derived from struct field
      order, the struct must match this ordering exactly.
    - Encode optional fields deterministically:
-     - `fee_token`: always encoded; if `None`, encode `0x80` (empty string).
      - `fee_payer_signature`: always encoded; if `None`, encode `0x80`.
    - Executor signature preimage (EIP-2718):
      - `0x76 || rlp(fields...)` with `fee_payer_signature` encoded as `0x80`
        regardless of whether a sponsor will sign later.
    - Sponsor signature preimage (separate domain):
      - `SPONSOR_DOMAIN_BYTE || rlp(fields...)` where `fee_payer_signature` is
-       replaced by the executor address, and `fee_token` is encoded as above.
+       replaced by the executor address.
    - `tx_hash` uses standard EIP-2718 hashing:
      - `keccak256(0x76 || rlp(fields...))` with the *final* `fee_payer_signature`.
    - Ensure the signed type implements the `SignedTransaction` requirements
@@ -246,7 +244,7 @@ Note: in this repo, the Engine API decode/validation currently happens in
 
 6. Define sponsorship validation and failure modes.
    - Specify the sponsor authorization format, signature verification, and
-     constraints (e.g. max fee caps, allowed fee tokens).
+     constraints (e.g. max fee caps).
    - Define stateful validation and exact behavior when sponsor auth is
      missing/invalid or sponsor balance is insufficient (reject vs fallback
      to executor payment).
@@ -260,8 +258,7 @@ fn validate_sponsor_state(
     tx: &EvNodeTransaction,
     sponsor: Address,
 ) -> Result<(), ValidationError> {
-    let fee_token = tx.fee_token.unwrap_or(DEFAULT_FEE_TOKEN);
-    let balance = db.balance_of(fee_token, sponsor)?;
+    let balance = db.balance_of(sponsor)?;
     let max_cost = tx.gas_limit as u128 * tx.max_fee_per_gas;
     if balance < max_cost.into() {
         return Err(ValidationError::InsufficientSponsorBalance);
