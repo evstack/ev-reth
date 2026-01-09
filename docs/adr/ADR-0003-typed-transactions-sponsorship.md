@@ -14,7 +14,9 @@ This ADR proposes an additional EvNode transaction type that includes gas
 sponsorship as a first-class capability, using EIP-2718 typed transactions.
 The idea is to define a typed transaction format that separates the gas payer
 from the executor so the cost can be covered without altering the normal
-execution flow. This reduces complexity for users and integrations.
+execution flow. This reduces complexity for users and integrations. The design
+defines custom primitives and wrappers locally in this repo and then injects
+them into node components, without modifying reth.
 
 ## Context
 
@@ -38,7 +40,8 @@ reth's transaction validation and propagation layers.
 This ADR assumes EvNode does not use the transaction pool: 0x76 transactions
 are accepted only via Engine API/payload building paths. As a result, there is
 no pool-level validation for this type; validation occurs during decode and
-execution.
+execution. The pool and `eth_sendRawTransaction` paths are explicitly out of
+scope for this ADR.
 
 ## Decision
 
@@ -53,12 +56,16 @@ separate executor and sponsor signature domains, so it requires a custom signed
 wrapper and signature hashing logic.
 The executor is the canonical sender (`from`) and owns the nonce; EVM execution
 semantics (CALLER) are always based on the executor. The sponsor only pays fees.
+Implementation will define local transaction primitives and envelopes in this
+repo and inject them into node builders, without modifying reth crates.
 
 ## Implementation Plan
 
-1. Define the consensus transaction envelope and type.
-   - Define the `EvNodeTransaction` struct and `EvRethTxEnvelope` enum in
-     `crates/primitives`, using a custom signed wrapper.
+1. Define local primitives and transaction envelope.
+   - Add a new local crate (e.g. `crates/ev-primitives`) to host the transaction
+     types and wrappers.
+   - Define the `EvNodeTransaction` struct, `EvNodeSignedTx` wrapper, and
+     `EvTxEnvelope` enum in that crate, using a custom signed wrapper.
    - Register the new typed transaction with `#[envelope(ty = 0x76)]` and keep
      the consensus field ordering explicit in the struct.
 
@@ -72,7 +79,7 @@ semantics (CALLER) are always based on the executor. The sponsor only pays fees.
 )]
 #[cfg_attr(test, reth_codecs::add_arbitrary_tests(compact, rlp))]
 #[expect(clippy::large_enum_variant)]
-pub enum EvRethTxEnvelope {
+pub enum EvTxEnvelope {
     #[envelope(ty = 0)]
     Legacy(Signed<TxLegacy>),
     #[envelope(ty = 1)]
@@ -81,7 +88,7 @@ pub enum EvRethTxEnvelope {
     Eip1559(Signed<TxEip1559>),
     #[envelope(ty = 3)]
     Eip4844(Signed<TxEip4844>),
-    #[envelope(ty = 0x76]
+    #[envelope(ty = 0x76)]
     EvNode(EvNodeSignedTx),
 }
 
@@ -101,14 +108,15 @@ pub struct EvNodeTransaction {
     // These mirror EIP-1559 fields to stay compatible with the standard.
     pub chain_id: u64,
     pub nonce: u64,
-    pub gas_limit: u64,
-    pub max_fee_per_gas: u128,
     pub max_priority_fee_per_gas: u128,
+    pub max_fee_per_gas: u128,
+    pub gas_limit: u64,
     pub to: TxKind,
     pub value: U256,
     pub data: Bytes,
     pub access_list: AccessList,
     // Sponsorship fields (payer is separate, optional capability)
+    pub fee_payer: Option<Address>,
     pub fee_payer_signature: Option<Signature>,
 }
 ```
@@ -116,22 +124,23 @@ pub struct EvNodeTransaction {
 2. Specify encoding + signing preimages (keep deterministic signing).
    - Define the exact RLP field order for `EvNodeTransaction`:
      `chain_id, nonce, max_priority_fee_per_gas, max_fee_per_gas, gas_limit, to,
-      value, data, access_list, fee_payer_signature`.
+      value, data, access_list, fee_payer, fee_payer_signature`.
      This order is consensus-critical; if encoding is derived from struct field
      order, the struct must match this ordering exactly.
    - Encode optional fields deterministically:
+     - `fee_payer`: always encoded; if `None`, encode `0x80`.
      - `fee_payer_signature`: always encoded; if `None`, encode `0x80`.
    - Executor signature preimage (domain: `0x76`):
-     - `0x76 || rlp(fields...)` with `fee_payer_signature = 0x80`
-       regardless of whether a sponsor will sign later.
+     - `0x76 || rlp(fields...)` with `fee_payer = 0x80` and
+       `fee_payer_signature = 0x80` regardless of whether a sponsor will sign.
    - Sponsor signature preimage (domain: `0x78`):
-     - `0x78 || rlp(fields...)` where `fee_payer_signature` is replaced by the
-       executor address.
+     - `0x78 || rlp(fields...)` where `fee_payer` is set to the executor address
+       and `fee_payer_signature = 0x80`.
    - `tx_hash` uses standard EIP-2718 hashing:
      - `keccak256(0x76 || rlp(fields...))` with the *final* `fee_payer_signature`.
    - Ensure the custom signed type exposes:
-     - `executor_signature_hash()` (placeholder sponsor signature)
-     - `sponsor_signature_hash()` (executor address in sponsor slot)
+     - `executor_signature_hash()` (fee_payer fields empty)
+     - `sponsor_signature_hash()` (fee_payer = executor address)
      - `recover_executor()` and `recover_sponsor()` as applicable
      - trait implementations required by Reth for pool/consensus encoding
        (`Encodable`, `Decodable`, `Encodable2718`, `Decodable2718`, `Transaction`,
@@ -143,54 +152,23 @@ pub struct EvNodeTransaction {
    - If `fee_payer_signature` is `Some`, the payer is the sponsor and the sponsor
      signature must be valid for the sponsor domain and bound to the executor.
 
-4. Add the tx type identifier and compact encoding.
-   - Register the new type id in the custom `TxType` enum and compact codec
-     (extended identifier if needed), so storage/network encoding works.
-   - Ensure `TransactionEnvelope` derives cover both the canonical and pooled
-     variants without conflicting type ids.
-
-Code-level implications:
-   - Add a `EvNode`/`EvRethTxType` variant that maps to `0x76`.
-   - Implement `Compact` for the `TxType` enum so `0x76` round-trips through the
-     compact codec (use `COMPACT_EXTENDED_IDENTIFIER_FLAG` if required).
-   - Register `#[envelope(ty = 0x76)]` on both the canonical transaction
-     envelope and the pooled transaction envelope, so 2718 decoding matches
-     the compact encoding.
+4. Add the tx type identifier and envelope mapping (local).
+   - Define a local `EvTxType` enum in `crates/ev-primitives` with a `EvNode`
+     variant mapped to `0x76`.
+   - Ensure the local `EvTxEnvelope` `#[envelope(ty = 0x76)]` derives cover the
+     canonical transaction envelope. Pool variants are out of scope.
 
 Example (non-normative):
 
 ```rust
 pub const EVNODE_TX_TYPE_ID: u8 = 0x76;
 
-impl Compact for EvRethTxType {
-    fn to_compact<B>(&self, buf: &mut B) -> usize
-    where
-        B: BufMut + AsMut<[u8]>,
-    {
-        match self {
-            Self::EvNode => {
-                buf.put_u8(EVNODE_TX_TYPE_ID);
-                COMPACT_EXTENDED_IDENTIFIER_FLAG
-            }
-            Self::Op(ty) => ty.to_compact(buf),
-        }
-    }
-
-    fn from_compact(mut buf: &[u8], identifier: usize) -> (Self, &[u8]) {
-        match identifier {
-            COMPACT_EXTENDED_IDENTIFIER_FLAG => {
-                let extended_identifier = buf.get_u8();
-                match extended_identifier {
-                    EVNODE_TX_TYPE_ID => (Self::EvNode, buf),
-                    _ => panic!("Unsupported TxType identifier: {extended_identifier}"),
-                }
-            }
-            v => {
-                let (inner, buf) = EvRethTxType::from_compact(buf, v);
-                (inner, buf)
-            }
-        }
-    }
+pub enum EvTxType {
+    Legacy,
+    Eip2930,
+    Eip1559,
+    Eip4844,
+    EvNode,
 }
 ```
 
@@ -235,9 +213,9 @@ match tx.tx() {
 }
 ```
 
-6. Decode in Engine API payloads and validate.
-   - Update the payload transaction iterator to decode the custom type using
-     2718 decoding, recover signer, and preserve the encoded bytes.
+6. Decode in Engine API payloads and validate (no pool).
+   - Update the Engine API transaction decoding to use `EvTxEnvelope` 2718
+     decoding, recover signer, and preserve the encoded bytes.
    - Add fast, stateless validation for sponsorship fields during payload
      decoding to fail early on malformed or invalid signatures.
 
@@ -245,7 +223,7 @@ Example (non-normative):
 
 ```rust
 let convert = |encoded: Bytes| {
-    let tx = EvRethTxEnvelope::decode_2718_exact(encoded.as_ref())
+    let tx = EvTxEnvelope::decode_2718_exact(encoded.as_ref())
         .map_err(Into::into)
         .map_err(PayloadError::Decode)?;
     let signer = tx.try_recover().map_err(NewPayloadError::other)?;
@@ -257,7 +235,8 @@ let convert = |encoded: Bytes| {
 
 Note: in this repo, the Engine API decode/validation currently happens in
 `crates/node/src/attributes.rs` within
-`PayloadBuilderAttributes::try_new` (the `attributes.transactions` decoding).
+`PayloadBuilderAttributes::try_new` (the `attributes.transactions` decoding),
+and currently uses `TransactionSigned::network_decode`.
 
 7. Define sponsorship validation and failure modes.
    - Specify the sponsor authorization format, signature verification, and
@@ -290,10 +269,9 @@ builder-level pre-check is optional.
 
 8. RPC and receipts.
    - Expose an optional `feePayer` (or `sponsor`) field for 0x76 in
-     `eth_getTransactionByHash` and transaction objects; `from` remains the
-     executor.
-   - If receipts are extended, include the same optional field for
-     observability; otherwise receipts remain standard.
+     transaction objects for observability; `from` remains the executor.
+   - If receipts are extended, include the same optional field; otherwise
+     receipts remain standard.
 
 ## References
 
