@@ -51,6 +51,8 @@ and sponsorship is an optional capability. Other transaction types remain
 supported and this type is not the sole or primary format. The transaction uses
 separate executor and sponsor signature domains, so it requires a custom signed
 wrapper and signature hashing logic.
+The executor is the canonical sender (`from`) and owns the nonce; EVM execution
+semantics (CALLER) are always based on the executor. The sponsor only pays fees.
 
 ## Implementation Plan
 
@@ -195,6 +197,7 @@ impl Compact for EvRethTxType {
 5. Map the new tx to EVM execution.
    - Define `TxEnv` mapping for executor vs sponsor, including gas price and
      fee fields when a sponsor is present.
+   - Ensure `from` in RPC and EVM is always the executor (nonce owner).
    - Add execution logic for the new variant in the block executor and
      receipt builder, including any additional receipt fields.
    - If sponsorship requires execution-time data beyond the standard
@@ -284,6 +287,13 @@ fn validate_sponsor_state(
 Note: stateful validation will be enforced inside the execution handler in
 `crates/ev-revm/src/handler.rs` so rules apply consistently at runtime. A
 builder-level pre-check is optional.
+
+8. RPC and receipts.
+   - Expose an optional `feePayer` (or `sponsor`) field for 0x76 in
+     `eth_getTransactionByHash` and transaction objects; `from` remains the
+     executor.
+   - If receipts are extended, include the same optional field for
+     observability; otherwise receipts remain standard.
 
 ## References
 
