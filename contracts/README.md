@@ -2,6 +2,12 @@
 
 Smart contracts for EV-Reth, including the FeeVault for bridging collected fees to Celestia.
 
+## AdminProxy
+
+The AdminProxy contract solves the bootstrap problem for admin addresses at genesis. It acts as an intermediary owner/admin for other contracts and precompiles (like the Mint Precompile) when the final admin (e.g., a multisig) is not known at genesis time.
+
+See [AdminProxy documentation](../docs/contracts/admin_proxy.md) for detailed setup and usage instructions.
+
 ## FeeVault
 
 The FeeVault contract collects base fees and bridges them to Celestia via Hyperlane. It supports:

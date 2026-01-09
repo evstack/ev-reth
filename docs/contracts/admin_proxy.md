@@ -169,10 +169,15 @@ In this example, the owner EOA is `0xYourEOAAddressHere` (replace with your actu
       "storage": {
         "0x0": "0x000000000000000000000000<YOUR_EOA_ADDRESS_WITHOUT_0x_PREFIX>"
       }
+    },
+    "<YOUR_EOA_ADDRESS_WITHOUT_0x_PREFIX>": {
+      "balance": "0x56bc75e2d63100000"
     }
   }
 }
 ```
+
+**Note:** The owner EOA must also be funded with gas at genesis to execute transactions. In the example above, `0x56bc75e2d63100000` equals 100 ETH in wei.
 
 **Example with concrete addresses:**
 
@@ -195,11 +200,11 @@ After creating your genesis file, you can verify the AdminProxy is correctly con
    cast code 0x000000000000000000000000000000000000Ad00 --rpc-url <YOUR_RPC>
    ```
 
-3. **Check owner is zero** (ready for claiming):
+3. **Verify owner is set correctly**:
 
    ```bash
    cast call 0x000000000000000000000000000000000000Ad00 "owner()" --rpc-url <YOUR_RPC>
-   # Should return 0x0000000000000000000000000000000000000000
+   # Should return your EOA address (e.g., 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266)
    ```
 
 ### Step 6: Deploy FeeVault with Proxy as Owner
