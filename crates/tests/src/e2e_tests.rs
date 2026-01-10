@@ -26,7 +26,8 @@ use reth_rpc_api::clients::{EngineApiClient, EthApiClient};
 
 use crate::common::{
     create_test_chain_spec, create_test_chain_spec_with_base_fee_sink,
-    create_test_chain_spec_with_mint_admin, TEST_CHAIN_ID,
+    create_test_chain_spec_with_contract_size_limit, create_test_chain_spec_with_mint_admin,
+    TEST_CHAIN_ID,
 };
 use ev_precompiles::mint::MINT_PRECOMPILE_ADDR;
 
@@ -61,6 +62,7 @@ const ADMIN_PROXY_INITCODE: [u8; 54] = alloy_primitives::hex!(
 
 /// Test recipient address used in mint/burn tests.
 const TEST_MINT_RECIPIENT: Address = address!("0x0101010101010101010101010101010101010101");
+const OVERSIZED_RUNTIME_SIZE: usize = 32 * 1024;
 
 /// Computes the contract address that will be created by a deployer at a given nonce.
 ///
@@ -74,6 +76,39 @@ const TEST_MINT_RECIPIENT: Address = address!("0x0101010101010101010101010101010
 /// The deterministic contract address that will be created
 fn contract_address_from_nonce(deployer: Address, nonce: u64) -> Address {
     deployer.create(nonce)
+}
+
+fn oversized_initcode(runtime_size: usize) -> Bytes {
+    const INIT_PREFIX_LEN: usize = 14;
+
+    assert!(
+        runtime_size <= u16::MAX as usize,
+        "runtime size must fit in PUSH2"
+    );
+
+    let size_hi = ((runtime_size >> 8) & 0xff) as u8;
+    let size_lo = (runtime_size & 0xff) as u8;
+    let mut initcode = Vec::with_capacity(INIT_PREFIX_LEN + runtime_size);
+
+    initcode.extend_from_slice(&[
+        0x61,
+        size_hi,
+        size_lo, // PUSH2 size
+        0x60,
+        INIT_PREFIX_LEN as u8, // PUSH1 offset
+        0x60,
+        0x00, // PUSH1 0
+        0x39, // CODECOPY
+        0x61,
+        size_hi,
+        size_lo, // PUSH2 size
+        0x60,
+        0x00, // PUSH1 0
+        0xf3, // RETURN
+    ]);
+    initcode.resize(INIT_PREFIX_LEN + runtime_size, 0u8);
+
+    Bytes::from(initcode)
 }
 
 /// Builds and submits a block containing the specified transactions via the Engine API.
@@ -370,6 +405,88 @@ async fn test_e2e_base_fee_sink_receives_base_fee() -> Result<()> {
     );
 
     drop(setup);
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_e2e_contract_size_limit_allows_oversized_deploy() -> Result<()> {
+    reth_tracing::init_test_tracing();
+
+    let chain_id = TEST_CHAIN_ID;
+    let mut wallets = Wallet::new(1).with_chain_id(chain_id).wallet_gen();
+    let deployer = wallets.remove(0);
+    let deployer_address = deployer.address();
+    let contract_address = contract_address_from_nonce(deployer_address, 0);
+
+    let chain_spec = create_test_chain_spec_with_contract_size_limit(64 * 1024, Some(0));
+    let evolve_config =
+        EvolvePayloadBuilderConfig::from_chain_spec(chain_spec.as_ref()).expect("valid config");
+    assert_eq!(
+        evolve_config.contract_size_limit,
+        Some(64 * 1024),
+        "chainspec should propagate custom contract size limit"
+    );
+
+    let mut setup = Setup::<EvolveEngineTypes>::default()
+        .with_chain_spec(chain_spec.clone())
+        .with_network(NetworkSetup::single_node())
+        .with_dev_mode(true);
+
+    let mut env = Environment::<EvolveEngineTypes>::default();
+    setup.apply::<EvolveNode>(&mut env).await?;
+
+    let parent_block = env.node_clients[0]
+        .get_block_by_number(BlockNumberOrTag::Latest)
+        .await?
+        .expect("parent block should exist");
+    let mut parent_hash = parent_block.header.hash;
+    let mut parent_timestamp = parent_block.header.inner.timestamp;
+    let mut parent_number = parent_block.header.inner.number;
+    let gas_limit = parent_block.header.inner.gas_limit;
+
+    let deploy_tx = TransactionRequest {
+        nonce: Some(0),
+        gas: Some(15_000_000),
+        max_fee_per_gas: Some(20_000_000_000),
+        max_priority_fee_per_gas: Some(2_000_000_000),
+        chain_id: Some(chain_id),
+        value: Some(U256::ZERO),
+        to: Some(TxKind::Create),
+        input: TransactionInput {
+            input: None,
+            data: Some(oversized_initcode(OVERSIZED_RUNTIME_SIZE)),
+        },
+        ..Default::default()
+    };
+
+    let deploy_envelope = TransactionTestContext::sign_tx(deployer, deploy_tx).await;
+    let deploy_raw: Bytes = deploy_envelope.encoded_2718().into();
+
+    build_block_with_transactions(
+        &mut env,
+        &mut parent_hash,
+        &mut parent_number,
+        &mut parent_timestamp,
+        Some(gas_limit),
+        vec![deploy_raw],
+        Address::ZERO,
+    )
+    .await?;
+
+    let code = EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::get_code(
+        &env.node_clients[0].rpc,
+        contract_address,
+        Some(BlockId::latest()),
+    )
+    .await?;
+
+    assert_eq!(
+        code.len(),
+        OVERSIZED_RUNTIME_SIZE,
+        "deployed contract should exceed the default size limit"
+    );
+    assert!(code.len() > 24 * 1024);
 
     Ok(())
 }

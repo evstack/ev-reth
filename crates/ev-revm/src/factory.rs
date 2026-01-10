@@ -271,12 +271,46 @@ mod tests {
     const ADMIN_PROXY_RUNTIME: [u8; 42] = alloy_primitives::hex!(
         "36600060003760006000366000600073000000000000000000000000000000000000f1005af1600080f3"
     );
+    const OVERSIZED_RUNTIME_SIZE: usize = 32 * 1024;
 
     fn empty_state() -> State<CacheDB<EmptyDB>> {
         State::builder()
             .with_database(CacheDB::<EmptyDB>::default())
             .with_bundle_update()
             .build()
+    }
+
+    fn oversized_initcode(runtime_size: usize) -> Bytes {
+        const INIT_PREFIX_LEN: usize = 14;
+
+        assert!(
+            runtime_size <= u16::MAX as usize,
+            "runtime size must fit in PUSH2"
+        );
+
+        let size_hi = ((runtime_size >> 8) & 0xff) as u8;
+        let size_lo = (runtime_size & 0xff) as u8;
+        let mut initcode = Vec::with_capacity(INIT_PREFIX_LEN + runtime_size);
+
+        initcode.extend_from_slice(&[
+            0x61,
+            size_hi,
+            size_lo, // PUSH2 size
+            0x60,
+            INIT_PREFIX_LEN as u8, // PUSH1 offset
+            0x60,
+            0x00, // PUSH1 0
+            0x39, // CODECOPY
+            0x61,
+            size_hi,
+            size_lo, // PUSH2 size
+            0x60,
+            0x00, // PUSH1 0
+            0xf3, // RETURN
+        ]);
+        initcode.resize(INIT_PREFIX_LEN + runtime_size, 0u8);
+
+        Bytes::from(initcode)
     }
 
     #[test]
@@ -562,5 +596,117 @@ mod tests {
             .get(&mintee)
             .expect("mint precompile should mint after activation");
         assert_eq!(mintee_account.info.balance, amount);
+    }
+
+    #[test]
+    fn contract_size_limit_rejects_oversized_code() {
+        let caller = address!("0x0000000000000000000000000000000000000abc");
+        let initcode = oversized_initcode(OVERSIZED_RUNTIME_SIZE);
+
+        let mut state = empty_state();
+        state.insert_account(
+            caller,
+            AccountInfo {
+                balance: U256::from(10_000_000_000u64),
+                nonce: 0,
+                code_hash: KECCAK_EMPTY,
+                code: None,
+            },
+        );
+
+        let mut evm_env: alloy_evm::EvmEnv<SpecId> = EvmEnv::default();
+        evm_env.cfg_env.chain_id = 1;
+        evm_env.cfg_env.spec = SpecId::CANCUN;
+        evm_env.block_env.number = U256::from(1);
+        evm_env.block_env.basefee = 1;
+        evm_env.block_env.gas_limit = 30_000_000;
+
+        let mut evm = EvEvmFactory::new(alloy_evm::eth::EthEvmFactory::default(), None, None, None)
+            .create_evm(state, evm_env);
+
+        let tx = crate::factory::TxEnv {
+            caller,
+            kind: TxKind::Create,
+            gas_limit: 15_000_000,
+            gas_price: 1,
+            value: U256::ZERO,
+            data: initcode,
+            ..Default::default()
+        };
+
+        let result_and_state = evm
+            .transact_raw(tx)
+            .expect("oversized create executes to a halt");
+
+        let ExecutionResult::Halt { reason, .. } = result_and_state.result else {
+            panic!("expected oversized code to halt");
+        };
+        assert!(
+            matches!(reason, HaltReason::CreateContractSizeLimit),
+            "expected create code size limit halt"
+        );
+    }
+
+    #[test]
+    fn contract_size_limit_allows_oversized_code_when_configured() {
+        let caller = address!("0x0000000000000000000000000000000000000def");
+        let initcode = oversized_initcode(OVERSIZED_RUNTIME_SIZE);
+
+        let mut state = empty_state();
+        state.insert_account(
+            caller,
+            AccountInfo {
+                balance: U256::from(10_000_000_000u64),
+                nonce: 0,
+                code_hash: KECCAK_EMPTY,
+                code: None,
+            },
+        );
+
+        let mut evm_env: alloy_evm::EvmEnv<SpecId> = EvmEnv::default();
+        evm_env.cfg_env.chain_id = 1;
+        evm_env.cfg_env.spec = SpecId::CANCUN;
+        evm_env.block_env.number = U256::from(1);
+        evm_env.block_env.basefee = 1;
+        evm_env.block_env.gas_limit = 30_000_000;
+
+        let mut evm = EvEvmFactory::new(
+            alloy_evm::eth::EthEvmFactory::default(),
+            None,
+            None,
+            Some(ContractSizeLimitSettings::new(64 * 1024, 0)),
+        )
+        .create_evm(state, evm_env);
+
+        let tx = crate::factory::TxEnv {
+            caller,
+            kind: TxKind::Create,
+            gas_limit: 15_000_000,
+            gas_price: 1,
+            value: U256::ZERO,
+            data: initcode,
+            ..Default::default()
+        };
+
+        let result_and_state = evm.transact_raw(tx).expect("oversized create executes");
+
+        let ExecutionResult::Success { .. } = result_and_state.result else {
+            panic!("expected oversized code to deploy with custom limit");
+        };
+
+        let created_address = result_and_state
+            .result
+            .created_address()
+            .expect("created address available");
+        let state: EvmState = result_and_state.state;
+        let created_account = state
+            .get(&created_address)
+            .expect("created contract must be in state");
+        let code = created_account.info.code.as_ref().expect("code stored");
+        assert_eq!(
+            code.len(),
+            OVERSIZED_RUNTIME_SIZE,
+            "contract runtime size should match initcode payload"
+        );
     }
 }

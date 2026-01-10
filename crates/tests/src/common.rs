@@ -56,6 +56,37 @@ pub fn create_test_chain_spec_with_mint_admin(mint_admin: Address) -> Arc<ChainS
     create_test_chain_spec_with_extras(None, Some(mint_admin))
 }
 
+/// Creates a reusable chain specification with a custom contract size limit.
+pub fn create_test_chain_spec_with_contract_size_limit(
+    contract_size_limit: usize,
+    activation_height: Option<u64>,
+) -> Arc<ChainSpec> {
+    let mut genesis: Genesis =
+        serde_json::from_str(include_str!("../assets/genesis.json")).expect("valid genesis");
+
+    let mut extras = serde_json::Map::new();
+    extras.insert("contractSizeLimit".to_string(), json!(contract_size_limit));
+    if let Some(height) = activation_height {
+        extras.insert(
+            "contractSizeLimitActivationHeight".to_string(),
+            json!(height),
+        );
+    }
+
+    genesis
+        .config
+        .extra_fields
+        .insert("evolve".to_string(), serde_json::Value::Object(extras));
+
+    Arc::new(
+        ChainSpecBuilder::default()
+            .chain(reth_chainspec::Chain::from_id(TEST_CHAIN_ID))
+            .genesis(genesis)
+            .cancun_activated()
+            .build(),
+    )
+}
+
 fn create_test_chain_spec_with_extras(
     base_fee_sink: Option<Address>,
     mint_admin: Option<Address>,
