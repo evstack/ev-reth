@@ -11,6 +11,8 @@ pub mod args;
 pub mod attributes;
 /// Builder module for payload construction and related utilities.
 pub mod builder;
+/// Chainspec parser with ev-reth overrides.
+pub mod chainspec;
 /// Configuration types and validation for the Evolve payload builder.
 pub mod config;
 /// Shared error types for evolve node wiring.
@@ -28,6 +30,7 @@ pub mod validator;
 pub use args::EvolveArgs;
 pub use attributes::{EvolveEnginePayloadAttributes, EvolveEnginePayloadBuilderAttributes};
 pub use builder::{create_payload_builder_service, EvolvePayloadBuilder};
+pub use chainspec::EvolveChainSpecParser;
 pub use config::{ConfigError, EvolvePayloadBuilderConfig};
 pub use error::EvolveEngineError;
 pub use executor::{build_evm_config, EvolveEvmConfig, EvolveExecutorBuilder};
