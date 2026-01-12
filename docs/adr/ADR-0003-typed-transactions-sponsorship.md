@@ -6,18 +6,15 @@
 
 ## Status
 
-DRAFT Not Implemented
+DRAFT — Not Implemented
 
 ## Abstract
 
-This ADR proposes an additional EvNode transaction type that includes gas
-sponsorship as a first-class capability, using EIP-2718 typed transactions.
-The idea is to define a typed transaction format that separates the gas payer
-from the executor so the cost can be covered without altering the normal
-execution flow. This reduces complexity for users and integrations. The design
-defines custom primitives and wrappers locally in this repo and then wires a
-custom `NodeTypes` configuration so the node consumes those primitives end to
-end, without modifying reth.
+This ADR proposes an EvNode EIP-2718 typed transaction (0x76) with optional
+gas sponsorship. It separates the fee payer from the executor while preserving
+normal EVM execution semantics. The design defines local primitives and
+wrappers and wires a custom `NodeTypes` configuration so the node consumes
+those primitives end to end, without modifying reth.
 
 ## Context
 
@@ -27,51 +24,32 @@ available approach in reth is to bundle sponsorship logic off-chain or via
 custom infrastructure, which increases integration complexity and makes
 transaction handling inconsistent across clients.
 
-EIP-2718 introduces typed transactions, providing a structured way to extend
-transaction formats while keeping backward compatibility with existing
-processing pipelines. This creates an opportunity to standardize a sponsorship
-mechanism within the transaction itself rather than relying on external
-conventions.
+EIP-2718 typed transactions provide a structured way to extend formats while
+remaining backward compatible. The project needs a minimal mechanism to
+separate fee payer from executor without changing CALLER/nonce semantics,
+remain compatible with existing tooling, and be straightforward to implement in
+reth validation and propagation layers.
 
-The project needs a minimal, explicit mechanism to separate the gas payer from
-the executor, without changing the execution semantics of the underlying call.
-At the same time, it must remain compatible with existing tooling, avoid
-breaking current transaction flows, and be straightforward to implement in
-reth's transaction validation and propagation layers.
-This ADR assumes EvNode uses a custom `NodeTypes` with custom primitives (as in
-Reth's custom-node example). This is required so that typed transaction decoding
-and execution can operate on `EvTxEnvelope` end to end. The standard
-`reth_ethereum::EthPrimitives` path is not sufficient for this feature.
-This ADR also assumes 0x76 transactions can enter via the standard
-`eth_sendRawTransaction` RPC path, be validated, and placed into the txpool.
-They can then be sourced indirectly (e.g., via `txpoolExt_getTxs` feeding Engine
-API payload attributes). Even so, we still require explicit pre-execution
-validation (Tempo-style) on the Engine API ingestion path. In other words, 0x76
-transactions must pass the same basic checks (signature, nonce/gas limits,
-intrinsic gas, balance/fee payer funds, replay protection) before payload
-execution, rather than relying solely on decode+execution side effects.
-Additionally, forced-inclusion transactions from DA bypass the txpool entirely
-and MUST be treated as untrusted. This means txpool validation is never
-sufficient on its own: all 0x76 transactions must be explicitly validated on
-ingestion/execution paths, and forced-included transactions must always undergo
-full validation regardless of any prior txpool checks.
+0x76 transactions can enter via `eth_sendRawTransaction` (txpool) and via
+Engine API payload attributes (e.g., from `txpoolExt_getTxs`). They must still
+pass explicit pre-execution validation on the Engine API path,
+and any forced-inclusion transactions from DA must always be treated as
+untrusted. Txpool validation is insufficient; all 0x76 transactions must be
+explicitly validated on ingestion/execution paths.
 
 ## Decision
 
-We will introduce a new EvNode transaction type using EIP-2718 typed
-transactions. This type (0x76) encodes both the execution call and an
-optional sponsor authorization, enabling a sponsor account to pay fees while
-preserving normal EVM execution semantics for the user call. It is not a
-"sponsorship-only" transaction; it is an additional EvNode transaction format
-and sponsorship is an optional capability. Other transaction types remain
-supported and this type is not the sole or primary format. The transaction uses
-separate executor and sponsor signature domains, so it requires a custom signed
-wrapper and signature hashing logic.
-The executor is the canonical sender (`from`) and owns the nonce; EVM execution
-semantics (CALLER) are always based on the executor. The sponsor only pays fees.
-Implementation will define local transaction primitives and envelopes in this
-repo and wire a custom `NodeTypes`/`NodePrimitives` configuration (Tempo-style)
-so all node components consume those types, without modifying reth crates.
+We will introduce a new EvNode EIP-2718 typed transaction (0x76) that encodes
+the execution call plus an optional sponsor authorization. It is an additional
+format (not sponsorship-only); other transaction types remain supported. The
+executor is the canonical sender (`from`) and nonce owner; EVM execution
+semantics (CALLER) always use the executor. The sponsor only pays fees.
+Executor and sponsor signatures use distinct domains and therefore require a
+custom signed wrapper and hashing logic.
+
+Implementation will define local primitives/envelopes and wire a custom
+`NodeTypes`/`NodePrimitives` configuration so all node components consume those
+types without modifying reth crates.
 
 ## Specification
 
@@ -147,8 +125,8 @@ Transaction hash follows EIP-2718:
 
 This transaction type is accepted via `eth_sendRawTransaction` into txpool,
 and via Engine API payload attributes in EvNode (potentially sourced from
-txpool indirectly). It must still pass explicit pre-execution validation
-(Tempo-style) on the Engine API ingestion path.
+txpool indirectly). It must still pass explicit pre-execution validation on
+the Engine API ingestion path.
 Forced-inclusion transactions from DA bypass txpool and therefore must always
 be fully validated before execution.
 
@@ -236,7 +214,7 @@ pub struct EvNodeTransaction {
      - `keccak256(0x76 || rlp(fields...))` with the *final* `fee_payer_signature`.
    - Ensure the custom signed type exposes:
      - `executor_signature_hash()` (fee_payer fields empty)
-     - `sponsor_signature_hash()` (fee_payer = executor address)
+     - `sponsor_signature_hash()` (fee_payer = sponsor address)
      - `recover_executor()` and `recover_sponsor()` as applicable
      - trait implementations required by Reth for pool/consensus encoding
        (`Encodable`, `Decodable`, `Encodable2718`, `Decodable2718`, `Transaction`,
@@ -378,7 +356,7 @@ builder-level pre-check is optional.
 8. RPC and receipts.
    - Expose an optional `feePayer` (or `sponsor`) field for 0x76 in
      transaction objects for observability; `from` remains the executor.
-   - This requires a custom RPC type layer (Tempo-style `EthApiBuilder` and
+   - This requires a custom RPC type layer (e.g., a custom `EthApiBuilder` and
      RPC types bound to the custom primitives). The standard Ethereum RPC
      response structs in reth do not include these fields.
    - If receipts are extended, include the same optional field; otherwise
