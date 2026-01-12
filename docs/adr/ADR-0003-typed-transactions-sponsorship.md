@@ -42,11 +42,19 @@ This ADR assumes EvNode uses a custom `NodeTypes` with custom primitives (as in
 Reth's custom-node example). This is required so that typed transaction decoding
 and execution can operate on `EvTxEnvelope` end to end. The standard
 `reth_ethereum::EthPrimitives` path is not sufficient for this feature.
-This ADR also assumes EvNode does not use the transaction pool for 0x76
-transactions: they are accepted only via Engine API/payload building paths. As
-a result, there is no pool-level validation for this type; validation occurs
-during decode and execution. The pool and `eth_sendRawTransaction` paths are
-explicitly out of scope for this ADR.
+This ADR also assumes 0x76 transactions can enter via the standard
+`eth_sendRawTransaction` RPC path, be validated, and placed into the txpool.
+They can then be sourced indirectly (e.g., via `txpoolExt_getTxs` feeding Engine
+API payload attributes). Even so, we still require explicit pre-execution
+validation (Tempo-style) on the Engine API ingestion path. In other words, 0x76
+transactions must pass the same basic checks (signature, nonce/gas limits,
+intrinsic gas, balance/fee payer funds, replay protection) before payload
+execution, rather than relying solely on decode+execution side effects.
+Additionally, forced-inclusion transactions from DA bypass the txpool entirely
+and MUST be treated as untrusted. This means txpool validation is never
+sufficient on its own: all 0x76 transactions must be explicitly validated on
+ingestion/execution paths, and forced-included transactions must always undergo
+full validation regardless of any prior txpool checks.
 
 ## Decision
 
@@ -137,8 +145,12 @@ Transaction hash follows EIP-2718:
 
 ### Inclusion Path
 
-This transaction type is accepted only via Engine API payload attributes in
-EvNode. Txpool and `eth_sendRawTransaction` paths remain out of scope.
+This transaction type is accepted via `eth_sendRawTransaction` into txpool,
+and via Engine API payload attributes in EvNode (potentially sourced from
+txpool indirectly). It must still pass explicit pre-execution validation
+(Tempo-style) on the Engine API ingestion path.
+Forced-inclusion transactions from DA bypass txpool and therefore must always
+be fully validated before execution.
 
 ## Implementation Plan
 
