@@ -53,8 +53,9 @@ abstract contract FeeVaultAllocBase is Script {
                     )
                 )
             );
-            cfg.feeVaultAddress =
-                address(uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), cfg.deployer, cfg.salt, initCodeHash)))));
+            cfg.feeVaultAddress = address(
+                uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), cfg.deployer, cfg.salt, initCodeHash))))
+            );
         }
 
         require(cfg.feeVaultAddress != address(0), "FEE_VAULT_ADDRESS or DEPLOYER required");
@@ -101,15 +102,8 @@ contract GenerateFeeVaultAlloc is FeeVaultAllocBase {
         Config memory cfg = loadConfig();
         bytes memory runtimeCode = type(FeeVault).runtimeCode;
 
-        (
-            bytes32 slot0,
-            bytes32 slot1,
-            bytes32 slot2,
-            bytes32 slot3,
-            bytes32 slot4,
-            bytes32 slot5,
-            bytes32 slot6
-        ) = computeSlots(cfg);
+        (bytes32 slot0, bytes32 slot1, bytes32 slot2, bytes32 slot3, bytes32 slot4, bytes32 slot5, bytes32 slot6) =
+            computeSlots(cfg);
 
         console.log("========== FeeVault Genesis Alloc ==========");
         console.log("FeeVault address:", cfg.feeVaultAddress);
@@ -163,15 +157,8 @@ contract GenerateFeeVaultAllocJSON is FeeVaultAllocBase {
         Config memory cfg = loadConfig();
         bytes memory runtimeCode = type(FeeVault).runtimeCode;
 
-        (
-            bytes32 slot0,
-            bytes32 slot1,
-            bytes32 slot2,
-            bytes32 slot3,
-            bytes32 slot4,
-            bytes32 slot5,
-            bytes32 slot6
-        ) = computeSlots(cfg);
+        (bytes32 slot0, bytes32 slot1, bytes32 slot2, bytes32 slot3, bytes32 slot4, bytes32 slot5, bytes32 slot6) =
+            computeSlots(cfg);
 
         string memory json = string(
             abi.encodePacked(
