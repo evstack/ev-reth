@@ -51,6 +51,10 @@ Implementation will define local primitives/envelopes and wire a custom
 `NodeTypes`/`NodePrimitives` configuration so all node components consume those
 types without modifying reth crates.
 
+Persistence: 0x76 transactions are persisted as part of block bodies. This
+requires a custom envelope type used by `NodeTypes::Primitives` and storage
+(`EthStorage<CustomEnvelope, Header>`) plus DB codecs for the custom envelope.
+
 ## Specification
 
 ### Transaction Type
@@ -294,7 +298,11 @@ match tx.tx() {
 }
 ```
 
-6. Decode in Engine API payloads and validate (no pool).
+6. Persistence and storage codecs.
+   - Implement DB codecs for the envelope (`Compress`/`Decompress` and compact
+     codecs) so blocks containing 0x76 can be stored and retrieved.
+
+7. Decode in Engine API payloads and validate (no pool).
    - Update the Engine API transaction decoding to use `EvTxEnvelope` 2718
      decoding, recover signer, and preserve the encoded bytes.
    - Add fast, stateless validation for sponsorship fields during payload
@@ -324,7 +332,7 @@ of `reth_primitives::TransactionSigned`. This implies `EvolveNode` must use
 custom `NodeTypes::Primitives` so the payload builder and executor operate on
 the same envelope type.
 
-7. Define sponsorship validation and failure modes.
+8. Define sponsorship validation and failure modes.
    - Specify the sponsor authorization format, signature verification, and
      constraints (e.g. max fee caps).
    - Define stateful validation and exact behavior when sponsor auth is
@@ -353,7 +361,7 @@ Note: stateful validation will be enforced inside the execution handler in
 `crates/ev-revm/src/handler.rs` so rules apply consistently at runtime. A
 builder-level pre-check is optional.
 
-8. RPC and receipts.
+9. RPC and receipts.
    - Expose an optional `feePayer` (or `sponsor`) field for 0x76 in
      transaction objects for observability; `from` remains the executor.
    - This requires a custom RPC type layer (e.g., a custom `EthApiBuilder` and
