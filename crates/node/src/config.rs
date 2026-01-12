@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 
 /// Default contract size limit in bytes (24KB per EIP-170).
 pub const DEFAULT_CONTRACT_SIZE_LIMIT: usize = 24 * 1024;
+/// Maximum number of addresses allowed in the deploy allowlist.
+pub const MAX_DEPLOY_ALLOWLIST_LEN: usize = 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct ChainspecEvolveConfig {
@@ -21,6 +23,12 @@ struct ChainspecEvolveConfig {
     /// Block height at which the custom contract size limit activates.
     #[serde(default, rename = "contractSizeLimitActivationHeight")]
     pub contract_size_limit_activation_height: Option<u64>,
+    /// Optional allowlist of addresses permitted to deploy contracts.
+    #[serde(default, rename = "deployAllowlist")]
+    pub deploy_allowlist: Option<Vec<Address>>,
+    /// Block height at which deploy allowlist enforcement activates.
+    #[serde(default, rename = "deployAllowlistActivationHeight")]
+    pub deploy_allowlist_activation_height: Option<u64>,
 }
 
 /// Configuration for the Evolve payload builder
@@ -44,6 +52,12 @@ pub struct EvolvePayloadBuilderConfig {
     /// Block height at which the custom contract size limit activates.
     #[serde(default)]
     pub contract_size_limit_activation_height: Option<u64>,
+    /// Allowlist of addresses permitted to deploy contracts.
+    #[serde(default)]
+    pub deploy_allowlist: Vec<Address>,
+    /// Block height at which deploy allowlist enforcement activates.
+    #[serde(default)]
+    pub deploy_allowlist_activation_height: Option<u64>,
 }
 
 impl EvolvePayloadBuilderConfig {
@@ -56,6 +70,8 @@ impl EvolvePayloadBuilderConfig {
             mint_precompile_activation_height: None,
             contract_size_limit: None,
             contract_size_limit_activation_height: None,
+            deploy_allowlist: Vec::new(),
+            deploy_allowlist_activation_height: None,
         }
     }
 
@@ -90,6 +106,17 @@ impl EvolvePayloadBuilderConfig {
             config.contract_size_limit = extras.contract_size_limit;
             config.contract_size_limit_activation_height =
                 extras.contract_size_limit_activation_height;
+
+            if let Some(allowlist) = extras.deploy_allowlist {
+                config.deploy_allowlist = allowlist;
+                config.deploy_allowlist_activation_height =
+                    extras.deploy_allowlist_activation_height;
+                if !config.deploy_allowlist.is_empty()
+                    && config.deploy_allowlist_activation_height.is_none()
+                {
+                    config.deploy_allowlist_activation_height = Some(0);
+                }
+            }
         }
         Ok(config)
     }
@@ -117,8 +144,45 @@ impl EvolvePayloadBuilderConfig {
             .unwrap_or(DEFAULT_CONTRACT_SIZE_LIMIT)
     }
 
+    /// Returns the deploy allowlist and activation height (defaulting to 0) if configured.
+    pub fn deploy_allowlist_settings(&self) -> Option<(Vec<Address>, u64)> {
+        if self.deploy_allowlist.is_empty() {
+            None
+        } else {
+            let activation = self.deploy_allowlist_activation_height.unwrap_or(0);
+            Some((self.deploy_allowlist.clone(), activation))
+        }
+    }
+
     /// Validates the configuration
-    pub const fn validate(&self) -> Result<(), ConfigError> {
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        self.validate_deploy_allowlist()
+    }
+
+    fn validate_deploy_allowlist(&self) -> Result<(), ConfigError> {
+        let allowlist_len = self.deploy_allowlist.len();
+        if allowlist_len > MAX_DEPLOY_ALLOWLIST_LEN {
+            return Err(ConfigError::InvalidDeployAllowlist(format!(
+                "deployAllowlist has {allowlist_len} entries (max {MAX_DEPLOY_ALLOWLIST_LEN})"
+            )));
+        }
+
+        for i in 0..allowlist_len {
+            let addr = self.deploy_allowlist[i];
+            if addr.is_zero() {
+                return Err(ConfigError::InvalidDeployAllowlist(
+                    "deployAllowlist contains zero address".to_string(),
+                ));
+            }
+            for j in (i + 1)..allowlist_len {
+                if addr == self.deploy_allowlist[j] {
+                    return Err(ConfigError::InvalidDeployAllowlist(
+                        "deployAllowlist contains duplicate entries".to_string(),
+                    ));
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -154,13 +218,16 @@ pub enum ConfigError {
     /// Chainspec extras contained invalid values
     #[error("Invalid evolve extras in chainspec: {0}")]
     InvalidExtras(#[from] serde_json::Error),
+    /// Deploy allowlist configuration invalid
+    #[error("Invalid deploy allowlist configuration: {0}")]
+    InvalidDeployAllowlist(String),
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use alloy_genesis::Genesis;
-    use alloy_primitives::address;
+    use alloy_primitives::{address, Address};
     use reth_chainspec::ChainSpecBuilder;
     use serde_json::json;
 
@@ -306,6 +373,8 @@ mod tests {
         assert_eq!(config.mint_admin, None);
         assert_eq!(config.base_fee_redirect_activation_height, None);
         assert_eq!(config.mint_precompile_activation_height, None);
+        assert!(config.deploy_allowlist.is_empty());
+        assert_eq!(config.deploy_allowlist_activation_height, None);
     }
 
     #[test]
@@ -317,11 +386,13 @@ mod tests {
         assert_eq!(config.base_fee_redirect_activation_height, None);
         assert_eq!(config.mint_precompile_activation_height, None);
         assert_eq!(config.contract_size_limit, None);
+        assert!(config.deploy_allowlist.is_empty());
+        assert_eq!(config.deploy_allowlist_activation_height, None);
     }
 
     #[test]
     fn test_validate_always_ok() {
-        // Test that validate always returns Ok for now
+        // Test that validate returns Ok for defaults
         let config = EvolvePayloadBuilderConfig::new();
         assert!(config.validate().is_ok());
 
@@ -332,8 +403,86 @@ mod tests {
             mint_precompile_activation_height: Some(0),
             contract_size_limit: None,
             contract_size_limit_activation_height: None,
+            deploy_allowlist: Vec::new(),
+            deploy_allowlist_activation_height: None,
         };
         assert!(config_with_sink.validate().is_ok());
+    }
+
+    #[test]
+    fn test_deploy_allowlist_defaults_activation_to_zero() {
+        let allowlist = vec![
+            address!("00000000000000000000000000000000000000aa"),
+            address!("00000000000000000000000000000000000000bb"),
+        ];
+        let extras = json!({
+            "deployAllowlist": allowlist
+        });
+
+        let chainspec = create_test_chainspec_with_extras(Some(extras));
+        let config = EvolvePayloadBuilderConfig::from_chain_spec(&chainspec).unwrap();
+
+        assert_eq!(config.deploy_allowlist.len(), 2);
+        assert_eq!(config.deploy_allowlist_activation_height, Some(0));
+    }
+
+    #[test]
+    fn test_deploy_allowlist_rejects_zero_address() {
+        let extras = json!({
+            "deployAllowlist": [
+                "0x0000000000000000000000000000000000000000"
+            ]
+        });
+
+        let chainspec = create_test_chainspec_with_extras(Some(extras));
+        let config = EvolvePayloadBuilderConfig::from_chain_spec(&chainspec).unwrap();
+
+        assert!(matches!(
+            config.validate(),
+            Err(ConfigError::InvalidDeployAllowlist(_))
+        ));
+    }
+
+    #[test]
+    fn test_deploy_allowlist_rejects_duplicates() {
+        let dup = address!("00000000000000000000000000000000000000aa");
+        let extras = json!({
+            "deployAllowlist": [dup, dup]
+        });
+
+        let chainspec = create_test_chainspec_with_extras(Some(extras));
+        let config = EvolvePayloadBuilderConfig::from_chain_spec(&chainspec).unwrap();
+
+        assert!(matches!(
+            config.validate(),
+            Err(ConfigError::InvalidDeployAllowlist(_))
+        ));
+    }
+
+    #[test]
+    fn test_deploy_allowlist_rejects_too_many_entries() {
+        let mut allowlist = Vec::new();
+        for i in 0..=MAX_DEPLOY_ALLOWLIST_LEN {
+            let mut bytes = [0u8; 20];
+            bytes[12..].copy_from_slice(&(i as u64 + 1).to_be_bytes());
+            let addr = Address::new(bytes);
+            allowlist.push(addr);
+        }
+        let config = EvolvePayloadBuilderConfig {
+            base_fee_sink: None,
+            mint_admin: None,
+            base_fee_redirect_activation_height: None,
+            mint_precompile_activation_height: None,
+            contract_size_limit: None,
+            contract_size_limit_activation_height: None,
+            deploy_allowlist: allowlist,
+            deploy_allowlist_activation_height: Some(0),
+        };
+
+        assert!(matches!(
+            config.validate(),
+            Err(ConfigError::InvalidDeployAllowlist(_))
+        ));
     }
 
     #[test]
@@ -346,6 +495,8 @@ mod tests {
             mint_precompile_activation_height: None,
             contract_size_limit: None,
             contract_size_limit_activation_height: None,
+            deploy_allowlist: Vec::new(),
+            deploy_allowlist_activation_height: None,
         };
 
         assert_eq!(config.base_fee_sink_for_block(4), None);

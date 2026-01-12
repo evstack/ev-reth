@@ -10,7 +10,7 @@ use alloy_genesis::Genesis;
 use alloy_primitives::{Address, Bytes, ChainId, Signature, TxKind, B256, U256};
 use ev_revm::{
     with_ev_handler, BaseFeeRedirect, BaseFeeRedirectSettings, ContractSizeLimitSettings,
-    MintPrecompileSettings,
+    DeployAllowlistSettings, MintPrecompileSettings,
 };
 use eyre::Result;
 use reth_chainspec::{ChainSpec, ChainSpecBuilder};
@@ -43,33 +43,37 @@ pub const TEST_BASE_FEE: u64 = 0;
 
 /// Creates a reusable chain specification for tests.
 pub fn create_test_chain_spec() -> Arc<ChainSpec> {
-    create_test_chain_spec_with_extras(None, None)
+    create_test_chain_spec_with_extras(None, None, None)
 }
 
 /// Creates a reusable chain specification with an optional base fee sink address.
 pub fn create_test_chain_spec_with_base_fee_sink(base_fee_sink: Option<Address>) -> Arc<ChainSpec> {
-    create_test_chain_spec_with_extras(base_fee_sink, None)
+    create_test_chain_spec_with_extras(base_fee_sink, None, None)
 }
 
 /// Creates a reusable chain specification with a configured mint admin address.
 pub fn create_test_chain_spec_with_mint_admin(mint_admin: Address) -> Arc<ChainSpec> {
-    create_test_chain_spec_with_extras(None, Some(mint_admin))
+    create_test_chain_spec_with_extras(None, Some(mint_admin), None)
 }
 
 fn create_test_chain_spec_with_extras(
     base_fee_sink: Option<Address>,
     mint_admin: Option<Address>,
+    deploy_allowlist: Option<Vec<Address>>,
 ) -> Arc<ChainSpec> {
     let mut genesis: Genesis =
         serde_json::from_str(include_str!("../assets/genesis.json")).expect("valid genesis");
 
-    if base_fee_sink.is_some() || mint_admin.is_some() {
+    if base_fee_sink.is_some() || mint_admin.is_some() || deploy_allowlist.is_some() {
         let mut extras = serde_json::Map::new();
         if let Some(sink) = base_fee_sink {
             extras.insert("baseFeeSink".to_string(), json!(sink));
         }
         if let Some(admin) = mint_admin {
             extras.insert("mintAdmin".to_string(), json!(admin));
+        }
+        if let Some(allowlist) = deploy_allowlist {
+            extras.insert("deployAllowlist".to_string(), json!(allowlist));
         }
         genesis
             .config
@@ -84,6 +88,13 @@ fn create_test_chain_spec_with_extras(
             .cancun_activated()
             .build(),
     )
+}
+
+/// Creates a reusable chain specification with a configured deploy allowlist.
+pub fn create_test_chain_spec_with_deploy_allowlist(
+    deploy_allowlist: Vec<Address>,
+) -> Arc<ChainSpec> {
+    create_test_chain_spec_with_extras(None, None, Some(deploy_allowlist))
 }
 
 /// Shared test fixture for evolve payload builder tests
@@ -143,10 +154,14 @@ impl EvolveTestFixture {
         let contract_size_limit = config
             .contract_size_limit_settings()
             .map(|(limit, activation)| ContractSizeLimitSettings::new(limit, activation));
+        let deploy_allowlist = config
+            .deploy_allowlist_settings()
+            .map(|(allowlist, activation)| DeployAllowlistSettings::new(allowlist, activation));
         let wrapped_evm = with_ev_handler(
             evm_config,
             base_fee_redirect,
             mint_precompile,
+            deploy_allowlist,
             contract_size_limit,
         );
 
