@@ -2944,6 +2944,7 @@ dependencies = [
  "alloy-primitives",
  "bytes",
  "eyre",
+ "parking_lot",
  "reth-ethereum",
  "reth-primitives",
  "reth-revm",
