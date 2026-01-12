@@ -19,6 +19,9 @@
     "evolve": {
       "baseFeeSink": "0x00000000000000000000000000000000000000fe",
       "baseFeeRedirectActivationHeight": 0,
+      "baseFeeMaxChangeDenominator": 5000,
+      "baseFeeElasticityMultiplier": 10,
+      "initialBaseFeePerGas": 100000000000000000,
       "mintAdmin": "0x000000000000000000000000000000000000Ad00",
       "mintPrecompileActivationHeight": 0,
       "contractSizeLimit": 131072,
@@ -26,7 +29,8 @@
     }
   },
   "difficulty": "0x1",
-  "gasLimit": "0x1c9c380",
+  "gasLimit": "0x2faf080",
+  "baseFeePerGas": "0x16345785d8a0000",
   "alloc": {
     "000000000000000000000000000000000000Ad00": {
       "balance": "0x0",

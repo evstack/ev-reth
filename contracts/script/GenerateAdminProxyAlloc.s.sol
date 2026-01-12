@@ -52,9 +52,9 @@ contract GenerateAdminProxyAlloc is Script {
         console.log('  "alloc": {');
         console.log('    "000000000000000000000000000000000000Ad00": {');
         console.log('      "balance": "0x0",');
-        console.log('      "code": "0x%s",', vm.toString(runtimeCode));
+        console.log('      "code": "%s",', vm.toString(runtimeCode));
         console.log('      "storage": {');
-        console.log('        "0x0": "0x%s"', vm.toString(ownerSlotValue));
+        console.log('        "0x0": "%s"', vm.toString(ownerSlotValue));
         console.log("      }");
         console.log("    }");
         console.log("  }");
@@ -100,9 +100,9 @@ contract GenerateAdminProxyAllocJSON is Script {
         // Output minimal JSON that can be merged into genesis
         string memory json = string(
             abi.encodePacked(
-                '{"000000000000000000000000000000000000Ad00":{"balance":"0x0","code":"0x',
+                '{"000000000000000000000000000000000000Ad00":{"balance":"0x0","code":"',
                 vm.toString(runtimeCode),
-                '","storage":{"0x0":"0x',
+                '","storage":{"0x0":"',
                 vm.toString(ownerSlotValue),
                 '"}}}'
             )
