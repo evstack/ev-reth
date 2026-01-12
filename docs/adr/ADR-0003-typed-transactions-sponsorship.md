@@ -136,6 +136,15 @@ be fully validated before execution.
 
 ## Implementation Plan
 
+### Layer scope (crates and files)
+
+- `crates/ev-primitives` (new): `EvNodeTransaction`, `EvNodeSignedTx`, `EvTxEnvelope`, 2718/DB codecs.
+- `crates/node`: `attributes.rs` (2718 decode in Engine API), `payload_service.rs` (payload builder), `validator.rs` (ingress validation).
+- `crates/ev-revm`: `handler.rs` (fee payer/deduction), `evm.rs`/`factory.rs` (TxEnv mapping).
+- `crates/evolve`: `rpc/txpool.rs` (`txpoolExt_getTxs` 2718), `types.rs` (payload attrs).
+
+We do not modify the standard `crates/transaction-pool`; acceptance/validation of 0x76 happens at ingestion/payload builder and at execution (handler). If extra pre-validation is needed, it lives in `crates/node/src/validator.rs`.
+
 1. Define local primitives and transaction envelope.
    - Add a new local crate (e.g. `crates/ev-primitives`) to host the transaction
      types and wrappers.
