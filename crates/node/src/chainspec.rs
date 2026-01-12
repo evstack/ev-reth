@@ -77,7 +77,7 @@ fn apply_genesis_overrides(genesis: &mut Genesis, overrides: &EvolveEip1559Confi
         bail!("initialBaseFeePerGas requires londonBlock set to 0 in the chainspec config");
     }
 
-    let initial_base_fee_u128 = initial_base_fee as u128;
+    let initial_base_fee_u128 = u128::from(initial_base_fee);
     if let Some(existing) = genesis.base_fee_per_gas {
         if existing != initial_base_fee_u128 {
             bail!(
@@ -98,13 +98,19 @@ fn apply_chain_spec_overrides(
 ) -> Result<()> {
     if let Some(denominator) = overrides.base_fee_max_change_denominator {
         if denominator == 0 {
-            bail!("baseFeeMaxChangeDenominator must be greater than 0");
+            bail!(
+                "baseFeeMaxChangeDenominator must be greater than 0, got: {}",
+                denominator
+            );
         }
     }
 
     if let Some(elasticity) = overrides.base_fee_elasticity_multiplier {
         if elasticity == 0 {
-            bail!("baseFeeElasticityMultiplier must be greater than 0");
+            bail!(
+                "baseFeeElasticityMultiplier must be greater than 0, got: {}",
+                elasticity
+            );
         }
     }
 
@@ -115,11 +121,11 @@ fn apply_chain_spec_overrides(
     let mut params = chain_spec.base_fee_params_at_timestamp(chain_spec.genesis.timestamp);
 
     if let Some(denominator) = overrides.base_fee_max_change_denominator {
-        params.max_change_denominator = denominator as u128;
+        params.max_change_denominator = u128::from(denominator);
     }
 
     if let Some(elasticity) = overrides.base_fee_elasticity_multiplier {
-        params.elasticity_multiplier = elasticity as u128;
+        params.elasticity_multiplier = u128::from(elasticity);
     }
 
     chain_spec.base_fee_params = BaseFeeParamsKind::Constant(params);
