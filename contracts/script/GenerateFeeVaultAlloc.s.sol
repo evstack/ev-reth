@@ -130,15 +130,15 @@ contract GenerateFeeVaultAlloc is FeeVaultAllocBase {
         console.log('  "alloc": {');
         console.log('    "%s": {', addressKey(cfg.feeVaultAddress));
         console.log('      "balance": "0x0",');
-        console.log('      "code": "0x%s",', vm.toString(runtimeCode));
+        console.log('      "code": "%s",', vm.toString(runtimeCode));
         console.log('      "storage": {');
-        console.log('        "0x0": "0x%s",', vm.toString(slot0));
-        console.log('        "0x1": "0x%s",', vm.toString(slot1));
-        console.log('        "0x2": "0x%s",', vm.toString(slot2));
-        console.log('        "0x3": "0x%s",', vm.toString(slot3));
-        console.log('        "0x4": "0x%s",', vm.toString(slot4));
-        console.log('        "0x5": "0x%s",', vm.toString(slot5));
-        console.log('        "0x6": "0x%s"', vm.toString(slot6));
+        console.log('        "0x0": "%s",', vm.toString(slot0));
+        console.log('        "0x1": "%s",', vm.toString(slot1));
+        console.log('        "0x2": "%s",', vm.toString(slot2));
+        console.log('        "0x3": "%s",', vm.toString(slot3));
+        console.log('        "0x4": "%s",', vm.toString(slot4));
+        console.log('        "0x5": "%s",', vm.toString(slot5));
+        console.log('        "0x6": "%s"', vm.toString(slot6));
         console.log("      }");
         console.log("    }");
         console.log("  }");
@@ -164,21 +164,21 @@ contract GenerateFeeVaultAllocJSON is FeeVaultAllocBase {
             abi.encodePacked(
                 '{"',
                 addressKey(cfg.feeVaultAddress),
-                '":{"balance":"0x0","code":"0x',
+                '":{"balance":"0x0","code":"',
                 vm.toString(runtimeCode),
-                '","storage":{"0x0":"0x',
+                '","storage":{"0x0":"',
                 vm.toString(slot0),
-                '","0x1":"0x',
+                '","0x1":"',
                 vm.toString(slot1),
-                '","0x2":"0x',
+                '","0x2":"',
                 vm.toString(slot2),
-                '","0x3":"0x',
+                '","0x3":"',
                 vm.toString(slot3),
-                '","0x4":"0x',
+                '","0x4":"',
                 vm.toString(slot4),
-                '","0x5":"0x',
+                '","0x5":"',
                 vm.toString(slot5),
-                '","0x6":"0x',
+                '","0x6":"',
                 vm.toString(slot6),
                 '"}}}'
             )
