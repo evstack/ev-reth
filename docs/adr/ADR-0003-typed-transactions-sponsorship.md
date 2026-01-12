@@ -65,6 +65,81 @@ Implementation will define local transaction primitives and envelopes in this
 repo and wire a custom `NodeTypes`/`NodePrimitives` configuration (Tempo-style)
 so all node components consume those types, without modifying reth crates.
 
+## Specification
+
+### Transaction Type
+
+Introduce a new EIP-2718 typed transaction with type byte `0x76`.
+
+```rust
+pub struct EvNodeTransaction {
+    // EIP-1559-like fields
+    chain_id: u64,
+    nonce: u64,
+    max_priority_fee_per_gas: u128,
+    max_fee_per_gas: u128,
+    gas_limit: u64,
+    to: TxKind,
+    value: U256,
+    data: Bytes,
+    access_list: AccessList,
+    // Sponsorship (optional)
+    fee_payer: Option<Address>,
+    fee_payer_signature: Option<Signature>,
+}
+```
+
+### Encoding (RLP)
+
+Field order is consensus-critical and MUST be:
+
+`chain_id, nonce, max_priority_fee_per_gas, max_fee_per_gas, gas_limit, to, value, data, access_list, fee_payer, fee_payer_signature`
+
+Optional fields MUST be encoded deterministically:
+
+- `fee_payer`: encode `0x80` when `None`
+- `fee_payer_signature`: encode `0x80` when `None`
+
+### Signatures and Hashing
+
+This transaction uses two signature domains:
+
+- **Executor signature** domain `0x76`
+- **Sponsor signature** domain `0x78`
+
+Signing preimages:
+
+- Executor: `0x76 || rlp(fields...)` with `fee_payer = 0x80` and
+  `fee_payer_signature = 0x80` (always empty)
+- Sponsor: `0x78 || rlp(fields...)` with `fee_payer = sponsor_address` and
+  `fee_payer_signature = 0x80`
+
+Transaction hash follows EIP-2718:
+
+- `keccak256(0x76 || rlp(fields...))` using the final encoded transaction
+  (including `fee_payer_signature` if present)
+
+### Validity Rules
+
+- `fee_payer` and `fee_payer_signature` MUST be both present or both absent.
+- If sponsorship is absent, the executor pays gas (standard EIP-1559 behavior).
+- If sponsorship is present, the sponsor pays gas; the executor remains `from`.
+- The executor signature MUST be valid for the executor domain.
+- If present, the sponsor signature MUST be valid for the sponsor domain and
+  bound to the executor transaction contents.
+
+### Execution Semantics
+
+- `from` in RPC and EVM MUST be the executor.
+- Nonce ownership is always the executor's nonce.
+- Gas accounting and fee deduction MUST be charged to the sponsor when present,
+  otherwise to the executor.
+
+### Inclusion Path
+
+This transaction type is accepted only via Engine API payload attributes in
+EvNode. Txpool and `eth_sendRawTransaction` paths remain out of scope.
+
 ## Implementation Plan
 
 1. Define local primitives and transaction envelope.
