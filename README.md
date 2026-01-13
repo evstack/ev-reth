@@ -274,6 +274,31 @@ Implementation details:
 - No runtime environment variables are required; the chainspec carries the policy alongside other fork settings
 - When not configured, the EVM operates normally with standard fee burning
 
+### Custom EIP-1559 Parameters (Custom Networks Only)
+
+ev-reth also lets you override EIP-1559 base fee parameters through the same `evolve` stanza in
+your chainspec. This is consensus-critical: all nodes must use the same values.
+
+```json
+"config": {
+  ...,
+  "evolve": {
+    "baseFeeMaxChangeDenominator": 8,
+    "baseFeeElasticityMultiplier": 2,
+    "initialBaseFeePerGas": 1000000000
+  }
+}
+```
+
+Notes:
+
+- `baseFeeMaxChangeDenominator` and `baseFeeElasticityMultiplier` override the EIP-1559 formula.
+- `initialBaseFeePerGas` only applies when `londonBlock` is `0` (London at genesis). It updates the
+  genesis `baseFeePerGas` value; if London is activated later, the initial base fee remains
+  hardcoded to the EIP-1559 constant.
+- The node will fail fast if these values are invalid or inconsistent.
+- See `docs/eip1559-configuration.md` for recommended values at 100ms block times.
+
 ### Custom Contract Size Limit
 
 By default, Ethereum enforces a 24KB contract size limit per [EIP-170](https://eips.ethereum.org/EIPS/eip-170). If your network requires larger contracts, `ev-reth` supports configuring a custom limit via the chainspec.

@@ -2895,6 +2895,7 @@ dependencies = [
  "hex",
  "reth-basic-payload-builder",
  "reth-chainspec",
+ "reth-cli",
  "reth-consensus",
  "reth-db",
  "reth-engine-local",

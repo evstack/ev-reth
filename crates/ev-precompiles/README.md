@@ -58,10 +58,12 @@ Calls from any other address will be rejected with an "unauthorized caller" erro
 Mints new native tokens to a specified address.
 
 **Parameters:**
+
 - `to` (address): Recipient address
 - `amount` (uint256): Amount to mint in wei
 
 **Behavior:**
+
 1. Verifies caller is the authorized mint admin
 2. Creates the recipient account if it doesn't exist
 3. Increases the recipient's balance by the specified amount
@@ -70,6 +72,7 @@ Mints new native tokens to a specified address.
 **Gas:** Returns unused gas (precompile consumes minimal gas)
 
 **Errors:**
+
 - `unauthorized caller`: Caller is not the mint admin
 - `balance overflow`: Adding the amount would overflow uint256
 
@@ -78,10 +81,12 @@ Mints new native tokens to a specified address.
 Burns native tokens from a specified address.
 
 **Parameters:**
+
 - `from` (address): Address to burn tokens from
 - `amount` (uint256): Amount to burn in wei
 
 **Behavior:**
+
 1. Verifies caller is the authorized mint admin
 2. Ensures the target account exists
 3. Decreases the target's balance by the specified amount
@@ -90,6 +95,7 @@ Burns native tokens from a specified address.
 **Gas:** Returns unused gas (precompile consumes minimal gas)
 
 **Errors:**
+
 - `unauthorized caller`: Caller is not the mint admin
 - `insufficient balance`: Account doesn't have enough balance to burn
 
@@ -99,11 +105,14 @@ The typical usage pattern involves deploying a proxy contract at the mint admin 
 
 This pattern allows the mint admin to be a smart contract with custom authorization logic (multisig, governance, etc.) rather than a simple EOA.
 
+See the [AdminProxy documentation](../../docs/contracts/admin_proxy.md) for a ready-to-use proxy contract that can be deployed at genesis and later upgraded to a multisig.
+
 ## Implementation Details
 
 ### Account Creation
 
 The precompile automatically creates accounts that don't exist when minting to them. This ensures that:
+
 - Tokens can be minted to any address, including those not yet active on-chain
 - The account is properly marked as created in the EVM state
 - The account is touched for accurate state tracking
@@ -111,6 +120,7 @@ The precompile automatically creates accounts that don't exist when minting to t
 ### Balance Manipulation
 
 The precompile directly modifies account balances in the EVM state using the `EvmInternals` API. This provides:
+
 - **Direct state access**: No need for complex transfer mechanisms
 - **Overflow protection**: All arithmetic is checked
 - **State consistency**: Accounts are properly touched for journaling

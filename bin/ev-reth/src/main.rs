@@ -10,12 +10,12 @@ use evolve_ev_reth::{
     config::EvolveConfig,
     rpc::txpool::{EvolveTxpoolApiImpl, EvolveTxpoolApiServer},
 };
-use reth_ethereum_cli::{chainspec::EthereumChainSpecParser, Cli};
+use reth_ethereum_cli::Cli;
 use reth_tracing_otlp::layer as otlp_layer;
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
-use ev_node::{log_startup, EvolveArgs, EvolveNode};
+use ev_node::{log_startup, EvolveArgs, EvolveChainSpecParser, EvolveNode};
 
 #[global_allocator]
 static ALLOC: reth_cli_util::allocator::Allocator = reth_cli_util::allocator::new_allocator();
@@ -47,8 +47,8 @@ fn main() {
         init_otlp_tracing();
     }
 
-    if let Err(err) = Cli::<EthereumChainSpecParser, EvolveArgs>::parse().run(
-        |builder, _evolve_args| async move {
+    if let Err(err) =
+        Cli::<EvolveChainSpecParser, EvolveArgs>::parse().run(|builder, _evolve_args| async move {
             log_startup();
             let handle = builder
                 .node(EvolveNode::new())
@@ -67,8 +67,8 @@ fn main() {
 
             info!("=== EV-RETH: Node launched successfully with ev-reth payload builder ===");
             handle.node_exit_future.await
-        },
-    ) {
+        })
+    {
         eprintln!("Error: {err:?}");
         std::process::exit(1);
     }
