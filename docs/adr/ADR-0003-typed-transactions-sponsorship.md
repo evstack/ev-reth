@@ -133,6 +133,7 @@ We will utilize Reth's `NodeTypes` configuration to wire these primitives withou
 
 * Define `EvTxEnvelope` enum implementing `TransactionEnvelope` and `alloy_rlp` traits.
 * Implement custom signing and recovery logic (`recover_executor`, `recover_sponsor`).
+* Ensure the executor signature is carried by the envelope as `Signed<EvNodeTransaction>` and encoded as `v,r,s` (not inside the payload).
 
 ```rust
 #[derive(Clone, Debug, alloy_consensus::TransactionEnvelope)]
