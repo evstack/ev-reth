@@ -36,7 +36,7 @@ We will implement a custom EIP-2718 transaction type `0x76` (`EvNodeTransaction`
 
 **Type Byte:** `0x76`
 
-The payload contains the following fields, RLP encoded. Field order is consensus-critical:
+The **payload** contains the following fields, RLP encoded. Field order is consensus-critical:
 
 ```rust
 pub struct EvNodeTransaction {
@@ -60,6 +60,12 @@ pub struct Call {
 }
 ```
 
+The **signed envelope** is a standard typed-transaction envelope with the executor signature:
+
+```rust
+pub type EvNodeSignedTx = Signed<EvNodeTransaction>;
+```
+
 ### Encoding (RLP)
 
 Optional fields MUST be encoded deterministically:
@@ -73,22 +79,26 @@ The `calls` field is an RLP list of `Call` structs, each encoded as:
 rlp([to, value, input])
 ```
 
+**Signed envelope encoding (executor signature):**
+* The final encoded transaction is `0x76 || rlp([payload_fields..., v, r, s])`, matching EIP-1559-style typed tx encoding.
+* The `payload_fields...` are exactly the fields in `EvNodeTransaction` above, in order.
+
 ### Signatures and Hashing
 
 This transaction uses two signature domains to prevent collisions and enable the "Open Sponsorship" model.
 
 1. **Executor Signature** (Domain `0x76`)
-* Preimage: `0x76 || rlp(fields...)`
+* Preimage: `0x76 || rlp(payload_fields...)` (no `v,r,s` in the RLP).
 * Constraint: `fee_payer` and `fee_payer_signature` MUST be set to `0x80` (empty) in the RLP stream for this hash.
 * *Effect:* The executor authorizes the intent regardless of who pays.
 
 2. **Sponsor Signature** (Domain `0x78`)
-* Preimage: `0x78 || rlp(fields...)`
+* Preimage: `0x78 || rlp(payload_fields...)`
 * Constraint: `fee_payer` MUST be the sponsor's address. `fee_payer_signature` remains `0x80`.
 * *Effect:* The sponsor binds their address to the specific executor intent.
 
 3. **Transaction Hash** (TxHash)
-* `keccak256(0x76 || rlp(fields...))` using the final encoded transaction (including the sponsor signature if present).
+* `keccak256(0x76 || rlp([payload_fields..., v, r, s]))` using the final encoded transaction (including the sponsor signature if present).
 
 ### Validity Rules
 
