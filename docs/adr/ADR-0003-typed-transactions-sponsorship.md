@@ -18,6 +18,8 @@ Gas sponsorship is a recurring requirement for onboarding users and for product 
 
 EvNode aims to support sponsorship and batch calls natively. We require a mechanism where a transaction can carry two signatures (authorization + payment) and multiple calls, with deterministic encoding and atomic execution.
 
+Terminology: the **executor** is the signer of domain `0x76`; it provides the `nonce`, is the transaction `from`, and maps to `tx.origin`. The **sponsor** (aka `fee_payer`) is the signer of domain `0x78` and pays gas when sponsorship is present; `fee_payer` is the sponsor address field. **Sponsorship** means `fee_payer` is present and pays gas; it does not change the `from`.
+
 ## Decision
 
 We will implement a custom EIP-2718 transaction type `0x76` (`EvNodeTransaction`) that encodes **batched calls** plus an optional sponsor authorization.
@@ -106,7 +108,7 @@ This transaction uses two signature domains to prevent collisions and enable the
 * **State:** `fee_payer` and `fee_payer_signature` MUST be both present or both absent.
 * **Behavior:**
   * If sponsorship is absent: Executor pays gas (standard EIP-1559 behavior).
-  * If sponsorship is present: Sponsor pays gas; Executor remains `from` / `ORIGIN`.
+  * If sponsorship is present: Sponsor pays gas; executor remains `from` (tx.origin).
 
 * **Validation:**
   * Executor signature MUST be valid for domain `0x76`.
