@@ -85,7 +85,7 @@ rlp([to, value, input])
 
 ### Signatures and Hashing
 
-This transaction uses two signature domains to prevent collisions and enable the "Open Sponsorship" model.
+This transaction uses two signature domains to prevent collisions and enable the "Open Sponsorship" model. These domain bytes (`0x76` and `0x78`) are signature domain separators, not transaction types.
 
 1. **Executor Signature** (Domain `0x76`)
 * Preimage: `0x76 || rlp(payload_fields...)` (no `v,r,s` in the RLP).
@@ -96,6 +96,7 @@ This transaction uses two signature domains to prevent collisions and enable the
 * Preimage: `0x78 || rlp(payload_fields...)`
 * Constraint: `fee_payer` MUST be the sponsor's address. `fee_payer_signature` remains `0x80`.
 * *Effect:* The sponsor binds their address to the specific executor intent.
+* *Note:* In the final encoded transaction, `fee_payer_signature` is populated with the sponsor signature; it is set to `0x80` only for signing preimages. The "both present or both absent" rule applies to the final encoded payload.
 
 3. **Transaction Hash** (TxHash)
 * `keccak256(0x76 || rlp([payload_fields..., v, r, s]))` using the final encoded transaction (including the sponsor signature if present).
