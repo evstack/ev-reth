@@ -1,0 +1,12 @@
+[package]
+name = "ev-primitives"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+alloy-consensus = { workspace = true }
+alloy-eips = { workspace = true }
+alloy-primitives = { workspace = true, features = ["k256", "rlp"] }
+alloy-rlp = { workspace = true, features = ["derive"] }
