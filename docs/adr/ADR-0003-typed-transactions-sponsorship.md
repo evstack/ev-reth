@@ -2,7 +2,6 @@
 
 ## Changelog
 * 2026-01-05: Initial draft structure.
-* 2026-01-13: Unified sponsorship and batch calls; aligned with Tempo batch semantics.
 
 ## Status
 DRAFT — Not Implemented
@@ -21,7 +20,7 @@ EvNode aims to support sponsorship and batch calls natively. We require a mechan
 
 ## Decision
 
-We will implement a custom EIP-2718 transaction type `0x76` (`EvNodeTransaction`) that encodes **batched calls** plus an optional sponsor authorization, matching Tempo's batch transaction semantics.
+We will implement a custom EIP-2718 transaction type `0x76` (`EvNodeTransaction`) that encodes **batched calls** plus an optional sponsor authorization.
 
 **Key Architectural Decisions:**
 
@@ -107,7 +106,7 @@ This transaction uses two signature domains to prevent collisions and enable the
 * **Trusted Ingestion (L2/DA):**
   * Transactions derived from trusted sources (e.g., L1 Data Availability) bypass the TxPool. These MUST undergo full signature validation (Executor + Sponsor) within the payload builder or execution pipeline before processing to ensure integrity.
 
-### Batch Calls (Tempo-Compatible)
+### Batch Calls
 
 Batch calls are executed **atomically**: either all calls succeed or the entire transaction reverts. There are no partial successes.
 
