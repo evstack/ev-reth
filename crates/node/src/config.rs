@@ -1,6 +1,7 @@
 use alloy_primitives::Address;
 use reth_chainspec::ChainSpec;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 
 /// Default contract size limit in bytes (24KB per EIP-170).
 pub const DEFAULT_CONTRACT_SIZE_LIMIT: usize = 24 * 1024;
@@ -167,19 +168,17 @@ impl EvolvePayloadBuilderConfig {
             )));
         }
 
-        for i in 0..allowlist_len {
-            let addr = self.deploy_allowlist[i];
+        let mut seen = HashSet::with_capacity(allowlist_len);
+        for addr in &self.deploy_allowlist {
             if addr.is_zero() {
                 return Err(ConfigError::InvalidDeployAllowlist(
                     "deployAllowlist contains zero address".to_string(),
                 ));
             }
-            for j in (i + 1)..allowlist_len {
-                if addr == self.deploy_allowlist[j] {
-                    return Err(ConfigError::InvalidDeployAllowlist(
-                        "deployAllowlist contains duplicate entries".to_string(),
-                    ));
-                }
+            if !seen.insert(*addr) {
+                return Err(ConfigError::InvalidDeployAllowlist(
+                    "deployAllowlist contains duplicate entries".to_string(),
+                ));
             }
         }
 

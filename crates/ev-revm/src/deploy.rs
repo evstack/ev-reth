@@ -13,7 +13,9 @@ pub struct DeployAllowlistSettings {
 impl DeployAllowlistSettings {
     /// Creates a new deploy allowlist configuration.
     pub fn new(allowlist: Vec<Address>, activation_height: u64) -> Self {
+        let mut allowlist = allowlist;
         debug_assert!(!allowlist.is_empty(), "deploy allowlist must not be empty");
+        allowlist.sort_unstable();
         Self {
             allowlist: Arc::from(allowlist),
             activation_height,
@@ -37,6 +39,6 @@ impl DeployAllowlistSettings {
 
     /// Returns true if the caller is in the allowlist.
     pub fn is_allowed(&self, caller: Address) -> bool {
-        self.allowlist.contains(&caller)
+        self.allowlist.binary_search(&caller).is_ok()
     }
 }
