@@ -96,6 +96,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 
 [[package]]
+name = "alloy"
+version = "1.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3cb837e538ce3eac04e357ef47b8acead0b14c83ec6bcafedd167e6a60c40876"
+dependencies = [
+ "alloy-core",
+]
+
+[[package]]
 name = "alloy-chains"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -150,6 +159,16 @@ dependencies = [
  "alloy-serde",
  "arbitrary",
  "serde",
+]
+
+[[package]]
+name = "alloy-core"
+version = "1.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5ca96214615ec8cf3fa2a54b32f486eb49100ca7fe7eb0b8c1137cd316e7250a"
+dependencies = [
+ "alloy-primitives",
+ "alloy-sol-types",
 ]
 
 [[package]]
@@ -2884,9 +2903,9 @@ dependencies = [
 name = "ev-precompiles"
 version = "0.1.0"
 dependencies = [
+ "alloy",
  "alloy-evm",
  "alloy-primitives",
- "alloy-sol-types",
  "bytes",
  "eyre",
  "reth-ethereum",

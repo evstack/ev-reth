@@ -17,7 +17,7 @@ revm = { workspace = true }
 # EVM
 alloy-primitives = { workspace = true }
 alloy-evm = { workspace = true }
-alloy-sol-types = { workspace = true }
+alloy = { version = "1.0.37", default-features = false, features = ["sol-types"] }
 bytes = "1.5.0"
 
 # Tooling
