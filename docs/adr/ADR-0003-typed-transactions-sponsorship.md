@@ -215,6 +215,10 @@ Standard Ethereum JSON-RPC types do not support sponsorship fields. We must exte
 * **Transactions:** `eth_getTransactionByHash` response MUST include `feePayer` (address) if present.
 * **Receipts:** `eth_getTransactionReceipt` MUST indicate the effective gas payer for indexing purposes.
 
+## Client Integration (Viem)
+
+We will use **Viem** and create a **custom client** based on the Viem custom client pattern (see: `https://viem.sh/docs/clients/custom`). This client will encapsulate `0x76` transaction creation and sponsorship signing.
+
 ## Security Considerations
 
 ### Sponsor Malleability (Front-running)
