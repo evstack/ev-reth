@@ -125,6 +125,53 @@ Operational constraints:
 * Intrinsic gas MUST be computed over **all** calls in the batch (calldata, cold access per call, CREATE cost, and any signature-related costs).
 * If any call fails, all state changes from previous calls in the batch MUST be reverted.
 
+## Sponsorship Flow (Genesis → Sponsor Signature)
+
+This section describes an end-to-end flow for creating a sponsored `0x76` transaction, from initial intent to sponsor signing and submission. It complements (but does not replace) the rules in “Signatures and Hashing”.
+
+### 0) Pre-conditions / Genesis State
+- The executor has a key pair, nonce space, and required permissions for the calls.
+- The sponsor has funds and is willing to pay gas for the executor’s intent.
+- The protocol does **not** implement an automated fee-paying system; sponsorship is arranged off-chain.
+- A sponsorship service **may** be used to provide fee sponsorship, but for now this is the responsibility of the chain.
+
+### 1) Executor Builds the Unsponsored Payload (Intent)
+- The executor constructs `EvNodeTransaction` with:
+  - `fee_payer_signature = None`
+  - all call data, gas params, and access list
+- The executor signs the **executor signature hash**:
+  - `hash_exec = keccak256(0x76 || rlp(payload_fields... with fee_payer_signature = 0x80))`
+- The executor produces `executor_signature` (secp256k1), forming `Signed<EvNodeTransaction>`.
+
+### 2) Sponsor-Ready Envelope (Unsigned by Sponsor)
+- The executor shares the payload + executor signature with a sponsor (directly or via a service).
+- The payload is unchanged; `fee_payer_signature` remains empty.
+- **Broadcast readiness:** at this point the tx is valid but **unsponsored** and can be broadcast as a normal executor-paid transaction.
+
+### 3) Sponsor Computes the Sponsor Hash
+- The sponsor computes:
+  - `hash_sponsor = keccak256(0x78 || rlp(payload_fields... with fee_payer_signature = 0x80))`
+  - The sponsor uses the same payload as the executor (no mutation other than the domain byte).
+
+### 4) Sponsor Signs and Fills `fee_payer_signature`
+- The sponsor signs `hash_sponsor` **off-chain** (e.g., within the app or via an app-side signing service) and obtains `fee_payer_signature`.
+- The transaction payload is updated:
+  - `fee_payer_signature = Some(sponsor_signature)`
+- The sponsor can verify that `recover_fee_payer(hash_sponsor, signature)` returns their address.
+- **Broadcast readiness:** once `fee_payer_signature` is present, the tx is fully sponsored and can be broadcast.
+
+### 5) Submission and Validation
+- The fully formed typed tx is:
+  - `0x76 || rlp([payload_fields..., v, r, s])` with `fee_payer_signature` included in the payload
+- Validation path:
+  - Executor signature verified on domain `0x76`
+  - Sponsor signature verified on domain `0x78`
+  - Sponsor address recovered from signature and used for fee checks / balance
+
+### 6) Execution and Receipt
+- Execution occurs with `tx.origin` = executor.
+- Gas is charged to the recovered sponsor address.
+
 ## Implementation Strategy
 
 We will utilize Reth's `NodeTypes` configuration to wire these primitives without modifying core crates.
@@ -156,7 +203,7 @@ pub enum EvTxEnvelope {
 
 * **Handler:** Extend `ConfigureEvm` or implement a custom `EvmHandler`.
 * **Fee Deduction:** Override the standard fee deduction logic.
-  * If `tx.type == 0x76` and `fee_payer` is present, debit the `fee_payer` account in the REVM database.
+  * If `tx.type == 0x76` and `fee_payer_signature` is present, debit the **recovered sponsor** account in the REVM database.
   * Otherwise, fallback to standard deduction (debit `caller`).
 * **Batch Execution:** Execute `calls` sequentially under an outer checkpoint; revert all state if any call fails.
 * **Context:** Map `EvNodeTransaction` to `TxEnv`. Ensure `TxEnv.caller` is always the executor.
