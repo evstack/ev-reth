@@ -8,7 +8,7 @@ DRAFT — Not Implemented
 
 ## Abstract
 
-This ADR proposes a new EIP-2718 typed transaction (0x76) for the EvNode protocol. The transaction natively supports **gas sponsorship** and **batch calls**. Sponsorship separates the `executor` (identity/nonce provider) from the `fee_payer` (gas provider). Batch calls allow multiple operations to execute **atomically** within a single transaction. This removes the need for off-chain relayers or batching contracts while remaining compatible with Reth's modular architecture.
+This ADR proposes a new EIP-2718 typed transaction (0x76) for the EvNode protocol. The transaction natively supports **gas sponsorship** and **batch calls**. Sponsorship separates the `executor` (identity/nonce provider) from the sponsor (gas provider, recovered from the sponsor signature). Batch calls allow multiple operations to execute **atomically** within a single transaction. This removes the need for off-chain relayers or batching contracts while remaining compatible with Reth's modular architecture.
 
 ## Context
 
@@ -18,7 +18,7 @@ Gas sponsorship is a recurring requirement for onboarding users and for product 
 
 EvNode aims to support sponsorship and batch calls natively. We require a mechanism where a transaction can carry two signatures (authorization + payment) and multiple calls, with deterministic encoding and atomic execution.
 
-Terminology: the **executor** is the signer of domain `0x76`; it provides the `nonce`, is the transaction `from`, and maps to `tx.origin`. The **sponsor** (aka `fee_payer`) is the signer of domain `0x78` and pays gas when sponsorship is present; `fee_payer` is the sponsor address field. **Sponsorship** means `fee_payer` is present and pays gas; it does not change the `from`.
+Terminology: the **executor** is the signer of domain `0x76`; it provides the `nonce`, is the transaction `from`, and maps to `tx.origin`. The **sponsor** is the signer of domain `0x78` and pays gas when sponsorship is present. **Sponsorship** means `fee_payer_signature` is present and pays gas; it does not change the `from`.
 
 ## Decision
 
@@ -51,7 +51,6 @@ pub struct EvNodeTransaction {
     pub calls: Vec<Call>,
     pub access_list: AccessList,
     // Sponsorship Extensions (Optional)
-    pub fee_payer: Option<Address>,
     pub fee_payer_signature: Option<Signature>,
 }
 
@@ -72,7 +71,6 @@ pub type EvNodeSignedTx = Signed<EvNodeTransaction>;
 
 Optional fields MUST be encoded deterministically:
 
-* `fee_payer`: encode `0x80` (nil) when `None`.
 * `fee_payer_signature`: encode `0x80` (nil) when `None`.
 
 The `calls` field is an RLP list of `Call` structs, each encoded as:
@@ -91,24 +89,23 @@ This transaction uses two signature domains to prevent collisions and enable the
 
 1. **Executor Signature** (Domain `0x76`)
 * Preimage: `0x76 || rlp(payload_fields...)` (no `v,r,s` in the RLP).
-* Constraint: `fee_payer` and `fee_payer_signature` MUST be set to `0x80` (empty) in the RLP stream for this hash.
+* Constraint: `fee_payer_signature` MUST be set to `0x80` (empty) in the RLP stream for this hash.
 * *Effect:* The executor authorizes the intent regardless of who pays.
 
 2. **Sponsor Signature** (Domain `0x78`)
-* Preimage: `0x78 || rlp(payload_fields...)`
-* Constraint: `fee_payer` MUST be the sponsor's address. `fee_payer_signature` remains `0x80`.
-* *Effect:* The sponsor binds their address to the specific executor intent.
-* *Note:* In the final encoded transaction, `fee_payer_signature` is populated with the sponsor signature; it is set to `0x80` only for signing preimages. The "both present or both absent" rule applies to the final encoded payload.
+* Preimage: `0x78 || rlp(payload_fields...)` with `fee_payer_signature` set to `0x80`, and the executor `sender` address encoded in its place for the hash.
+* *Effect:* The sponsor binds to a specific executor intent and can be recovered from the signature.
+* *Note:* In the final encoded transaction, `fee_payer_signature` is populated with the sponsor signature; it is set to `0x80` only for signing preimages.
 
 3. **Transaction Hash** (TxHash)
 * `keccak256(0x76 || rlp([payload_fields..., v, r, s]))` using the final encoded transaction (including the sponsor signature if present).
 
 ### Validity Rules
 
-* **State:** `fee_payer` and `fee_payer_signature` MUST be both present or both absent.
+* **State:** `fee_payer_signature` is optional; if absent, the transaction is not sponsored.
 * **Behavior:**
   * If sponsorship is absent: Executor pays gas (standard EIP-1559 behavior).
-  * If sponsorship is present: Sponsor pays gas; executor remains `from` (tx.origin).
+  * If sponsorship is present: Sponsor pays gas (sponsor recovered from signature); executor remains `from` (tx.origin).
 
 * **Validation:**
   * Executor signature MUST be valid for domain `0x76`.
