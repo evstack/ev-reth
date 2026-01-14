@@ -86,8 +86,9 @@ reth-tasks = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.8.4", 
 revm = { version = "29.0.1", default-features = false }
 revm-context-interface = { version = "10.2.0", default-features = false }
 
-alloy = { version = "1.0.37", default-features = false, features = [
+alloy = { version = "=1.0.37", default-features = false, features = [
   "contract",
+  "sol-types",
 ] }
 # Alloy dependencies
 # Alloy family versions aligned to 1.0.37 compatibility (reth v1.8.4)
