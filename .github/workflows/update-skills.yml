@@ -121,6 +121,13 @@ jobs:
       - name: Generate PR body
         if: steps.check-commits.outputs.has_commits == 'true' && steps.analyze.outputs.has_changes == 'true' && steps.check-pr.outputs.existing_pr == ''
         id: pr-body
+        env:
+          COMMIT_COUNT: ${{ steps.check-commits.outputs.commit_count }}
+          CONTRACTS_COUNT: ${{ steps.analyze.outputs.contracts_count }}
+          CORE_COUNT: ${{ steps.analyze.outputs.core_count }}
+          EVM_COUNT: ${{ steps.analyze.outputs.evm_count }}
+          EVOLVE_COUNT: ${{ steps.analyze.outputs.evolve_count }}
+          TESTS_COUNT: ${{ steps.analyze.outputs.tests_count }}
         run: |
           DATE=$(date +%Y-%m-%d)
 
@@ -133,43 +140,43 @@ jobs:
           ### Summary
           HEREDOC_END
 
-          echo "- **Total commits this week:** ${{ steps.check-commits.outputs.commit_count }}" >> /tmp/pr_body.md
+          echo "- **Total commits this week:** ${COMMIT_COUNT:-0}" >> /tmp/pr_body.md
           echo "" >> /tmp/pr_body.md
 
           echo "### Skills Review Checklist" >> /tmp/pr_body.md
           echo "" >> /tmp/pr_body.md
 
-          if [ "${{ steps.analyze.outputs.contracts_count }}" -gt 0 ]; then
+          if [ "${CONTRACTS_COUNT:-0}" -gt 0 ]; then
             echo "#### contracts.md" >> /tmp/pr_body.md
-            echo "- **Files changed:** ${{ steps.analyze.outputs.contracts_count }}" >> /tmp/pr_body.md
+            echo "- **Files changed:** $CONTRACTS_COUNT" >> /tmp/pr_body.md
             echo "- [ ] Review and update contracts skill" >> /tmp/pr_body.md
             echo "" >> /tmp/pr_body.md
           fi
 
-          if [ "${{ steps.analyze.outputs.core_count }}" -gt 0 ]; then
+          if [ "${CORE_COUNT:-0}" -gt 0 ]; then
             echo "#### ev-reth-core.md" >> /tmp/pr_body.md
-            echo "- **Files changed:** ${{ steps.analyze.outputs.core_count }}" >> /tmp/pr_body.md
+            echo "- **Files changed:** $CORE_COUNT" >> /tmp/pr_body.md
             echo "- [ ] Review and update core skill" >> /tmp/pr_body.md
             echo "" >> /tmp/pr_body.md
           fi
 
-          if [ "${{ steps.analyze.outputs.evm_count }}" -gt 0 ]; then
+          if [ "${EVM_COUNT:-0}" -gt 0 ]; then
             echo "#### ev-reth-evm.md" >> /tmp/pr_body.md
-            echo "- **Files changed:** ${{ steps.analyze.outputs.evm_count }}" >> /tmp/pr_body.md
+            echo "- **Files changed:** $EVM_COUNT" >> /tmp/pr_body.md
             echo "- [ ] Review and update EVM skill" >> /tmp/pr_body.md
             echo "" >> /tmp/pr_body.md
           fi
 
-          if [ "${{ steps.analyze.outputs.evolve_count }}" -gt 0 ]; then
+          if [ "${EVOLVE_COUNT:-0}" -gt 0 ]; then
             echo "#### ev-reth-evolve.md" >> /tmp/pr_body.md
-            echo "- **Files changed:** ${{ steps.analyze.outputs.evolve_count }}" >> /tmp/pr_body.md
+            echo "- **Files changed:** $EVOLVE_COUNT" >> /tmp/pr_body.md
             echo "- [ ] Review and update Evolve skill" >> /tmp/pr_body.md
             echo "" >> /tmp/pr_body.md
           fi
 
-          if [ "${{ steps.analyze.outputs.tests_count }}" -gt 0 ]; then
+          if [ "${TESTS_COUNT:-0}" -gt 0 ]; then
             echo "#### ev-reth-testing.md" >> /tmp/pr_body.md
-            echo "- **Files changed:** ${{ steps.analyze.outputs.tests_count }}" >> /tmp/pr_body.md
+            echo "- **Files changed:** $TESTS_COUNT" >> /tmp/pr_body.md
             echo "- [ ] Review and update testing skill" >> /tmp/pr_body.md
             echo "" >> /tmp/pr_body.md
           fi
@@ -213,10 +220,15 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ steps.check-pr.outputs.existing_pr }}
+          CONTRACTS_COUNT: ${{ steps.analyze.outputs.contracts_count }}
+          CORE_COUNT: ${{ steps.analyze.outputs.core_count }}
+          EVM_COUNT: ${{ steps.analyze.outputs.evm_count }}
+          EVOLVE_COUNT: ${{ steps.analyze.outputs.evolve_count }}
+          TESTS_COUNT: ${{ steps.analyze.outputs.tests_count }}
         run: |
           DATE=$(date +%Y-%m-%d)
 
-          # Build comment safely
+          # Build comment safely using environment variables
           cat > /tmp/comment.md << HEREDOC_END
           ## Additional changes detected (${DATE})
 
@@ -224,11 +236,11 @@ jobs:
 
           | Skill | Files Changed |
           |-------|---------------|
-          | contracts | ${{ steps.analyze.outputs.contracts_count }} |
-          | ev-reth-core | ${{ steps.analyze.outputs.core_count }} |
-          | ev-reth-evm | ${{ steps.analyze.outputs.evm_count }} |
-          | ev-reth-evolve | ${{ steps.analyze.outputs.evolve_count }} |
-          | ev-reth-testing | ${{ steps.analyze.outputs.tests_count }} |
+          | contracts | ${CONTRACTS_COUNT:-0} |
+          | ev-reth-core | ${CORE_COUNT:-0} |
+          | ev-reth-evm | ${EVM_COUNT:-0} |
+          | ev-reth-evolve | ${EVOLVE_COUNT:-0} |
+          | ev-reth-testing | ${TESTS_COUNT:-0} |
           HEREDOC_END
 
           gh pr comment "$PR_NUMBER" --body-file /tmp/comment.md
