@@ -1,0 +1,246 @@
+name: Weekly Skills Update Check
+
+on:
+  schedule:
+    # Run every Friday at 5pm UTC
+    - cron: '0 17 * * 5'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Force PR creation even without changes'
+        required: false
+        default: 'false'
+        type: boolean
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check-and-update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for commits in the past week
+        id: check-commits
+        run: |
+          WEEK_AGO=$(date -d '7 days ago' +%Y-%m-%d 2>/dev/null || date -v-7d +%Y-%m-%d)
+
+          # Count commits from the past week (excluding skill updates)
+          COMMIT_COUNT=$(git log --since="$WEEK_AGO" --oneline --no-merges -- \
+            'crates/' 'bin/' 'contracts/' 'docs/' \
+            ':!.claude/skills/' \
+            | wc -l | tr -d ' ')
+
+          if [ "$COMMIT_COUNT" -eq 0 ] && [ "${{ inputs.force }}" != "true" ]; then
+            echo "No relevant commits in the past week"
+            echo "has_commits=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "has_commits=true" >> $GITHUB_OUTPUT
+          echo "commit_count=$COMMIT_COUNT" >> $GITHUB_OUTPUT
+
+      - name: Analyze changes by area
+        if: steps.check-commits.outputs.has_commits == 'true'
+        id: analyze
+        run: |
+          # Check each area for changes (file names only, safe output)
+          CONTRACTS_COUNT=$(git diff --name-only HEAD~50..HEAD -- 'contracts/' 2>/dev/null | wc -l | tr -d ' ')
+          CORE_COUNT=$(git diff --name-only HEAD~50..HEAD -- 'crates/node/' 'bin/ev-reth/' 2>/dev/null | wc -l | tr -d ' ')
+          EVM_COUNT=$(git diff --name-only HEAD~50..HEAD -- 'crates/ev-revm/' 'crates/ev-precompiles/' 'crates/common/' 2>/dev/null | wc -l | tr -d ' ')
+          EVOLVE_COUNT=$(git diff --name-only HEAD~50..HEAD -- 'crates/evolve/' 2>/dev/null | wc -l | tr -d ' ')
+          TESTS_COUNT=$(git diff --name-only HEAD~50..HEAD -- 'crates/tests/' 2>/dev/null | wc -l | tr -d ' ')
+
+          # Output counts
+          echo "contracts_count=$CONTRACTS_COUNT" >> $GITHUB_OUTPUT
+          echo "core_count=$CORE_COUNT" >> $GITHUB_OUTPUT
+          echo "evm_count=$EVM_COUNT" >> $GITHUB_OUTPUT
+          echo "evolve_count=$EVOLVE_COUNT" >> $GITHUB_OUTPUT
+          echo "tests_count=$TESTS_COUNT" >> $GITHUB_OUTPUT
+
+          TOTAL=$((CONTRACTS_COUNT + CORE_COUNT + EVM_COUNT + EVOLVE_COUNT + TESTS_COUNT))
+          if [ "$TOTAL" -eq 0 ]; then
+            echo "No relevant file changes detected"
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check for existing PR
+        if: steps.check-commits.outputs.has_commits == 'true' && steps.analyze.outputs.has_changes == 'true'
+        id: check-pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          EXISTING_PR=$(gh pr list --state open --label "skills-update" --json number --jq '.[0].number')
+          if [ -n "$EXISTING_PR" ]; then
+            echo "Existing PR found: #$EXISTING_PR"
+            echo "existing_pr=$EXISTING_PR" >> $GITHUB_OUTPUT
+          else
+            echo "No existing PR found"
+            echo "existing_pr=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create or update branch
+        if: steps.check-commits.outputs.has_commits == 'true' && steps.analyze.outputs.has_changes == 'true' && steps.check-pr.outputs.existing_pr == ''
+        id: create-branch
+        run: |
+          DATE=$(date +%Y-%m-%d)
+          BRANCH="skills-update-${DATE}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Create branch
+          git checkout -b "$BRANCH"
+
+          # Add a timestamp to skills to track when they were last reviewed
+          for skill in .claude/skills/*.md; do
+            if [ -f "$skill" ]; then
+              # Add or update last-reviewed comment at end of file
+              if grep -q "<!-- Last reviewed:" "$skill"; then
+                sed -i "s/<!-- Last reviewed: .* -->/<!-- Last reviewed: ${DATE} -->/" "$skill"
+              else
+                echo "" >> "$skill"
+                echo "<!-- Last reviewed: ${DATE} -->" >> "$skill"
+              fi
+            fi
+          done
+
+          git add .claude/skills/
+          git commit -m "chore: flag skills for review (${DATE})"
+          git push origin "$BRANCH"
+
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+
+      - name: Generate PR body
+        if: steps.check-commits.outputs.has_commits == 'true' && steps.analyze.outputs.has_changes == 'true' && steps.check-pr.outputs.existing_pr == ''
+        id: pr-body
+        env:
+          COMMIT_COUNT: ${{ steps.check-commits.outputs.commit_count }}
+          CONTRACTS_COUNT: ${{ steps.analyze.outputs.contracts_count }}
+          CORE_COUNT: ${{ steps.analyze.outputs.core_count }}
+          EVM_COUNT: ${{ steps.analyze.outputs.evm_count }}
+          EVOLVE_COUNT: ${{ steps.analyze.outputs.evolve_count }}
+          TESTS_COUNT: ${{ steps.analyze.outputs.tests_count }}
+        run: |
+          DATE=$(date +%Y-%m-%d)
+
+          # Build PR body safely without user-controlled content
+          cat > /tmp/pr_body.md << 'HEREDOC_END'
+          ## Weekly Skills Update Check
+
+          This PR was automatically created because there were code changes this week that may require updates to the onboarding skills.
+
+          ### Summary
+          HEREDOC_END
+
+          echo "- **Total commits this week:** ${COMMIT_COUNT:-0}" >> /tmp/pr_body.md
+          echo "" >> /tmp/pr_body.md
+
+          echo "### Skills Review Checklist" >> /tmp/pr_body.md
+          echo "" >> /tmp/pr_body.md
+
+          if [ "${CONTRACTS_COUNT:-0}" -gt 0 ]; then
+            echo "#### contracts.md" >> /tmp/pr_body.md
+            echo "- **Files changed:** $CONTRACTS_COUNT" >> /tmp/pr_body.md
+            echo "- [ ] Review and update contracts skill" >> /tmp/pr_body.md
+            echo "" >> /tmp/pr_body.md
+          fi
+
+          if [ "${CORE_COUNT:-0}" -gt 0 ]; then
+            echo "#### ev-reth-core.md" >> /tmp/pr_body.md
+            echo "- **Files changed:** $CORE_COUNT" >> /tmp/pr_body.md
+            echo "- [ ] Review and update core skill" >> /tmp/pr_body.md
+            echo "" >> /tmp/pr_body.md
+          fi
+
+          if [ "${EVM_COUNT:-0}" -gt 0 ]; then
+            echo "#### ev-reth-evm.md" >> /tmp/pr_body.md
+            echo "- **Files changed:** $EVM_COUNT" >> /tmp/pr_body.md
+            echo "- [ ] Review and update EVM skill" >> /tmp/pr_body.md
+            echo "" >> /tmp/pr_body.md
+          fi
+
+          if [ "${EVOLVE_COUNT:-0}" -gt 0 ]; then
+            echo "#### ev-reth-evolve.md" >> /tmp/pr_body.md
+            echo "- **Files changed:** $EVOLVE_COUNT" >> /tmp/pr_body.md
+            echo "- [ ] Review and update Evolve skill" >> /tmp/pr_body.md
+            echo "" >> /tmp/pr_body.md
+          fi
+
+          if [ "${TESTS_COUNT:-0}" -gt 0 ]; then
+            echo "#### ev-reth-testing.md" >> /tmp/pr_body.md
+            echo "- **Files changed:** $TESTS_COUNT" >> /tmp/pr_body.md
+            echo "- [ ] Review and update testing skill" >> /tmp/pr_body.md
+            echo "" >> /tmp/pr_body.md
+          fi
+
+          cat >> /tmp/pr_body.md << 'HEREDOC_END'
+
+          ### Instructions
+          1. Review each skill file against the changed code
+          2. Update descriptions, file references, and code examples as needed
+          3. Check the boxes above as you complete each review
+          4. Merge when all relevant skills are updated
+
+          ### Useful Commands
+          ```bash
+          # See what changed in each area
+          git diff main -- crates/node/ bin/ev-reth/
+          git diff main -- crates/ev-revm/ crates/ev-precompiles/
+          git diff main -- crates/evolve/
+          git diff main -- crates/tests/
+          git diff main -- contracts/
+          ```
+
+          ---
+          *This PR was auto-generated by the weekly skills update workflow.*
+          HEREDOC_END
+
+      - name: Create Pull Request
+        if: steps.check-commits.outputs.has_commits == 'true' && steps.analyze.outputs.has_changes == 'true' && steps.check-pr.outputs.existing_pr == ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ steps.create-branch.outputs.branch }}
+        run: |
+          DATE=$(date +%Y-%m-%d)
+          gh pr create \
+            --title "chore: weekly skills review (${DATE})" \
+            --label "skills-update" \
+            --body-file /tmp/pr_body.md
+
+      - name: Update existing PR with comment
+        if: steps.check-commits.outputs.has_commits == 'true' && steps.analyze.outputs.has_changes == 'true' && steps.check-pr.outputs.existing_pr != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.check-pr.outputs.existing_pr }}
+          CONTRACTS_COUNT: ${{ steps.analyze.outputs.contracts_count }}
+          CORE_COUNT: ${{ steps.analyze.outputs.core_count }}
+          EVM_COUNT: ${{ steps.analyze.outputs.evm_count }}
+          EVOLVE_COUNT: ${{ steps.analyze.outputs.evolve_count }}
+          TESTS_COUNT: ${{ steps.analyze.outputs.tests_count }}
+        run: |
+          DATE=$(date +%Y-%m-%d)
+
+          # Build comment safely using environment variables
+          cat > /tmp/comment.md << HEREDOC_END
+          ## Additional changes detected (${DATE})
+
+          New commits detected. Please review the updated file counts:
+
+          | Skill | Files Changed |
+          |-------|---------------|
+          | contracts | ${CONTRACTS_COUNT:-0} |
+          | ev-reth-core | ${CORE_COUNT:-0} |
+          | ev-reth-evm | ${EVM_COUNT:-0} |
+          | ev-reth-evolve | ${EVOLVE_COUNT:-0} |
+          | ev-reth-testing | ${TESTS_COUNT:-0} |
+          HEREDOC_END
+
+          gh pr comment "$PR_NUMBER" --body-file /tmp/comment.md
