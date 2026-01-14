@@ -21,7 +21,7 @@ ev-precompiles = { path = "../ev-precompiles" }
 reth-testing-utils.workspace = true
 reth-db.workspace = true
 reth-evm-ethereum.workspace = true
-reth-transaction-pool.workspace = true
+reth-transaction-pool = { workspace = true, optional = true }
 reth-consensus.workspace = true
 reth-tasks.workspace = true
 reth-tracing.workspace = true
@@ -42,7 +42,7 @@ reth-errors.workspace = true
 reth-engine-primitives.workspace = true
 reth-ethereum-primitives.workspace = true
 reth-chainspec.workspace = true
-reth-e2e-test-utils.workspace = true
+reth-e2e-test-utils = { workspace = true, optional = true }
 reth-rpc-api.workspace = true
 
 # Alloy dependencies
@@ -70,6 +70,10 @@ async-trait.workspace = true
 futures.workspace = true
 eyre.workspace = true
 tracing.workspace = true
+
+[features]
+default = ["test-helpers"]
+test-helpers = ["reth-e2e-test-utils", "reth-transaction-pool"]
 
 [lints]
 workspace = true

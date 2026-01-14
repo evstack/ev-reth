@@ -1,15 +1,12 @@
 // Mint precompile
 
-use alloy::{
-    sol,
-    sol_types::{SolInterface, SolValue},
-};
 use alloy_evm::{
     precompiles::{Precompile, PrecompileInput},
     revm::precompile::{PrecompileError, PrecompileId, PrecompileResult},
     EvmInternals, EvmInternalsError,
 };
 use alloy_primitives::{address, Address, Bytes, U256};
+use alloy_sol_types::{sol, SolInterface, SolValue};
 use revm::{bytecode::Bytecode, precompile::PrecompileOutput};
 use std::sync::OnceLock;
 
@@ -252,8 +249,8 @@ impl Precompile for MintPrecompile {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloy::sol_types::SolCall;
     use alloy_primitives::address;
+    use alloy_sol_types::SolCall;
     use revm::{
         context::{
             journal::{Journal, JournalInner},
