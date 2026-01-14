@@ -23,6 +23,7 @@ reth-node-api.workspace = true
 reth-ethereum = { workspace = true, features = ["node-api", "node"] }
 reth-ethereum-primitives.workspace = true
 reth-execution-types.workspace = true
+ev-primitives = { path = "../ev-primitives" }
 
 # Alloy dependencies
 alloy-rpc-types-engine.workspace = true

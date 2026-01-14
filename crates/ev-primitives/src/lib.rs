@@ -1,12 +1,20 @@
 //! EV-specific primitive types, including the EvNode 0x76 transaction.
 
 use alloy_consensus::{
-    transaction::RlpEcdsaDecodableTx, transaction::RlpEcdsaEncodableTx, SignableTransaction,
-    Transaction, TransactionEnvelope,
+    error::ValueError,
+    transaction::{RlpEcdsaDecodableTx, RlpEcdsaEncodableTx, SignerRecoverable, TxHashRef},
+    SignableTransaction, Transaction, TransactionEnvelope,
 };
 use alloy_eips::eip2930::AccessList;
 use alloy_primitives::{keccak256, Address, Bytes, Signature, TxKind, B256, U256};
-use alloy_rlp::{BufMut, Decodable, Encodable, Header, RlpDecodable, RlpEncodable};
+use alloy_rlp::{bytes::Buf, BufMut, Decodable, Encodable, Header, RlpDecodable, RlpEncodable};
+use reth_codecs::{
+    alloy::transaction::{CompactEnvelope, Envelope, FromTxCompact, ToTxCompact},
+    txtype::COMPACT_EXTENDED_IDENTIFIER_FLAG,
+    Compact,
+};
+use reth_primitives_traits::{InMemorySize, NodePrimitives, SignedTransaction};
+use std::vec::Vec;
 
 /// EIP-2718 transaction type for EvNode batch + sponsorship.
 pub const EVNODE_TX_TYPE_ID: u8 = 0x76;
@@ -14,7 +22,7 @@ pub const EVNODE_TX_TYPE_ID: u8 = 0x76;
 pub const EVNODE_SPONSOR_DOMAIN: u8 = 0x78;
 
 /// Single call entry in an EvNode transaction.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, RlpEncodable, RlpDecodable)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, RlpEncodable, RlpDecodable, serde::Serialize, serde::Deserialize)]
 pub struct Call {
     /// Destination (CALL or CREATE).
     pub to: TxKind,
@@ -25,7 +33,7 @@ pub struct Call {
 }
 
 /// EvNode batch + sponsorship transaction payload.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct EvNodeTransaction {
     pub chain_id: u64,
     pub nonce: u64,
@@ -47,10 +55,46 @@ pub type EvNodeSignedTx = alloy_consensus::Signed<EvNodeTransaction>;
 pub enum EvTxEnvelope {
     /// Standard Ethereum typed transaction envelope.
     #[envelope(flatten)]
-    Ethereum(alloy_consensus::TxEnvelope),
+    Ethereum(reth_ethereum_primitives::TransactionSigned),
     /// EvNode typed transaction.
     #[envelope(ty = 0x76)]
     EvNode(EvNodeSignedTx),
+}
+
+/// Signed transaction type alias for ev-reth.
+pub type TransactionSigned = EvTxEnvelope;
+
+/// Pooled transaction envelope with optional blob sidecar support.
+#[derive(Clone, Debug, TransactionEnvelope)]
+#[envelope(tx_type_name = EvPooledTxType)]
+pub enum EvPooledTxEnvelope {
+    /// Standard Ethereum pooled transaction envelope (may include blob sidecar).
+    #[envelope(flatten)]
+    Ethereum(reth_ethereum_primitives::PooledTransactionVariant),
+    /// EvNode typed transaction (no sidecar).
+    #[envelope(ty = 0x76)]
+    EvNode(EvNodeSignedTx),
+}
+
+/// Block type alias for ev-reth.
+pub type Block = alloy_consensus::Block<TransactionSigned>;
+
+/// Block body type alias for ev-reth.
+pub type BlockBody = alloy_consensus::BlockBody<TransactionSigned>;
+
+/// Receipt type alias for ev-reth.
+pub type Receipt = reth_ethereum_primitives::Receipt<EvTxType>;
+
+/// Helper struct that specifies the ev-reth NodePrimitives types.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct EvPrimitives;
+
+impl NodePrimitives for EvPrimitives {
+    type Block = Block;
+    type BlockHeader = alloy_consensus::Header;
+    type BlockBody = BlockBody;
+    type SignedTx = TransactionSigned;
+    type Receipt = Receipt;
 }
 
 impl EvNodeTransaction {
@@ -280,6 +324,235 @@ impl Decodable for EvNodeTransaction {
         Self::rlp_decode(buf)
     }
 }
+
+impl Compact for EvNodeTransaction {
+    fn to_compact<B>(&self, buf: &mut B) -> usize
+    where
+        B: alloy_rlp::bytes::BufMut + AsMut<[u8]>,
+    {
+        let mut out = Vec::new();
+        self.encode(&mut out);
+        out.to_compact(buf)
+    }
+
+    fn from_compact(buf: &[u8], len: usize) -> (Self, &[u8]) {
+        let (bytes, buf) = Vec::<u8>::from_compact(buf, len);
+        let mut slice = bytes.as_slice();
+        let decoded = Self::decode(&mut slice).expect("valid evnode tx rlp");
+        (decoded, buf)
+    }
+}
+
+impl InMemorySize for Call {
+    fn size(&self) -> usize {
+        core::mem::size_of::<Self>() + self.input.len()
+    }
+}
+
+impl InMemorySize for EvNodeTransaction {
+    fn size(&self) -> usize {
+        let calls_size = self.calls.iter().map(InMemorySize::size).sum::<usize>();
+        let access_list_size = self.access_list.size();
+        let fee_payer_size = self.fee_payer.map(|_| core::mem::size_of::<Address>()).unwrap_or(0);
+        let sponsor_sig_size = self
+            .fee_payer_signature
+            .map(|_| core::mem::size_of::<Signature>())
+            .unwrap_or(0);
+        core::mem::size_of::<Self>() + calls_size + access_list_size + fee_payer_size + sponsor_sig_size
+    }
+}
+
+impl InMemorySize for EvTxType {
+    fn size(&self) -> usize {
+        core::mem::size_of::<Self>()
+    }
+}
+
+impl InMemorySize for EvTxEnvelope {
+    fn size(&self) -> usize {
+        match self {
+            EvTxEnvelope::Ethereum(tx) => tx.size(),
+            EvTxEnvelope::EvNode(tx) => tx.size(),
+        }
+    }
+}
+
+impl InMemorySize for EvPooledTxEnvelope {
+    fn size(&self) -> usize {
+        match self {
+            EvPooledTxEnvelope::Ethereum(tx) => tx.size(),
+            EvPooledTxEnvelope::EvNode(tx) => tx.size(),
+        }
+    }
+}
+
+impl SignerRecoverable for EvTxEnvelope {
+    fn recover_signer(&self) -> Result<Address, alloy_consensus::crypto::RecoveryError> {
+        match self {
+            EvTxEnvelope::Ethereum(tx) => tx.recover_signer(),
+            EvTxEnvelope::EvNode(tx) => tx
+                .signature()
+                .recover_address_from_prehash(&tx.tx().executor_signing_hash())
+                .map_err(|_| alloy_consensus::crypto::RecoveryError::new()),
+        }
+    }
+
+    fn recover_signer_unchecked(&self) -> Result<Address, alloy_consensus::crypto::RecoveryError> {
+        self.recover_signer()
+    }
+}
+
+impl TxHashRef for EvTxEnvelope {
+    fn tx_hash(&self) -> &B256 {
+        match self {
+            EvTxEnvelope::Ethereum(tx) => tx.tx_hash(),
+            EvTxEnvelope::EvNode(tx) => tx.hash(),
+        }
+    }
+}
+
+impl SignerRecoverable for EvPooledTxEnvelope {
+    fn recover_signer(&self) -> Result<Address, alloy_consensus::crypto::RecoveryError> {
+        match self {
+            EvPooledTxEnvelope::Ethereum(tx) => tx.recover_signer(),
+            EvPooledTxEnvelope::EvNode(tx) => tx
+                .signature()
+                .recover_address_from_prehash(&tx.tx().executor_signing_hash())
+                .map_err(|_| alloy_consensus::crypto::RecoveryError::new()),
+        }
+    }
+
+    fn recover_signer_unchecked(&self) -> Result<Address, alloy_consensus::crypto::RecoveryError> {
+        self.recover_signer()
+    }
+}
+
+impl TxHashRef for EvPooledTxEnvelope {
+    fn tx_hash(&self) -> &B256 {
+        match self {
+            EvPooledTxEnvelope::Ethereum(tx) => tx.tx_hash(),
+            EvPooledTxEnvelope::EvNode(tx) => tx.hash(),
+        }
+    }
+}
+
+impl TryFrom<EvTxEnvelope> for EvPooledTxEnvelope {
+    type Error = ValueError<reth_ethereum_primitives::TransactionSigned>;
+
+    fn try_from(value: EvTxEnvelope) -> Result<Self, Self::Error> {
+        match value {
+            EvTxEnvelope::Ethereum(tx) => Ok(Self::Ethereum(tx.try_into()?)),
+            EvTxEnvelope::EvNode(tx) => Ok(Self::EvNode(tx)),
+        }
+    }
+}
+
+impl From<EvPooledTxEnvelope> for EvTxEnvelope {
+    fn from(value: EvPooledTxEnvelope) -> Self {
+        match value {
+            EvPooledTxEnvelope::Ethereum(tx) => EvTxEnvelope::Ethereum(tx.into()),
+            EvPooledTxEnvelope::EvNode(tx) => EvTxEnvelope::EvNode(tx),
+        }
+    }
+}
+
+impl Compact for EvTxType {
+    fn to_compact<B>(&self, buf: &mut B) -> usize
+    where
+        B: alloy_rlp::bytes::BufMut + AsMut<[u8]>,
+    {
+        match self {
+            EvTxType::Ethereum(inner) => inner.to_compact(buf),
+            EvTxType::EvNode => {
+                buf.put_u8(EVNODE_TX_TYPE_ID);
+                COMPACT_EXTENDED_IDENTIFIER_FLAG
+            }
+        }
+    }
+
+    fn from_compact(mut buf: &[u8], identifier: usize) -> (Self, &[u8]) {
+        match identifier {
+            COMPACT_EXTENDED_IDENTIFIER_FLAG => {
+                let extended_identifier = buf.get_u8();
+                match extended_identifier {
+                    EVNODE_TX_TYPE_ID => (Self::EvNode, buf),
+                    _ => panic!("Unsupported EvTxType identifier: {extended_identifier}"),
+                }
+            }
+            v => {
+                let (inner, buf) = alloy_consensus::TxType::from_compact(buf, v);
+                (Self::Ethereum(inner), buf)
+            }
+        }
+    }
+}
+
+impl Envelope for EvTxEnvelope {
+    fn signature(&self) -> &Signature {
+        match self {
+            EvTxEnvelope::Ethereum(tx) => tx.signature(),
+            EvTxEnvelope::EvNode(tx) => tx.signature(),
+        }
+    }
+
+    fn tx_type(&self) -> Self::TxType {
+        match self {
+            EvTxEnvelope::Ethereum(tx) => EvTxType::Ethereum(tx.tx_type()),
+            EvTxEnvelope::EvNode(_) => EvTxType::EvNode,
+        }
+    }
+}
+
+impl FromTxCompact for EvTxEnvelope {
+    type TxType = EvTxType;
+
+    fn from_tx_compact(buf: &[u8], tx_type: Self::TxType, signature: Signature) -> (Self, &[u8])
+    where
+        Self: Sized,
+    {
+        match tx_type {
+            EvTxType::Ethereum(inner) => {
+                let (tx, buf) =
+                    reth_ethereum_primitives::TransactionSigned::from_tx_compact(buf, inner, signature);
+                (Self::Ethereum(tx), buf)
+            }
+            EvTxType::EvNode => {
+                let (tx, buf) = EvNodeTransaction::from_compact(buf, buf.len());
+                let tx = alloy_consensus::Signed::new_unhashed(tx, signature);
+                (Self::EvNode(tx), buf)
+            }
+        }
+    }
+}
+
+impl ToTxCompact for EvTxEnvelope {
+    fn to_tx_compact(&self, buf: &mut (impl alloy_rlp::bytes::BufMut + AsMut<[u8]>)) {
+        match self {
+            EvTxEnvelope::Ethereum(tx) => tx.to_tx_compact(buf),
+            EvTxEnvelope::EvNode(tx) => {
+                tx.tx().to_compact(buf);
+            }
+        }
+    }
+}
+
+impl Compact for EvTxEnvelope {
+    fn to_compact<B>(&self, buf: &mut B) -> usize
+    where
+        B: alloy_rlp::bytes::BufMut + AsMut<[u8]>,
+    {
+        <Self as CompactEnvelope>::to_compact(self, buf)
+    }
+
+    fn from_compact(buf: &[u8], len: usize) -> (Self, &[u8]) {
+        <Self as CompactEnvelope>::from_compact(buf, len)
+    }
+}
+
+impl SignedTransaction for EvTxEnvelope {}
+impl SignedTransaction for EvPooledTxEnvelope {}
+
+impl reth_primitives_traits::serde_bincode_compat::RlpBincode for EvTxEnvelope {}
 
 fn optional_address_length(value: Option<&Address>) -> usize {
     match value {

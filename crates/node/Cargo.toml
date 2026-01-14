@@ -13,6 +13,7 @@ description = "Evolve node implementation"
 ev-common = { path = "../common" }
 evolve-ev-reth = { path = "../evolve" }
 ev-revm = { path = "../ev-revm" }
+ev-primitives = { path = "../ev-primitives" }
 
 # Reth dependencies
 reth-node-builder.workspace = true
@@ -31,6 +32,9 @@ reth-basic-payload-builder.workspace = true
 reth-engine-local.workspace = true
 reth-revm.workspace = true
 reth-trie-db.workspace = true
+reth-storage-api.workspace = true
+reth-transaction-pool.workspace = true
+reth-codecs.workspace = true
 
 # Additional reth dependencies for payload builder
 reth-node-types.workspace = true
@@ -43,17 +47,25 @@ reth-node-core.workspace = true
 reth-rpc-builder.workspace = true
 reth-rpc-api.workspace = true
 reth-rpc-engine-api.workspace = true
+reth-rpc-convert.workspace = true
+reth-rpc.workspace = true
+reth-rpc-eth-api.workspace = true
+reth-rpc-eth-types.workspace = true
 reth-engine-primitives.workspace = true
 reth-ethereum-primitives.workspace = true
 
 # Alloy dependencies
 alloy-rpc-types.workspace = true
 alloy-rpc-types-engine.workspace = true
+alloy-rpc-types-eth.workspace = true
 alloy-primitives.workspace = true
 alloy-eips.workspace = true
 alloy-consensus.workspace = true
+alloy-consensus-any.workspace = true
 alloy-evm.workspace = true
 alloy-genesis.workspace = true
+alloy-network.workspace = true
+c-kzg = "2.1.5"
 
 # Core dependencies
 eyre.workspace = true

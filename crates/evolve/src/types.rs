@@ -1,5 +1,5 @@
 use alloy_primitives::{Address, B256};
-use reth_primitives::TransactionSigned;
+use ev_primitives::TransactionSigned;
 use serde::{Deserialize, Serialize};
 
 /// Payload attributes for the Evolve Reth node

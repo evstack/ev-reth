@@ -15,8 +15,9 @@ use reth_ethereum::{
         builder::rpc::PayloadValidatorBuilder,
     },
 };
+use ev_primitives::EvTxEnvelope;
 use reth_ethereum_payload_builder::EthereumExecutionPayloadValidator;
-use reth_primitives_traits::{Block as _, RecoveredBlock};
+use reth_primitives_traits::{Block as _, RecoveredBlock, SealedBlock};
 use tracing::info;
 
 use crate::{attributes::EvolveEnginePayloadAttributes, node::EvolveEngineTypes};
@@ -43,7 +44,7 @@ impl EvolveEngineValidator {
 }
 
 impl PayloadValidator<EvolveEngineTypes> for EvolveEngineValidator {
-    type Block = reth_ethereum::Block;
+    type Block = ev_primitives::Block;
 
     fn ensure_well_formed_payload(
         &self,
@@ -55,9 +56,8 @@ impl PayloadValidator<EvolveEngineTypes> for EvolveEngineValidator {
         match self.inner.ensure_well_formed_payload(payload.clone()) {
             Ok(sealed_block) => {
                 info!("Evolve engine validator: payload validation succeeded");
-                sealed_block
-                    .try_recover()
-                    .map_err(|e| NewPayloadError::Other(e.into()))
+                let ev_block = convert_sealed_block(sealed_block);
+                ev_block.try_recover().map_err(|e| NewPayloadError::Other(e.into()))
             }
             Err(err) => {
                 // Log the error for debugging.
@@ -69,9 +69,8 @@ impl PayloadValidator<EvolveEngineTypes> for EvolveEngineValidator {
                     // For evolve, we trust the payload builder - just parse the block without hash validation.
                     let ExecutionData { payload, sidecar } = payload;
                     let sealed_block = payload.try_into_block_with_sidecar(&sidecar)?.seal_slow();
-                    sealed_block
-                        .try_recover()
-                        .map_err(|e| NewPayloadError::Other(e.into()))
+                    let ev_block = convert_sealed_block(sealed_block);
+                    ev_block.try_recover().map_err(|e| NewPayloadError::Other(e.into()))
                 } else {
                     // For other errors, re-throw them.
                     Err(NewPayloadError::Eth(err))
@@ -88,6 +87,14 @@ impl PayloadValidator<EvolveEngineTypes> for EvolveEngineValidator {
         // Skip default timestamp validation for evolve.
         Ok(())
     }
+}
+
+fn convert_sealed_block(
+    sealed_block: SealedBlock<reth_ethereum::Block>,
+) -> SealedBlock<ev_primitives::Block> {
+    let (block, hash) = sealed_block.split();
+    let ev_block = block.map_transactions(EvTxEnvelope::Ethereum);
+    SealedBlock::new_unchecked(ev_block, hash)
 }
 
 impl EngineApiValidator<EvolveEngineTypes> for EvolveEngineValidator {
@@ -135,7 +142,7 @@ where
         Types: NodeTypes<
             Payload = EvolveEngineTypes,
             ChainSpec = ChainSpec,
-            Primitives = reth_ethereum::EthPrimitives,
+            Primitives = ev_primitives::EvPrimitives,
         >,
     >,
 {

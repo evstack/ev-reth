@@ -54,7 +54,7 @@ reth-basic-payload-builder = { git = "https://github.com/paradigmxyz/reth.git", 
 reth-engine-local = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.8.4" }
 reth-engine-primitives = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.8.4" }
 reth-ethereum-payload-builder = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.8.4" }
-reth-ethereum-primitives = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.8.4" }
+reth-ethereum-primitives = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.8.4", features = ["serde", "serde-bincode-compat", "reth-codec"] }
 reth-e2e-test-utils = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.8.4" }
 reth-evm = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.8.4" }
 reth-evm-ethereum = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.8.4" }
@@ -70,6 +70,9 @@ reth-revm = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.8.4" }
 reth-rpc-api = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.8.4" }
 reth-rpc-builder = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.8.4" }
 reth-rpc-engine-api = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.8.4" }
+reth-rpc = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.8.4" }
+reth-rpc-convert = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.8.4" }
+reth-codecs = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.8.4" }
 
 ev-revm = { path = "crates/ev-revm" }
 ev-primitives = { path = "crates/ev-primitives" }
@@ -110,6 +113,7 @@ alloy-signer = { version = "1.0.37", default-features = false }
 alloy-signer-local = { version = "1.0.37", features = ["mnemonic"] }
 alloy-primitives = { version = "1.3.1", default-features = false }
 alloy-consensus = { version = "1.0.37", default-features = false }
+alloy-consensus-any = { version = "1.0.37", default-features = false }
 alloy-rlp = { version = "0.3.12", default-features = false }
 alloy-genesis = { version = "1.0.37", default-features = false }
 alloy-rpc-types-txpool = { version = "1.0.37", default-features = false }
