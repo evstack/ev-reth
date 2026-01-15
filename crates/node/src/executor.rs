@@ -3,7 +3,7 @@
 use alloy_evm::eth::{spec::EthExecutorSpec, EthEvmFactory};
 use ev_revm::{
     with_ev_handler, BaseFeeRedirect, BaseFeeRedirectSettings, ContractSizeLimitSettings,
-    EvEvmFactory, MintPrecompileSettings,
+    DeployAllowlistSettings, EvEvmFactory, MintPrecompileSettings,
 };
 use reth_chainspec::ChainSpec;
 use reth_ethereum::{
@@ -65,10 +65,24 @@ where
                 ContractSizeLimitSettings::new(limit, activation)
             });
 
+    let deploy_allowlist =
+        evolve_config
+            .deploy_allowlist_settings()
+            .map(|(allowlist, activation)| {
+                info!(
+                    target = "ev-reth::executor",
+                    allowlist_len = allowlist.len(),
+                    activation_height = activation,
+                    "Deploy allowlist enabled"
+                );
+                DeployAllowlistSettings::new(allowlist, activation)
+            });
+
     Ok(with_ev_handler(
         base_config,
         redirect,
         mint_precompile,
+        deploy_allowlist,
         contract_size_limit,
     ))
 }

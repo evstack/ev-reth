@@ -30,7 +30,7 @@ where
         self,
         redirect: Option<BaseFeeRedirect>,
     ) -> DefaultEvEvm<<Self as MainBuilder>::Context> {
-        EvEvm::from_inner(self.build_mainnet(), redirect, false)
+        EvEvm::from_inner(self.build_mainnet(), redirect, None, false)
     }
 
     fn build_ev_with_inspector<INSP>(
@@ -38,6 +38,11 @@ where
         inspector: INSP,
         redirect: Option<BaseFeeRedirect>,
     ) -> EvEvm<<Self as MainBuilder>::Context, INSP> {
-        EvEvm::from_inner(self.build_mainnet_with_inspector(inspector), redirect, true)
+        EvEvm::from_inner(
+            self.build_mainnet_with_inspector(inspector),
+            redirect,
+            None,
+            true,
+        )
     }
 }

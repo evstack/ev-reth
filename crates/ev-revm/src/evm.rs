@@ -1,6 +1,6 @@
 //! EV-specific EVM wrapper that installs the base-fee redirect handler.
 
-use crate::base_fee::BaseFeeRedirect;
+use crate::{base_fee::BaseFeeRedirect, deploy::DeployAllowlistSettings};
 use alloy_evm::{Evm as AlloyEvm, EvmEnv};
 use alloy_primitives::{Address, Bytes};
 use reth_revm::{
@@ -33,6 +33,7 @@ pub type DefaultEvEvm<CTX, INSP = ()> = EvEvm<CTX, INSP, EthPrecompiles>;
 pub struct EvEvm<CTX, INSP, PRECOMP = EthPrecompiles> {
     inner: Evm<CTX, INSP, EthInstructions<EthInterpreter, CTX>, PRECOMP, EthFrame<EthInterpreter>>,
     redirect: Option<BaseFeeRedirect>,
+    deploy_allowlist: Option<DeployAllowlistSettings>,
     inspect: bool,
 }
 
@@ -52,6 +53,7 @@ where
                 frame_stack: FrameStack::new(),
             },
             redirect,
+            deploy_allowlist: None,
             inspect: false,
         }
     }
@@ -59,13 +61,19 @@ where
 
 impl<CTX, INSP, P> EvEvm<CTX, INSP, P> {
     /// Wraps an existing EVM instance with the redirect policy.
-    pub fn from_inner<T>(inner: T, redirect: Option<BaseFeeRedirect>, inspect: bool) -> Self
+    pub fn from_inner<T>(
+        inner: T,
+        redirect: Option<BaseFeeRedirect>,
+        deploy_allowlist: Option<DeployAllowlistSettings>,
+        inspect: bool,
+    ) -> Self
     where
         T: IntoRevmEvm<CTX, INSP, P>,
     {
         Self {
             inner: inner.into_revm_evm(),
             redirect,
+            deploy_allowlist,
             inspect,
         }
     }
@@ -82,11 +90,17 @@ impl<CTX, INSP, P> EvEvm<CTX, INSP, P> {
         self.redirect
     }
 
+    /// Returns the configured deploy allowlist settings, if any.
+    pub fn deploy_allowlist(&self) -> Option<DeployAllowlistSettings> {
+        self.deploy_allowlist.clone()
+    }
+
     /// Allows adjusting the precompiles map while preserving redirect configuration.
     pub fn with_precompiles<OP>(self, precompiles: OP) -> EvEvm<CTX, INSP, OP> {
         EvEvm {
             inner: self.inner.with_precompiles(precompiles),
             redirect: self.redirect,
+            deploy_allowlist: self.deploy_allowlist,
             inspect: self.inspect,
         }
     }
@@ -96,6 +110,7 @@ impl<CTX, INSP, P> EvEvm<CTX, INSP, P> {
         EvEvm {
             inner: self.inner.with_inspector(inspector),
             redirect: self.redirect,
+            deploy_allowlist: self.deploy_allowlist,
             inspect: self.inspect,
         }
     }

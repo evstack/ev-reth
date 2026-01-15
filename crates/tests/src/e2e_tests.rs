@@ -26,7 +26,8 @@ use reth_rpc_api::clients::{EngineApiClient, EthApiClient};
 
 use crate::common::{
     create_test_chain_spec, create_test_chain_spec_with_base_fee_sink,
-    create_test_chain_spec_with_mint_admin, TEST_CHAIN_ID,
+    create_test_chain_spec_with_deploy_allowlist, create_test_chain_spec_with_mint_admin,
+    TEST_CHAIN_ID,
 };
 use ev_precompiles::mint::MINT_PRECOMPILE_ADDR;
 
@@ -1055,6 +1056,152 @@ async fn test_e2e_mint_precompile_via_contract() -> Result<()> {
     );
 
     drop(setup);
+
+    Ok(())
+}
+
+/// Tests that deploy allowlist prevents unauthorized contract creation.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_e2e_deploy_allowlist_blocks_unauthorized_deploys() -> Result<()> {
+    reth_tracing::init_test_tracing();
+
+    let mut wallets = Wallet::new(2).with_chain_id(TEST_CHAIN_ID).wallet_gen();
+    let allowed_deployer = wallets.remove(0);
+    let denied_deployer = wallets.remove(0);
+
+    let chain_spec = create_test_chain_spec_with_deploy_allowlist(vec![allowed_deployer.address()]);
+    let chain_id = chain_spec.chain().id();
+
+    let mut setup = Setup::<EvolveEngineTypes>::default()
+        .with_chain_spec(chain_spec)
+        .with_network(NetworkSetup::single_node())
+        .with_dev_mode(true);
+
+    let mut env = Environment::<EvolveEngineTypes>::default();
+    setup.apply::<EvolveNode>(&mut env).await?;
+
+    let parent_block = env.node_clients[0]
+        .get_block_by_number(BlockNumberOrTag::Latest)
+        .await?
+        .expect("parent block should exist");
+    let mut parent_hash = parent_block.header.hash;
+    let mut parent_timestamp = parent_block.header.inner.timestamp;
+    let mut parent_number = parent_block.header.inner.number;
+    let gas_limit = parent_block.header.inner.gas_limit;
+
+    let denied_deploy_tx = TransactionRequest {
+        nonce: Some(0),
+        gas: Some(1_000_000),
+        max_fee_per_gas: Some(20_000_000_000),
+        max_priority_fee_per_gas: Some(2_000_000_000),
+        chain_id: Some(chain_id),
+        value: Some(U256::ZERO),
+        to: Some(TxKind::Create),
+        input: TransactionInput {
+            input: None,
+            data: Some(Bytes::from_static(&ADMIN_PROXY_INITCODE)),
+        },
+        ..Default::default()
+    };
+
+    let denied_envelope =
+        TransactionTestContext::sign_tx(denied_deployer.clone(), denied_deploy_tx).await;
+    let denied_raw: Bytes = denied_envelope.encoded_2718().into();
+
+    build_block_with_transactions(
+        &mut env,
+        &mut parent_hash,
+        &mut parent_number,
+        &mut parent_timestamp,
+        Some(gas_limit),
+        vec![denied_raw],
+        Address::ZERO,
+    )
+    .await?;
+
+    let latest_block = env.node_clients[0]
+        .get_block_by_number(BlockNumberOrTag::Latest)
+        .await?
+        .expect("latest block available after denied deploy");
+    let denied_tx_count = match latest_block.transactions {
+        BlockTransactions::Full(ref txs) => txs.len(),
+        BlockTransactions::Hashes(ref hashes) => hashes.len(),
+        BlockTransactions::Uncle => 0,
+    };
+    assert_eq!(
+        denied_tx_count, 0,
+        "denied deploy transaction should be excluded from the block"
+    );
+
+    let denied_address = contract_address_from_nonce(denied_deployer.address(), 0);
+    let denied_code =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::get_code(
+            &env.node_clients[0].rpc,
+            denied_address,
+            Some(BlockId::latest()),
+        )
+        .await?;
+    assert!(
+        denied_code.is_empty(),
+        "unauthorized deploy should not create contract code"
+    );
+
+    let allowed_deploy_tx = TransactionRequest {
+        nonce: Some(0),
+        gas: Some(1_000_000),
+        max_fee_per_gas: Some(20_000_000_000),
+        max_priority_fee_per_gas: Some(2_000_000_000),
+        chain_id: Some(chain_id),
+        value: Some(U256::ZERO),
+        to: Some(TxKind::Create),
+        input: TransactionInput {
+            input: None,
+            data: Some(Bytes::from_static(&ADMIN_PROXY_INITCODE)),
+        },
+        ..Default::default()
+    };
+
+    let allowed_envelope =
+        TransactionTestContext::sign_tx(allowed_deployer.clone(), allowed_deploy_tx).await;
+    let allowed_raw: Bytes = allowed_envelope.encoded_2718().into();
+
+    build_block_with_transactions(
+        &mut env,
+        &mut parent_hash,
+        &mut parent_number,
+        &mut parent_timestamp,
+        Some(gas_limit),
+        vec![allowed_raw],
+        Address::ZERO,
+    )
+    .await?;
+
+    let latest_block = env.node_clients[0]
+        .get_block_by_number(BlockNumberOrTag::Latest)
+        .await?
+        .expect("latest block available after allowed deploy");
+    let allowed_tx_count = match latest_block.transactions {
+        BlockTransactions::Full(ref txs) => txs.len(),
+        BlockTransactions::Hashes(ref hashes) => hashes.len(),
+        BlockTransactions::Uncle => 0,
+    };
+    assert_eq!(
+        allowed_tx_count, 1,
+        "allowlisted deploy transaction should be included in the block"
+    );
+
+    let allowed_address = contract_address_from_nonce(allowed_deployer.address(), 0);
+    let allowed_code =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::get_code(
+            &env.node_clients[0].rpc,
+            allowed_address,
+            Some(BlockId::latest()),
+        )
+        .await?;
+    assert!(
+        !allowed_code.is_empty(),
+        "allowlisted deploy should create contract code"
+    );
 
     Ok(())
 }
