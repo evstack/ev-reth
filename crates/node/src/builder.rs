@@ -1,8 +1,7 @@
 use crate::config::EvolvePayloadBuilderConfig;
 use alloy_consensus::transaction::Transaction;
-use alloy_evm::eth::EthEvmFactory;
 use alloy_primitives::Address;
-use ev_revm::EvEvmFactory;
+use ev_revm::EvTxEvmFactory;
 use evolve_ev_reth::EvolvePayloadAttributes;
 use reth_chainspec::{ChainSpec, ChainSpecProvider};
 use reth_errors::RethError;
@@ -10,15 +9,17 @@ use reth_evm::{
     execute::{BlockBuilder, BlockBuilderOutcome},
     ConfigureEvm, NextBlockEnvAttributes,
 };
-use reth_evm_ethereum::EthEvmConfig;
+use crate::executor::EvEvmConfig;
 use reth_payload_builder_primitives::PayloadBuilderError;
-use reth_primitives::{transaction::SignedTransaction, Header, SealedBlock, SealedHeader};
+use reth_primitives::{transaction::SignedTransaction, Header, SealedHeader};
+use alloy_consensus::transaction::TxHashRef;
+use reth_primitives_traits::SealedBlock;
 use reth_provider::{HeaderProvider, StateProviderFactory};
 use reth_revm::{database::StateProviderDatabase, State};
 use std::sync::Arc;
 use tracing::{debug, info};
 
-type EvolveEthEvmConfig = EthEvmConfig<ChainSpec, EvEvmFactory<EthEvmFactory>>;
+type EvolveEthEvmConfig = EvEvmConfig<ChainSpec, EvTxEvmFactory>;
 
 /// Payload builder for Evolve Reth node
 #[derive(Debug)]
@@ -66,7 +67,7 @@ where
     pub async fn build_payload(
         &self,
         attributes: EvolvePayloadAttributes,
-    ) -> Result<SealedBlock, PayloadBuilderError> {
+    ) -> Result<SealedBlock<ev_primitives::Block>, PayloadBuilderError> {
         // Validate attributes
         attributes
             .validate()
@@ -142,12 +143,12 @@ where
         );
         for (i, tx) in attributes.transactions.iter().enumerate() {
             tracing::debug!(
-            index = i,
-            hash = ?tx.hash(),
-            nonce = tx.nonce(),
-            gas_price = ?tx.gas_price(),
-            gas_limit = tx.gas_limit(),
-            "Processing transaction"
+                index = i,
+                hash = ?tx.tx_hash(),
+                nonce = tx.nonce(),
+                gas_price = ?tx.gas_price(),
+                gas_limit = tx.gas_limit(),
+                "Processing transaction"
             );
 
             // Convert to recovered transaction for execution
@@ -156,6 +157,12 @@ where
                     "Failed to recover transaction".into(),
                 ))
             })?;
+
+            if matches!(recovered_tx.inner(), ev_primitives::EvTxEnvelope::EvNode(_)) {
+                return Err(PayloadBuilderError::Internal(RethError::Other(
+                    "EvNode transaction execution not supported yet".into(),
+                )));
+            }
 
             // Execute the transaction
             match builder.execute_transaction(recovered_tx) {

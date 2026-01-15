@@ -1,6 +1,6 @@
 //! EV-specific EVM wrapper that installs the base-fee redirect handler.
 
-use crate::base_fee::BaseFeeRedirect;
+use crate::{base_fee::BaseFeeRedirect, tx_env::EvTxEnv};
 use alloy_evm::{Evm as AlloyEvm, EvmEnv};
 use alloy_primitives::{Address, Bytes};
 use reth_revm::{
@@ -284,6 +284,96 @@ where
 {
     type DB = DB;
     type Tx = TxEnv;
+    type Error = EVMError<DB::Error, InvalidTransaction>;
+    type HaltReason = HaltReason;
+    type Spec = SpecId;
+    type Precompiles = PRECOMP;
+    type Inspector = INSP;
+
+    fn block(&self) -> &BlockEnv {
+        &self.inner.ctx.block
+    }
+
+    fn chain_id(&self) -> u64 {
+        self.inner.ctx.cfg.chain_id
+    }
+
+    fn transact_raw(
+        &mut self,
+        tx: Self::Tx,
+    ) -> Result<ResultAndState<Self::HaltReason>, Self::Error> {
+        if self.inspect {
+            InspectEvm::inspect_tx(self, tx)
+        } else {
+            ExecuteEvm::transact(self, tx)
+        }
+        .map(|res| ResultAndState::new(res.result, res.state))
+    }
+
+    fn transact_system_call(
+        &mut self,
+        caller: Address,
+        contract: Address,
+        data: Bytes,
+    ) -> Result<ResultAndState<Self::HaltReason>, Self::Error> {
+        if self.inspect {
+            InspectSystemCallEvm::inspect_system_call_with_caller(self, caller, contract, data)
+        } else {
+            SystemCallEvm::system_call_with_caller(self, caller, contract, data)
+        }
+        .map(|res| ResultAndState::new(res.result, res.state))
+    }
+
+    fn finish(self) -> (Self::DB, EvmEnv<Self::Spec>) {
+        let Self { inner, .. } = self;
+        let Context {
+            block,
+            cfg,
+            journaled_state,
+            ..
+        } = inner.ctx;
+        (
+            journaled_state.database,
+            EvmEnv {
+                block_env: block,
+                cfg_env: cfg,
+            },
+        )
+    }
+
+    fn set_inspector_enabled(&mut self, enabled: bool) {
+        self.inspect = enabled;
+    }
+
+    fn components(&self) -> (&Self::DB, &Self::Inspector, &Self::Precompiles) {
+        (
+            &self.inner.ctx.journaled_state.database,
+            &self.inner.inspector,
+            &self.inner.precompiles,
+        )
+    }
+
+    fn components_mut(&mut self) -> (&mut Self::DB, &mut Self::Inspector, &mut Self::Precompiles) {
+        (
+            &mut self.inner.ctx.journaled_state.database,
+            &mut self.inner.inspector,
+            &mut self.inner.precompiles,
+        )
+    }
+}
+
+impl<DB, INSP, PRECOMP> AlloyEvm
+    for EvEvm<Context<BlockEnv, EvTxEnv, CfgEnv<SpecId>, DB>, INSP, PRECOMP>
+where
+    DB: alloy_evm::Database,
+    INSP: Inspector<Context<BlockEnv, EvTxEnv, CfgEnv<SpecId>, DB>, EthInterpreter>,
+    PRECOMP: PrecompileProvider<
+        Context<BlockEnv, EvTxEnv, CfgEnv<SpecId>, DB>,
+        Output = InterpreterResult,
+    >,
+{
+    type DB = DB;
+    type Tx = EvTxEnv;
     type Error = EVMError<DB::Error, InvalidTransaction>;
     type HaltReason = HaltReason;
     type Spec = SpecId;

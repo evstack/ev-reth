@@ -1,6 +1,6 @@
 //! Helpers for wrapping Reth EVM factories with the EV handler.
 
-use crate::{base_fee::BaseFeeRedirect, evm::EvEvm};
+use crate::{base_fee::BaseFeeRedirect, evm::EvEvm, tx_env::EvTxEnv};
 use alloy_evm::{
     eth::{EthBlockExecutorFactory, EthEvmContext, EthEvmFactory},
     precompiles::{DynPrecompile, Precompile, PrecompilesMap},
@@ -14,13 +14,17 @@ use reth_revm::{
     revm::{
         context::{
             result::{EVMError, HaltReason},
-            TxEnv,
+            Evm as RevmEvm, FrameStack, TxEnv,
         },
         context_interface::result::InvalidTransaction,
+        handler::instructions::EthInstructions,
+        interpreter::interpreter::EthInterpreter,
+        precompile::{PrecompileSpecId, Precompiles},
+        Context, Inspector,
         primitives::hardfork::SpecId,
-        Inspector,
     },
 };
+use reth_revm::revm::context_interface::journaled_state::JournalTr;
 use std::sync::Arc;
 
 /// Settings for enabling the base-fee redirect at a specific block height.
@@ -206,6 +210,154 @@ impl EvmFactory for EvEvmFactory<EthEvmFactory> {
             input.cfg_env.limit_contract_code_size = Some(limit);
         }
         let inner = self.inner.create_evm_with_inspector(db, input, inspector);
+        let mut evm = EvEvm::from_inner(inner, self.redirect_for_block(block_number), true);
+        {
+            let inner = evm.inner_mut();
+            self.install_mint_precompile(&mut inner.precompiles, block_number);
+        }
+        evm
+    }
+}
+
+/// EV EVM factory that builds a mainnet EVM with `EvTxEnv` and EV hooks.
+#[derive(Debug, Default, Clone)]
+pub struct EvTxEvmFactory {
+    redirect: Option<BaseFeeRedirectSettings>,
+    mint_precompile: Option<MintPrecompileSettings>,
+    contract_size_limit: Option<ContractSizeLimitSettings>,
+}
+
+type EvEvmContext<DB> = Context<reth_revm::revm::context::BlockEnv, EvTxEnv, reth_revm::revm::context::CfgEnv<SpecId>, DB>;
+type EvRevmEvm<DB, I> = RevmEvm<
+    EvEvmContext<DB>,
+    I,
+    EthInstructions<EthInterpreter, EvEvmContext<DB>>,
+    PrecompilesMap,
+    reth_revm::revm::handler::EthFrame<EthInterpreter>,
+>;
+
+impl EvTxEvmFactory {
+    pub const fn new(
+        redirect: Option<BaseFeeRedirectSettings>,
+        mint_precompile: Option<MintPrecompileSettings>,
+        contract_size_limit: Option<ContractSizeLimitSettings>,
+    ) -> Self {
+        Self { redirect, mint_precompile, contract_size_limit }
+    }
+
+    fn contract_size_limit_for_block(&self, block_number: U256) -> Option<usize> {
+        self.contract_size_limit.and_then(|settings| {
+            if block_number >= U256::from(settings.activation_height()) {
+                Some(settings.limit())
+            } else {
+                None
+            }
+        })
+    }
+
+    fn install_mint_precompile(&self, precompiles: &mut PrecompilesMap, block_number: U256) {
+        let Some(settings) = self.mint_precompile else {
+            return;
+        };
+        if block_number < U256::from(settings.activation_height()) {
+            return;
+        }
+
+        let mint = Arc::new(MintPrecompile::new(settings.admin()));
+        let id = MintPrecompile::id().clone();
+
+        precompiles.apply_precompile(&MINT_PRECOMPILE_ADDR, move |_| {
+            let mint_for_call = Arc::clone(&mint);
+            let id_for_call = id;
+            Some(DynPrecompile::new_stateful(id_for_call, move |input| {
+                mint_for_call.call(input)
+            }))
+        });
+    }
+
+    fn redirect_for_block(&self, block_number: U256) -> Option<BaseFeeRedirect> {
+        self.redirect.and_then(|settings| {
+            if block_number >= U256::from(settings.activation_height()) {
+                Some(settings.redirect())
+            } else {
+                None
+            }
+        })
+    }
+
+    fn build_evm<DB: Database, I: Inspector<EvEvmContext<DB>>>(
+        &self,
+        db: DB,
+        env: EvmEnv<SpecId>,
+        inspector: I,
+    ) -> EvRevmEvm<DB, I> {
+        let precompiles = PrecompilesMap::from_static(Precompiles::new(PrecompileSpecId::from_spec_id(
+            env.cfg_env.spec,
+        )));
+
+        let mut journaled_state = reth_revm::revm::Journal::new(db);
+        journaled_state.set_spec_id(env.cfg_env.spec);
+
+        let ctx = Context {
+            block: env.block_env,
+            tx: EvTxEnv::default(),
+            cfg: env.cfg_env,
+            journaled_state,
+            chain: (),
+            local: Default::default(),
+            error: Ok(()),
+        };
+
+        RevmEvm {
+            ctx,
+            inspector,
+            instruction: EthInstructions::new_mainnet(),
+            precompiles,
+            frame_stack: FrameStack::new(),
+        }
+    }
+}
+
+impl EvmFactory for EvTxEvmFactory {
+    type Evm<DB: Database, I: Inspector<Self::Context<DB>>> =
+        EvEvm<EvEvmContext<DB>, I, PrecompilesMap>;
+    type Context<DB: Database> = EvEvmContext<DB>;
+    type Tx = EvTxEnv;
+    type Error<DBError: std::error::Error + Send + Sync + 'static> =
+        EVMError<DBError, InvalidTransaction>;
+    type HaltReason = HaltReason;
+    type Spec = SpecId;
+    type Precompiles = PrecompilesMap;
+
+    fn create_evm<DB: Database>(
+        &self,
+        db: DB,
+        mut env: EvmEnv<Self::Spec>,
+    ) -> Self::Evm<DB, NoOpInspector> {
+        let block_number = env.block_env.number;
+        if let Some(limit) = self.contract_size_limit_for_block(block_number) {
+            env.cfg_env.limit_contract_code_size = Some(limit);
+        }
+        let inner = self.build_evm(db, env, NoOpInspector {});
+        let mut evm = EvEvm::from_inner(inner, self.redirect_for_block(block_number), false);
+        {
+            let inner = evm.inner_mut();
+            self.install_mint_precompile(&mut inner.precompiles, block_number);
+        }
+        evm
+    }
+
+    fn create_evm_with_inspector<DB: Database, I: Inspector<Self::Context<DB>>>(
+        &self,
+        db: DB,
+        mut env: EvmEnv<Self::Spec>,
+        inspector: I,
+    ) -> Self::Evm<DB, I> {
+        let block_number = env.block_env.number;
+        if let Some(limit) = self.contract_size_limit_for_block(block_number) {
+            env.cfg_env.limit_contract_code_size = Some(limit);
+        }
+        let inner = self.build_evm(db, env, inspector);
         let mut evm = EvEvm::from_inner(inner, self.redirect_for_block(block_number), true);
         {
             let inner = evm.inner_mut();

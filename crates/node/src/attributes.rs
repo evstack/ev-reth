@@ -8,12 +8,12 @@ use reth_chainspec::EthereumHardforks;
 use reth_engine_local::payload::LocalPayloadAttributesBuilder;
 use reth_ethereum::{
     node::api::payload::{PayloadAttributes, PayloadBuilderAttributes},
-    TransactionSigned,
 };
 use reth_payload_builder::EthPayloadBuilderAttributes;
 use reth_payload_primitives::PayloadAttributesBuilder;
 use serde::{Deserialize, Serialize};
 
+use ev_primitives::TransactionSigned;
 use crate::error::EvolveEngineError;
 
 /// Evolve payload attributes that support passing transactions via Engine API.
