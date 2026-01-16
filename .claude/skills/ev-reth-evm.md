@@ -115,3 +115,5 @@ cargo test -p ev-precompiles # Test precompiles
 3. Read `crates/ev-precompiles/src/mint.rs` for precompile implementation
 4. Check `crates/ev-revm/src/base_fee.rs` for redirect logic
 5. See `crates/node/src/config.rs` for how settings are configured
+
+<!-- Last reviewed: 2026-01-16 -->

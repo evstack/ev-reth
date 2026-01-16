@@ -108,3 +108,5 @@ cargo test -p evolve-ev-reth
 2. Read `crates/evolve/src/consensus.rs` for consensus modifications
 3. Check `crates/evolve/src/rpc/txpool.rs` for RPC extensions
 4. See `crates/node/src/builder.rs` for how attributes are processed
+
+<!-- Last reviewed: 2026-01-16 -->
