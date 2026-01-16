@@ -119,7 +119,13 @@ impl EvolvePayloadBuilderConfig {
 
     /// Validates the configuration
     pub const fn validate(&self) -> Result<(), ConfigError> {
-        Ok(())
+        match (
+            self.contract_size_limit,
+            self.contract_size_limit_activation_height,
+        ) {
+            (Some(0), _) | (None, Some(_)) => Err(ConfigError::InvalidConfig),
+            _ => Ok(()),
+        }
     }
 
     /// Returns the configured base-fee redirect sink and activation height (defaulting to 0).
@@ -320,8 +326,8 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_always_ok() {
-        // Test that validate always returns Ok for now
+    fn test_validate_accepts_defaults() {
+        // Test that validate accepts default configurations
         let config = EvolvePayloadBuilderConfig::new();
         assert!(config.validate().is_ok());
 
@@ -474,5 +480,27 @@ mod tests {
             config.contract_size_limit_for_block(1000000),
             DEFAULT_CONTRACT_SIZE_LIMIT
         );
+    }
+
+    #[test]
+    fn test_contract_size_limit_zero_invalid() {
+        let config = EvolvePayloadBuilderConfig {
+            contract_size_limit: Some(0),
+            contract_size_limit_activation_height: Some(0),
+            ..EvolvePayloadBuilderConfig::new()
+        };
+
+        assert!(matches!(config.validate(), Err(ConfigError::InvalidConfig)));
+    }
+
+    #[test]
+    fn test_contract_size_limit_activation_without_limit_invalid() {
+        let config = EvolvePayloadBuilderConfig {
+            contract_size_limit: None,
+            contract_size_limit_activation_height: Some(10),
+            ..EvolvePayloadBuilderConfig::new()
+        };
+
+        assert!(matches!(config.validate(), Err(ConfigError::InvalidConfig)));
     }
 }
