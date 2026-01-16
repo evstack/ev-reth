@@ -119,7 +119,8 @@ ADMIN_PROXY_ALLOC="$(
     --arg key "$ADMIN_PROXY_KEY" \
     --arg code "$ADMIN_PROXY_CODE" \
     --arg owner "$ADMIN_PROXY_OWNER_SLOT" \
-    '{($key): {"balance":"0x0","code":$code,"storage":{"0x0":$owner}}}'
+    --arg slot0 "$SLOT_KEY0" \
+    '{($key): {"balance":"0x0","code":$code,"storage":{($slot0):$owner}}}'
 )"
 
 DEST_HEX="$(printf '%08x' "$FEE_VAULT_DESTINATION_DOMAIN")"
@@ -131,6 +132,13 @@ SLOT3="$(uint_to_hex32 "$FEE_VAULT_MINIMUM_AMOUNT")"
 SLOT4="$(uint_to_hex32 "$FEE_VAULT_CALL_FEE")"
 SLOT5="$(pad_hex_32 "$FEE_VAULT_OTHER_RECIPIENT")"
 SLOT6="$(uint_to_hex32 "$FEE_VAULT_BRIDGE_SHARE_BPS")"
+SLOT_KEY0="$(uint_to_hex32 0)"
+SLOT_KEY1="$(uint_to_hex32 1)"
+SLOT_KEY2="$(uint_to_hex32 2)"
+SLOT_KEY3="$(uint_to_hex32 3)"
+SLOT_KEY4="$(uint_to_hex32 4)"
+SLOT_KEY5="$(uint_to_hex32 5)"
+SLOT_KEY6="$(uint_to_hex32 6)"
 
 ENCODED_ARGS="$(
   cast abi-encode \
@@ -160,7 +168,14 @@ FEE_VAULT_ALLOC="$(
     --arg slot4 "$SLOT4" \
     --arg slot5 "$SLOT5" \
     --arg slot6 "$SLOT6" \
-    '{($key): {"balance":"0x0","code":$code,"storage":{"0x0":$slot0,"0x1":$slot1,"0x2":$slot2,"0x3":$slot3,"0x4":$slot4,"0x5":$slot5,"0x6":$slot6}}}'
+    --arg key0 "$SLOT_KEY0" \
+    --arg key1 "$SLOT_KEY1" \
+    --arg key2 "$SLOT_KEY2" \
+    --arg key3 "$SLOT_KEY3" \
+    --arg key4 "$SLOT_KEY4" \
+    --arg key5 "$SLOT_KEY5" \
+    --arg key6 "$SLOT_KEY6" \
+    '{($key): {"balance":"0x0","code":$code,"storage":{($key0):$slot0,($key1):$slot1,($key2):$slot2,($key3):$slot3,($key4):$slot4,($key5):$slot5,($key6):$slot6}}}'
 )"
 
 EOA_ALLOC="$(jq -n --arg key "$EOA_KEY" --arg balance "$NTIA_BALANCE_WEI" '{($key): {"balance": $balance}}')"
