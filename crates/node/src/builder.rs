@@ -177,7 +177,12 @@ where
             }
         }
 
-        // Finish building the block - this calculates the proper state root
+        // Finish building the block. This computes the *current block's* post-state root.
+        //
+        // Ethereum clients expect `header.state_root` to equal the post-state after executing the
+        // transactions in this block on top of the parent state. Accidentally using the parent
+        // (height-1) state root here can make downstream execution clients think each block is on
+        // a different fork, even when the chain is otherwise canonical.
         let BlockBuilderOutcome {
             execution_result: _,
             hashed_state: _,

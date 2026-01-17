@@ -16,12 +16,14 @@ use reth_ethereum::{
     },
 };
 use reth_ethereum_payload_builder::EthereumExecutionPayloadValidator;
-use reth_primitives_traits::{Block as _, RecoveredBlock};
+use reth_primitives_traits::RecoveredBlock;
 use tracing::info;
 
 use crate::{attributes::EvolveEnginePayloadAttributes, node::EvolveEngineTypes};
 
 /// Evolve engine validator that handles custom payload validation.
+///
+/// This validator delegates to the standard Ethereum payload validation.
 #[derive(Debug, Clone)]
 pub struct EvolveEngineValidator {
     inner: EthereumExecutionPayloadValidator<ChainSpec>,
@@ -51,33 +53,13 @@ impl PayloadValidator<EvolveEngineTypes> for EvolveEngineValidator {
     ) -> Result<RecoveredBlock<Self::Block>, NewPayloadError> {
         info!("Evolve engine validator: validating payload");
 
-        // Use inner validator but with custom evolve handling.
-        match self.inner.ensure_well_formed_payload(payload.clone()) {
-            Ok(sealed_block) => {
-                info!("Evolve engine validator: payload validation succeeded");
-                sealed_block
-                    .try_recover()
-                    .map_err(|e| NewPayloadError::Other(e.into()))
-            }
-            Err(err) => {
-                // Log the error for debugging.
-                tracing::debug!("Evolve payload validation error: {:?}", err);
-
-                // Check if this is a block hash mismatch error - bypass it for evolve.
-                if matches!(err, alloy_rpc_types::engine::PayloadError::BlockHash { .. }) {
-                    info!("Evolve engine validator: bypassing block hash mismatch for ev-reth");
-                    // For evolve, we trust the payload builder - just parse the block without hash validation.
-                    let ExecutionData { payload, sidecar } = payload;
-                    let sealed_block = payload.try_into_block_with_sidecar(&sidecar)?.seal_slow();
-                    sealed_block
-                        .try_recover()
-                        .map_err(|e| NewPayloadError::Other(e.into()))
-                } else {
-                    // For other errors, re-throw them.
-                    Err(NewPayloadError::Eth(err))
-                }
-            }
-        }
+        // Directly delegate to the inner Ethereum validator without any bypass logic.
+        // This will fail if block hashes don't match, allowing us to see if the error actually occurs.
+        let sealed_block = self.inner.ensure_well_formed_payload(payload)?;
+        info!("Evolve engine validator: payload validation succeeded");
+        sealed_block
+            .try_recover()
+            .map_err(|e| NewPayloadError::Other(e.into()))
     }
 
     fn validate_payload_attributes_against_header(
@@ -143,5 +125,42 @@ where
 
     async fn build(self, ctx: &AddOnsContext<'_, N>) -> eyre::Result<Self::Validator> {
         Ok(EvolveEngineValidator::new(ctx.config.chain.clone()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloy_primitives::B256;
+    use reth_chainspec::ChainSpecBuilder;
+    use reth_primitives::{Block, SealedBlock};
+
+    fn create_validator() -> EvolveEngineValidator {
+        let chain_spec = Arc::new(ChainSpecBuilder::mainnet().build());
+        EvolveEngineValidator::new(chain_spec)
+    }
+
+    fn mismatched_payload() -> ExecutionData {
+        let sealed_block: SealedBlock<Block> = SealedBlock::default();
+        let block_hash = sealed_block.hash();
+        let block = sealed_block.into_block();
+        let mut data = ExecutionData::from_block_unchecked(block_hash, &block);
+        data.payload.as_v1_mut().block_hash = B256::repeat_byte(0x42);
+        data
+    }
+
+    #[test]
+    fn test_hash_mismatch_is_rejected() {
+        // Hash mismatches should be rejected
+        let validator = create_validator();
+        let payload = mismatched_payload();
+
+        let result = validator.ensure_well_formed_payload(payload);
+        assert!(matches!(
+            result,
+            Err(NewPayloadError::Eth(
+                alloy_rpc_types::engine::PayloadError::BlockHash { .. }
+            ))
+        ));
     }
 }
