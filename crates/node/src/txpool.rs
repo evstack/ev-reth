@@ -258,8 +258,6 @@ pub enum EvTxPoolError {
     EmptyCalls,
     #[error("only the first call may be CREATE")]
     InvalidCreatePosition,
-    #[error("fee_payer and fee_payer_signature must be both present or both absent")]
-    InvalidSponsorshipFields,
     #[error("invalid sponsor signature")]
     InvalidSponsorSignature,
     #[error("state provider error: {0}")]
@@ -320,7 +318,7 @@ impl<Client> EvTransactionValidator<Client> {
     fn validate_sponsor_balance(
         &self,
         state: &mut Option<Box<dyn AccountInfoReader>>,
-        fee_payer: Address,
+        sponsor: Address,
         gas_cost: U256,
     ) -> Result<(), InvalidPoolTransactionError>
     where
@@ -329,7 +327,7 @@ impl<Client> EvTransactionValidator<Client> {
         self.ensure_state(state)?;
         let state = state.as_ref().expect("state provider is set");
         let account = state
-            .basic_account(&fee_payer)
+            .basic_account(&sponsor)
             .map_err(|err| InvalidPoolTransactionError::other(EvTxPoolError::StateProvider(err.to_string())))?
             .unwrap_or_default();
         if account.balance < gas_cost {
@@ -358,23 +356,17 @@ impl<Client> EvTransactionValidator<Client> {
         let tx = tx.tx();
         self.validate_evnode_calls(tx)?;
 
-        match (tx.fee_payer, tx.fee_payer_signature.as_ref()) {
-            (None, None) => Ok(()),
-            (Some(fee_payer), Some(signature)) => {
-                let recovered = tx
-                    .recover_sponsor(fee_payer, signature)
-                    .map_err(|_| InvalidPoolTransactionError::other(EvTxPoolError::InvalidSponsorSignature))?;
-                if recovered != fee_payer {
-                    return Err(InvalidPoolTransactionError::other(EvTxPoolError::InvalidSponsorSignature));
-                }
+        if let Some(signature) = tx.fee_payer_signature.as_ref() {
+            let executor = pooled.transaction().signer();
+            let sponsor = tx
+                .recover_sponsor(executor, signature)
+                .map_err(|_| InvalidPoolTransactionError::other(EvTxPoolError::InvalidSponsorSignature))?;
 
-                let gas_cost =
-                    U256::from(tx.max_fee_per_gas).saturating_mul(U256::from(tx.gas_limit));
-                self.validate_sponsor_balance(state, fee_payer, gas_cost)?;
-                Ok(())
-            }
-            _ => Err(InvalidPoolTransactionError::other(EvTxPoolError::InvalidSponsorshipFields)),
+            let gas_cost = U256::from(tx.max_fee_per_gas).saturating_mul(U256::from(tx.gas_limit));
+            self.validate_sponsor_balance(state, sponsor, gas_cost)?;
         }
+
+        Ok(())
     }
 }
 
