@@ -156,6 +156,7 @@ where
                 ))
             })?;
 
+            // Validate sponsor signature for EvNode transactions (early check before EVM execution)
             if let ev_primitives::EvTxEnvelope::EvNode(ev) = recovered_tx.inner() {
                 if let Some(signature) = ev.tx().fee_payer_signature.as_ref() {
                     ev.tx()
@@ -166,10 +167,6 @@ where
                             ))
                         })?;
                 }
-
-                return Err(PayloadBuilderError::Internal(RethError::Other(
-                    "EvNode transaction execution not supported yet".into(),
-                )));
             }
 
             // Execute the transaction
