@@ -310,7 +310,11 @@ impl SponsorPayerTx for EvTxEnv {
 
 impl BatchCallsTx for EvTxEnv {
     fn batch_calls(&self) -> Option<&[Call]> {
-        Some(&self.calls)
+        if self.calls.is_empty() {
+            None
+        } else {
+            Some(&self.calls)
+        }
     }
 
     fn batch_total_value(&self) -> U256 {

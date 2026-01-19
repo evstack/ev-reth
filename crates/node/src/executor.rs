@@ -1,7 +1,7 @@
 //! Helpers to build the ev-reth executor with EV-specific hooks applied.
 
 use alloy_consensus::{BlockHeader, Header};
-use alloy_eips::Decodable2718;
+use alloy_eips::{eip1559::INITIAL_BASE_FEE, Decodable2718};
 use alloy_evm::{eth::spec::EthExecutorSpec, FromRecoveredTx, FromTxWithEncoded};
 use alloy_primitives::U256;
 use alloy_rpc_types_engine::ExecutionData;
@@ -212,22 +212,27 @@ where
                     }
                 });
 
-        let (gas_limit, basefee) = if self
-            .chain_spec()
+        // Calculate base fee for the next block
+        let mut basefee = chain_spec.next_block_base_fee(parent, attributes.timestamp);
+
+        let mut gas_limit = attributes.gas_limit;
+
+        // If we are on the London fork boundary, we need to multiply the parent's gas limit by the
+        // elasticity multiplier to get the new gas limit.
+        if chain_spec
             .fork(reth_ethereum_forks::EthereumHardfork::London)
             .transitions_at_block(parent.number + 1)
         {
-            let elasticity_multiplier = self
-                .chain_spec()
+            let elasticity_multiplier = chain_spec
                 .base_fee_params_at_timestamp(attributes.timestamp)
                 .elasticity_multiplier;
-            (
-                parent.gas_limit * elasticity_multiplier as u64,
-                Some(alloy_eips::eip1559::INITIAL_BASE_FEE),
-            )
-        } else {
-            (parent.gas_limit, None)
-        };
+
+            // multiply the gas limit by the elasticity multiplier
+            gas_limit *= elasticity_multiplier as u64;
+
+            // set the base fee to the initial base fee from the EIP-1559 spec
+            basefee = Some(INITIAL_BASE_FEE);
+        }
 
         let block_env = BlockEnv {
             number: U256::from(parent.number + 1),
