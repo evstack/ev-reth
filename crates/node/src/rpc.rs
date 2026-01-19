@@ -4,9 +4,10 @@ use alloy_consensus::error::ValueError;
 use alloy_consensus::transaction::Recovered;
 use alloy_consensus::SignableTransaction;
 use alloy_consensus_any::AnyReceiptEnvelope;
-use alloy_network::{Ethereum, TxSigner};
-use alloy_primitives::{Address, Signature};
+use alloy_network::{Ethereum, ReceiptResponse, TransactionResponse, TxSigner};
+use alloy_primitives::{Address, Signature, U256};
 use alloy_rpc_types_eth::{Log, Transaction, TransactionInfo, TransactionRequest, TransactionReceipt};
+use alloy_consensus::Transaction as ConsensusTransaction;
 use reth_chainspec::{ChainSpecProvider, EthChainSpec, EthereumHardforks, Hardforks};
 use reth_evm::{ConfigureEvm, SpecFor, TxEnvFor};
 use reth_node_api::{FullNodeComponents, FullNodeTypes, NodeTypes};
@@ -38,9 +39,195 @@ pub struct EvRpcTypes;
 
 impl RpcTypes for EvRpcTypes {
     type Header = <Ethereum as RpcTypes>::Header;
-    type Receipt = TransactionReceipt<AnyReceiptEnvelope<Log>>;
-    type TransactionResponse = <Ethereum as RpcTypes>::TransactionResponse;
+    type Receipt = EvRpcReceipt;
+    type TransactionResponse = EvRpcTransaction;
     type TransactionRequest = EvTransactionRequest;
+}
+
+/// RPC transaction response with optional sponsor address.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct EvRpcTransaction {
+    #[serde(flatten)]
+    inner: Transaction<EvTxEnvelope>,
+    #[serde(rename = "feePayer", skip_serializing_if = "Option::is_none")]
+    fee_payer: Option<Address>,
+}
+
+impl EvRpcTransaction {
+    fn new(inner: Transaction<EvTxEnvelope>, fee_payer: Option<Address>) -> Self {
+        Self { inner, fee_payer }
+    }
+}
+
+impl ConsensusTransaction for EvRpcTransaction {
+    fn chain_id(&self) -> Option<alloy_primitives::ChainId> {
+        ConsensusTransaction::chain_id(&self.inner)
+    }
+
+    fn nonce(&self) -> u64 {
+        ConsensusTransaction::nonce(&self.inner)
+    }
+
+    fn gas_limit(&self) -> u64 {
+        ConsensusTransaction::gas_limit(&self.inner)
+    }
+
+    fn gas_price(&self) -> Option<u128> {
+        ConsensusTransaction::gas_price(&self.inner)
+    }
+
+    fn max_fee_per_gas(&self) -> u128 {
+        ConsensusTransaction::max_fee_per_gas(&self.inner)
+    }
+
+    fn max_priority_fee_per_gas(&self) -> Option<u128> {
+        ConsensusTransaction::max_priority_fee_per_gas(&self.inner)
+    }
+
+    fn max_fee_per_blob_gas(&self) -> Option<u128> {
+        ConsensusTransaction::max_fee_per_blob_gas(&self.inner)
+    }
+
+    fn priority_fee_or_price(&self) -> u128 {
+        ConsensusTransaction::priority_fee_or_price(&self.inner)
+    }
+
+    fn effective_gas_price(&self, base_fee: Option<u64>) -> u128 {
+        ConsensusTransaction::effective_gas_price(&self.inner, base_fee)
+    }
+
+    fn is_dynamic_fee(&self) -> bool {
+        ConsensusTransaction::is_dynamic_fee(&self.inner)
+    }
+
+    fn kind(&self) -> alloy_primitives::TxKind {
+        ConsensusTransaction::kind(&self.inner)
+    }
+
+    fn is_create(&self) -> bool {
+        ConsensusTransaction::is_create(&self.inner)
+    }
+
+    fn value(&self) -> U256 {
+        ConsensusTransaction::value(&self.inner)
+    }
+
+    fn input(&self) -> &alloy_primitives::Bytes {
+        ConsensusTransaction::input(&self.inner)
+    }
+
+    fn access_list(&self) -> Option<&alloy_eips::eip2930::AccessList> {
+        ConsensusTransaction::access_list(&self.inner)
+    }
+
+    fn blob_versioned_hashes(&self) -> Option<&[alloy_primitives::B256]> {
+        ConsensusTransaction::blob_versioned_hashes(&self.inner)
+    }
+
+    fn authorization_list(&self) -> Option<&[alloy_eips::eip7702::SignedAuthorization]> {
+        ConsensusTransaction::authorization_list(&self.inner)
+    }
+}
+
+impl TransactionResponse for EvRpcTransaction {
+    fn tx_hash(&self) -> alloy_primitives::TxHash {
+        self.inner.tx_hash()
+    }
+
+    fn block_hash(&self) -> Option<alloy_primitives::BlockHash> {
+        self.inner.block_hash()
+    }
+
+    fn block_number(&self) -> Option<u64> {
+        self.inner.block_number()
+    }
+
+    fn transaction_index(&self) -> Option<u64> {
+        self.inner.transaction_index()
+    }
+
+    fn from(&self) -> Address {
+        self.inner.from()
+    }
+}
+
+impl alloy_eips::Typed2718 for EvRpcTransaction {
+    fn ty(&self) -> u8 {
+        self.inner.ty()
+    }
+}
+
+/// RPC receipt response with optional sponsor address.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct EvRpcReceipt {
+    #[serde(flatten)]
+    inner: TransactionReceipt<AnyReceiptEnvelope<Log>>,
+    #[serde(rename = "feePayer", skip_serializing_if = "Option::is_none")]
+    fee_payer: Option<Address>,
+}
+
+impl EvRpcReceipt {
+    fn new(inner: TransactionReceipt<AnyReceiptEnvelope<Log>>, fee_payer: Option<Address>) -> Self {
+        Self { inner, fee_payer }
+    }
+}
+
+impl ReceiptResponse for EvRpcReceipt {
+    fn contract_address(&self) -> Option<Address> {
+        self.inner.contract_address()
+    }
+
+    fn status(&self) -> bool {
+        self.inner.status()
+    }
+
+    fn block_hash(&self) -> Option<alloy_primitives::BlockHash> {
+        self.inner.block_hash()
+    }
+
+    fn block_number(&self) -> Option<u64> {
+        self.inner.block_number()
+    }
+
+    fn transaction_hash(&self) -> alloy_primitives::TxHash {
+        self.inner.transaction_hash()
+    }
+
+    fn transaction_index(&self) -> Option<u64> {
+        self.inner.transaction_index()
+    }
+
+    fn gas_used(&self) -> u64 {
+        self.inner.gas_used()
+    }
+
+    fn effective_gas_price(&self) -> u128 {
+        self.inner.effective_gas_price()
+    }
+
+    fn blob_gas_used(&self) -> Option<u64> {
+        self.inner.blob_gas_used()
+    }
+
+    fn blob_gas_price(&self) -> Option<u128> {
+        self.inner.blob_gas_price()
+    }
+
+    fn from(&self) -> Address {
+        self.inner.from()
+    }
+
+    fn to(&self) -> Option<Address> {
+        self.inner.to()
+    }
+
+    fn cumulative_gas_used(&self) -> u64 {
+        self.inner.cumulative_gas_used()
+    }
+
+    fn state_root(&self) -> Option<alloy_primitives::B256> {
+        self.inner.state_root()
+    }
 }
 
 /// Transaction request wrapper to satisfy local trait bounds.
@@ -119,7 +306,7 @@ impl<ChainSpec> ReceiptConverter<EvPrimitives> for EvReceiptConverter<ChainSpec>
 where
     ChainSpec: EthChainSpec + 'static,
 {
-    type RpcReceipt = TransactionReceipt<AnyReceiptEnvelope<Log>>;
+    type RpcReceipt = EvRpcReceipt;
     type Error = EthApiError;
 
     fn convert_receipts(
@@ -130,12 +317,21 @@ where
 
         for input in inputs {
             let blob_params = self.chain_spec.blob_params_at_timestamp(input.meta.timestamp);
-            receipts.push(build_receipt(input, blob_params, |receipt, next_log_index, meta| {
+            let fee_payer = match input.tx.inner() {
+                EvTxEnvelope::EvNode(ev) => ev
+                    .tx()
+                    .fee_payer_signature
+                    .as_ref()
+                    .and_then(|sig| ev.tx().recover_sponsor(input.tx.signer(), sig).ok()),
+                EvTxEnvelope::Ethereum(_) => None,
+            };
+            let receipt = build_receipt(input, blob_params, |receipt, next_log_index, meta| {
                 let rpc_receipt = receipt.into_rpc(next_log_index, meta);
                 let tx_type = u8::from(rpc_receipt.tx_type);
                 let inner = <alloy_consensus::Receipt<Log>>::from(rpc_receipt).with_bloom();
                 AnyReceiptEnvelope { inner, r#type: tx_type }
-            }));
+            });
+            receipts.push(EvRpcReceipt::new(receipt, fee_payer));
         }
 
         Ok(receipts)
@@ -223,13 +419,16 @@ impl RpcTxConverter<EvTxEnvelope, RpcTransaction<EvRpcTypes>, TransactionInfo> f
         signer: Address,
         tx_info: TransactionInfo,
     ) -> Result<RpcTransaction<EvRpcTypes>, Self::Err> {
-        match tx {
-            EvTxEnvelope::Ethereum(inner) => Ok(Transaction::from_transaction(
-                Recovered::new_unchecked(inner.into(), signer),
-                tx_info,
-            )),
-            EvTxEnvelope::EvNode(_) => Err(EthApiError::TransactionConversionError),
-        }
+        let fee_payer = match &tx {
+            EvTxEnvelope::EvNode(ev) => ev
+                .tx()
+                .fee_payer_signature
+                .as_ref()
+                .and_then(|sig| ev.tx().recover_sponsor(signer, sig).ok()),
+            EvTxEnvelope::Ethereum(_) => None,
+        };
+        let recovered = Recovered::new_unchecked(tx, signer);
+        Ok(EvRpcTransaction::new(Transaction::from_transaction(recovered, tx_info), fee_payer))
     }
 }
 

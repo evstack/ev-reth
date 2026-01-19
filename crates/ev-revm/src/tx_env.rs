@@ -1,13 +1,13 @@
 use alloy_evm::{FromRecoveredTx, FromTxWithEncoded};
-use alloy_primitives::{Address, Bytes};
-use ev_primitives::EvTxEnvelope;
+use alloy_primitives::{Address, Bytes, U256};
+use ev_primitives::{Call, EvTxEnvelope};
 use reth_revm::revm::context::TxEnv;
 use reth_revm::revm::context_interface::transaction::{
     AccessList, AccessListItem, RecoveredAuthorization, SignedAuthorization,
     Transaction as RevmTransaction,
 };
 use reth_revm::revm::handler::SystemCallTx;
-use reth_revm::revm::primitives::{Address as RevmAddress, Bytes as RevmBytes, TxKind, B256, U256};
+use reth_revm::revm::primitives::{Address as RevmAddress, Bytes as RevmBytes, TxKind, B256};
 use reth_revm::revm::context_interface::either::Either;
 use reth_evm::TransactionEnv;
 
@@ -15,25 +15,91 @@ use reth_evm::TransactionEnv;
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct EvTxEnv {
     inner: TxEnv,
+    sponsor: Option<Address>,
+    sponsor_signature_invalid: bool,
+    calls: Vec<Call>,
+    batch_value: U256,
 }
 
 impl EvTxEnv {
-    pub const fn new(inner: TxEnv) -> Self {
-        Self { inner }
+    /// Wrap a `TxEnv` with EV-specific metadata.
+    pub fn new(inner: TxEnv) -> Self {
+        let batch_value = inner.value;
+        Self {
+            inner,
+            sponsor: None,
+            sponsor_signature_invalid: false,
+            calls: Vec::new(),
+            batch_value,
+        }
     }
 
+    /// Returns the underlying `TxEnv`.
     pub const fn inner(&self) -> &TxEnv {
         &self.inner
     }
 
+    /// Returns the underlying `TxEnv` mutably.
     pub fn inner_mut(&mut self) -> &mut TxEnv {
         &mut self.inner
+    }
+
+    /// Returns the recovered sponsor address, if any.
+    pub const fn sponsor(&self) -> Option<Address> {
+        self.sponsor
+    }
+
+    /// Returns whether the sponsor signature was invalid.
+    pub const fn sponsor_signature_invalid(&self) -> bool {
+        self.sponsor_signature_invalid
+    }
+
+    /// Returns the batch calls for this transaction.
+    pub fn calls(&self) -> &[Call] {
+        &self.calls
+    }
+
+    /// Returns the total value across all calls.
+    pub const fn batch_value(&self) -> U256 {
+        self.batch_value
+    }
+
+    /// Updates the inner `TxEnv` to represent a single call from the batch.
+    pub fn set_call(&mut self, call: &Call) {
+        self.inner.kind = call.to;
+        self.inner.value = call.value;
+        self.inner.data = call.input.clone();
+    }
+}
+
+#[cfg(test)]
+impl EvTxEnv {
+    /// Test helper to build an `EvTxEnv` with batch calls pre-populated.
+    pub fn with_calls(mut inner: TxEnv, calls: Vec<Call>) -> Self {
+        let batch_value = calls
+            .iter()
+            .fold(U256::ZERO, |acc, call| acc.saturating_add(call.value));
+        if let Some(first) = calls.first() {
+            inner.kind = first.to;
+            inner.data = first.input.clone();
+        }
+        inner.value = batch_value;
+        let mut env = EvTxEnv::new(inner);
+        env.calls = calls;
+        env.batch_value = batch_value;
+        env
     }
 }
 
 impl From<TxEnv> for EvTxEnv {
     fn from(inner: TxEnv) -> Self {
-        Self { inner }
+        Self {
+            batch_value: inner.value,
+            inner,
+            sponsor: None,
+            sponsor_signature_invalid: false,
+            calls: Vec::new(),
+        }
     }
 }
 
@@ -137,14 +203,32 @@ impl FromRecoveredTx<EvTxEnvelope> for EvTxEnv {
         match tx {
             EvTxEnvelope::Ethereum(inner) => EvTxEnv::new(TxEnv::from_recovered_tx(inner, sender)),
             EvTxEnvelope::EvNode(ev) => {
+                let (sponsor, sponsor_signature_invalid) =
+                    if let Some(signature) = ev.tx().fee_payer_signature.as_ref() {
+                        match ev.tx().recover_sponsor(sender, signature) {
+                            Ok(sponsor) => (Some(sponsor), false),
+                            Err(_) => (None, true),
+                        }
+                    } else {
+                        (None, false)
+                    };
+                let calls = ev.tx().calls.clone();
+                let batch_value = calls
+                    .iter()
+                    .fold(U256::ZERO, |acc, call| acc.saturating_add(call.value));
                 let mut env = TxEnv::default();
                 env.caller = sender;
                 env.gas_limit = ev.tx().gas_limit;
                 env.gas_price = ev.tx().max_fee_per_gas;
                 env.kind = ev.tx().calls.first().map(|call| call.to).unwrap_or(TxKind::Create);
-                env.value = ev.tx().calls.first().map(|call| call.value).unwrap_or_default();
+                env.value = batch_value;
                 env.data = ev.tx().calls.first().map(|call| call.input.clone()).unwrap_or_default();
-                EvTxEnv::new(env)
+                let mut tx_env = EvTxEnv::new(env);
+                tx_env.sponsor = sponsor;
+                tx_env.sponsor_signature_invalid = sponsor_signature_invalid;
+                tx_env.calls = calls;
+                tx_env.batch_value = batch_value;
+                tx_env
             }
         }
     }
@@ -171,5 +255,73 @@ impl SystemCallTx for EvTxEnv {
                 .build()
                 .unwrap(),
         )
+    }
+}
+
+/// Exposes the optional sponsor payer for EV-specific transactions.
+pub trait SponsorPayerTx {
+    /// Returns the sponsor address, if any.
+    fn sponsor(&self) -> Option<Address>;
+    /// Returns whether the sponsor signature was invalid.
+    fn sponsor_signature_invalid(&self) -> bool;
+}
+
+/// Batch-call helpers for EV transactions.
+pub trait BatchCallsTx {
+    /// Returns the batch calls, if present.
+    fn batch_calls(&self) -> Option<&[Call]>;
+    /// Returns the total value across all calls.
+    fn batch_total_value(&self) -> U256;
+    /// Sets the inner `TxEnv` to the given call.
+    fn set_batch_call(&mut self, call: &Call);
+}
+
+impl SponsorPayerTx for EvTxEnv {
+    fn sponsor(&self) -> Option<Address> {
+        self.sponsor
+    }
+
+    fn sponsor_signature_invalid(&self) -> bool {
+        self.sponsor_signature_invalid
+    }
+}
+
+impl BatchCallsTx for EvTxEnv {
+    fn batch_calls(&self) -> Option<&[Call]> {
+        Some(&self.calls)
+    }
+
+    fn batch_total_value(&self) -> U256 {
+        self.batch_value
+    }
+
+    fn set_batch_call(&mut self, call: &Call) {
+        self.set_call(call);
+    }
+}
+
+impl SponsorPayerTx for TxEnv {
+    fn sponsor(&self) -> Option<Address> {
+        None
+    }
+
+    fn sponsor_signature_invalid(&self) -> bool {
+        false
+    }
+}
+
+impl BatchCallsTx for TxEnv {
+    fn batch_calls(&self) -> Option<&[Call]> {
+        None
+    }
+
+    fn batch_total_value(&self) -> U256 {
+        self.value
+    }
+
+    fn set_batch_call(&mut self, call: &Call) {
+        self.kind = call.to;
+        self.value = call.value;
+        self.data = call.input.clone();
     }
 }

@@ -197,7 +197,9 @@ impl Transaction for EvNodeTransaction {
     }
 
     fn value(&self) -> U256 {
-        self.first_call().map(|call| call.value).unwrap_or_default()
+        self.calls
+            .iter()
+            .fold(U256::ZERO, |acc, call| acc.saturating_add(call.value))
     }
 
     fn input(&self) -> &Bytes {

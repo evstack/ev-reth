@@ -6,6 +6,7 @@ pub mod config;
 pub mod evm;
 pub mod factory;
 pub mod handler;
+/// EV-specific transaction environment extensions.
 pub mod tx_env;
 
 pub use api::EvBuilder;
