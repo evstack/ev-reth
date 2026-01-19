@@ -149,7 +149,7 @@ impl EvolveTestFixture {
         let evm_factory =
             EvTxEvmFactory::new(base_fee_redirect, mint_precompile, contract_size_limit);
         let wrapped_evm =
-            EvolveEvmConfig::new_with_evm_factory(test_chainspec.clone(), evm_factory);
+            EvolveEvmConfig::new_with_evm_factory(test_chainspec, evm_factory);
 
         let builder = EvolvePayloadBuilder::new(Arc::new(provider.clone()), wrapped_evm, config);
 
