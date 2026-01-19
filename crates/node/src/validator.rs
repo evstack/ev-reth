@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use alloy_rpc_types::engine::ExecutionData;
+use ev_primitives::EvTxEnvelope;
 use reth_ethereum::{
     chainspec::ChainSpec,
     node::{
@@ -15,7 +16,6 @@ use reth_ethereum::{
         builder::rpc::PayloadValidatorBuilder,
     },
 };
-use ev_primitives::EvTxEnvelope;
 use reth_ethereum_payload_builder::EthereumExecutionPayloadValidator;
 use reth_primitives_traits::{Block as _, RecoveredBlock, SealedBlock};
 use tracing::info;
@@ -57,7 +57,9 @@ impl PayloadValidator<EvolveEngineTypes> for EvolveEngineValidator {
             Ok(sealed_block) => {
                 info!("Evolve engine validator: payload validation succeeded");
                 let ev_block = convert_sealed_block(sealed_block);
-                ev_block.try_recover().map_err(|e| NewPayloadError::Other(e.into()))
+                ev_block
+                    .try_recover()
+                    .map_err(|e| NewPayloadError::Other(e.into()))
             }
             Err(err) => {
                 // Log the error for debugging.
@@ -70,7 +72,9 @@ impl PayloadValidator<EvolveEngineTypes> for EvolveEngineValidator {
                     let ExecutionData { payload, sidecar } = payload;
                     let sealed_block = payload.try_into_block_with_sidecar(&sidecar)?.seal_slow();
                     let ev_block = convert_sealed_block(sealed_block);
-                    ev_block.try_recover().map_err(|e| NewPayloadError::Other(e.into()))
+                    ev_block
+                        .try_recover()
+                        .map_err(|e| NewPayloadError::Other(e.into()))
                 } else {
                     // For other errors, re-throw them.
                     Err(NewPayloadError::Eth(err))

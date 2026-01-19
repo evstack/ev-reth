@@ -11,6 +11,7 @@ use ev_revm::{
     MintPrecompileSettings,
 };
 use reth_chainspec::{ChainSpec, EthChainSpec};
+use reth_errors::RethError;
 use reth_ethereum::{
     chainspec::EthereumHardforks,
     node::{
@@ -32,7 +33,6 @@ use reth_revm::revm::{
     context_interface::block::BlobExcessGasAndPrice,
     primitives::hardfork::SpecId,
 };
-use reth_errors::RethError;
 use tracing::info;
 
 use crate::evm_executor::{EvBlockExecutorFactory, EvReceiptBuilder};
@@ -46,31 +46,41 @@ pub type EvolveEvmConfig = EvEvmConfig<ChainSpec, EvTxEvmFactory>;
 /// EVM config wired for EvPrimitives.
 #[derive(Debug, Clone)]
 pub struct EvEvmConfig<C = ChainSpec, EvmFactory = EvTxEvmFactory> {
+    /// Factory used to create block executors.
     pub executor_factory: EvBlockExecutorFactory<EvReceiptBuilder, std::sync::Arc<C>, EvmFactory>,
+    /// Block assembler used for building block bodies and headers.
     pub block_assembler: EthBlockAssembler<C>,
 }
 
 impl<ChainSpec> EvEvmConfig<ChainSpec> {
+    /// Creates a new EV EVM config with the default EVM factory.
     pub fn new(chain_spec: std::sync::Arc<ChainSpec>) -> Self {
         Self::new_with_evm_factory(chain_spec, EvTxEvmFactory::default())
     }
 }
 
 impl<ChainSpec, EvmFactory> EvEvmConfig<ChainSpec, EvmFactory> {
+    /// Creates a new EV EVM config using the provided EVM factory.
     pub fn new_with_evm_factory(
         chain_spec: std::sync::Arc<ChainSpec>,
         evm_factory: EvmFactory,
     ) -> Self {
         Self {
             block_assembler: EthBlockAssembler::new(chain_spec.clone()),
-            executor_factory: EvBlockExecutorFactory::new(EvReceiptBuilder, chain_spec, evm_factory),
+            executor_factory: EvBlockExecutorFactory::new(
+                EvReceiptBuilder,
+                chain_spec,
+                evm_factory,
+            ),
         }
     }
 
+    /// Returns the chain spec used by this config.
     pub const fn chain_spec(&self) -> &std::sync::Arc<ChainSpec> {
         self.executor_factory.spec()
     }
 
+    /// Sets the extra data to be included in built blocks.
     pub fn with_extra_data(mut self, extra_data: alloy_primitives::Bytes) -> Self {
         self.block_assembler.extra_data = extra_data;
         self
@@ -111,22 +121,32 @@ where
         let blob_params = self.chain_spec().blob_params_at_timestamp(header.timestamp);
         let spec = revm_spec(self.chain_spec(), header);
 
-        let mut cfg_env =
-            CfgEnv::new().with_chain_id(self.chain_spec().chain().id()).with_spec(spec);
+        let mut cfg_env = CfgEnv::new()
+            .with_chain_id(self.chain_spec().chain().id())
+            .with_spec(spec);
 
         if let Some(blob_params) = &blob_params {
             cfg_env.set_max_blobs_per_tx(blob_params.max_blobs_per_tx);
         }
 
-        if self.chain_spec().is_osaka_active_at_timestamp(header.timestamp) {
+        if self
+            .chain_spec()
+            .is_osaka_active_at_timestamp(header.timestamp)
+        {
             cfg_env.tx_gas_limit_cap = Some(MAX_TX_GAS_LIMIT_OSAKA);
         }
 
         let blob_excess_gas_and_price =
-            header.excess_blob_gas.zip(blob_params).map(|(excess_blob_gas, params)| {
-                let blob_gasprice = params.calc_blob_fee(excess_blob_gas);
-                BlobExcessGasAndPrice { excess_blob_gas, blob_gasprice }
-            });
+            header
+                .excess_blob_gas
+                .zip(blob_params)
+                .map(|(excess_blob_gas, params)| {
+                    let blob_gasprice = params.calc_blob_fee(excess_blob_gas);
+                    BlobExcessGasAndPrice {
+                        excess_blob_gas,
+                        blob_gasprice,
+                    }
+                });
 
         let block_env = BlockEnv {
             number: U256::from(header.number),
@@ -163,22 +183,32 @@ where
             parent.number() + 1,
         );
 
-        let mut cfg =
-            CfgEnv::new().with_chain_id(self.chain_spec().chain().id()).with_spec(spec_id);
+        let mut cfg = CfgEnv::new()
+            .with_chain_id(self.chain_spec().chain().id())
+            .with_spec(spec_id);
 
         if let Some(blob_params) = &blob_params {
             cfg.set_max_blobs_per_tx(blob_params.max_blobs_per_tx);
         }
 
-        if self.chain_spec().is_osaka_active_at_timestamp(attributes.timestamp) {
+        if self
+            .chain_spec()
+            .is_osaka_active_at_timestamp(attributes.timestamp)
+        {
             cfg.tx_gas_limit_cap = Some(MAX_TX_GAS_LIMIT_OSAKA);
         }
 
         let blob_excess_gas_and_price =
-            parent.excess_blob_gas.zip(blob_params).map(|(excess_blob_gas, params)| {
-                let blob_gasprice = params.calc_blob_fee(excess_blob_gas);
-                BlobExcessGasAndPrice { excess_blob_gas, blob_gasprice }
-            });
+            parent
+                .excess_blob_gas
+                .zip(blob_params)
+                .map(|(excess_blob_gas, params)| {
+                    let blob_gasprice = params.calc_blob_fee(excess_blob_gas);
+                    BlobExcessGasAndPrice {
+                        excess_blob_gas,
+                        blob_gasprice,
+                    }
+                });
 
         let mut gas_limit = parent.gas_limit;
         let mut basefee = None;
@@ -207,7 +237,10 @@ where
             blob_excess_gas_and_price,
         };
 
-        Ok(EvmEnv { cfg_env: cfg, block_env })
+        Ok(EvmEnv {
+            cfg_env: cfg,
+            block_env,
+        })
     }
 
     fn context_for_block<'a>(
@@ -218,7 +251,11 @@ where
             parent_hash: block.header().parent_hash,
             parent_beacon_block_root: block.header().parent_beacon_block_root,
             ommers: &block.body().ommers,
-            withdrawals: block.body().withdrawals.as_ref().map(std::borrow::Cow::Borrowed),
+            withdrawals: block
+                .body()
+                .withdrawals
+                .as_ref()
+                .map(std::borrow::Cow::Borrowed),
         })
     }
 
@@ -240,9 +277,7 @@ impl<ChainSpec, EvmF> ConfigureEngineEvm<ExecutionData> for EvEvmConfig<ChainSpe
 where
     ChainSpec: EthExecutorSpec + EthChainSpec<Header = Header> + Hardforks + 'static,
     EvmF: reth_evm::EvmFactory<
-            Tx: TransactionEnv
-                    + FromRecoveredTx<EvTxEnvelope>
-                    + FromTxWithEncoded<EvTxEnvelope>,
+            Tx: TransactionEnv + FromRecoveredTx<EvTxEnvelope> + FromTxWithEncoded<EvTxEnvelope>,
             Spec = SpecId,
             Precompiles = reth_evm::precompiles::PrecompilesMap,
         > + Clone
@@ -260,8 +295,9 @@ where
         let spec =
             revm_spec_by_timestamp_and_block_number(self.chain_spec(), timestamp, block_number);
 
-        let mut cfg_env =
-            CfgEnv::new().with_chain_id(self.chain_spec().chain().id()).with_spec(spec);
+        let mut cfg_env = CfgEnv::new()
+            .with_chain_id(self.chain_spec().chain().id())
+            .with_spec(spec);
 
         if let Some(blob_params) = &blob_params {
             cfg_env.set_max_blobs_per_tx(blob_params.max_blobs_per_tx);
@@ -272,10 +308,17 @@ where
         }
 
         let blob_excess_gas_and_price =
-            payload.payload.excess_blob_gas().zip(blob_params).map(|(excess_blob_gas, params)| {
-                let blob_gasprice = params.calc_blob_fee(excess_blob_gas);
-                BlobExcessGasAndPrice { excess_blob_gas, blob_gasprice }
-            });
+            payload
+                .payload
+                .excess_blob_gas()
+                .zip(blob_params)
+                .map(|(excess_blob_gas, params)| {
+                    let blob_gasprice = params.calc_blob_fee(excess_blob_gas);
+                    BlobExcessGasAndPrice {
+                        excess_blob_gas,
+                        blob_gasprice,
+                    }
+                });
 
         let block_env = BlockEnv {
             number: U256::from(block_number),
@@ -300,17 +343,25 @@ where
             parent_hash: payload.parent_hash(),
             parent_beacon_block_root: payload.sidecar.parent_beacon_block_root(),
             ommers: &[],
-            withdrawals: payload.payload.withdrawals().map(|w| std::borrow::Cow::Owned(w.clone().into())),
+            withdrawals: payload
+                .payload
+                .withdrawals()
+                .map(|w| std::borrow::Cow::Owned(w.clone().into())),
         }
     }
 
     fn tx_iterator_for_payload(&self, payload: &ExecutionData) -> impl ExecutableTxIterator<Self> {
-        payload.payload.transactions().clone().into_iter().map(|tx| {
-            let tx =
-                TxTy::<Self::Primitives>::decode_2718_exact(tx.as_ref()).map_err(RethError::other)?;
-            let signer = tx.try_recover().map_err(RethError::other)?;
-            Ok::<_, RethError>(tx.with_signer(signer))
-        })
+        payload
+            .payload
+            .transactions()
+            .clone()
+            .into_iter()
+            .map(|tx| {
+                let tx = TxTy::<Self::Primitives>::decode_2718_exact(tx.as_ref())
+                    .map_err(RethError::other)?;
+                let signer = tx.try_recover().map_err(RethError::other)?;
+                Ok::<_, RethError>(tx.with_signer(signer))
+            })
     }
 }
 
@@ -354,14 +405,12 @@ where
                 ContractSizeLimitSettings::new(limit, activation)
             });
 
-    let factory = EvTxEvmFactory::new(
-        redirect,
-        mint_precompile,
-        contract_size_limit,
-    );
+    let factory = EvTxEvmFactory::new(redirect, mint_precompile, contract_size_limit);
 
-    Ok(EvEvmConfig::new_with_evm_factory(chain_spec.clone(), factory)
-        .with_extra_data(ctx.payload_builder_config().extra_data_bytes()))
+    Ok(
+        EvEvmConfig::new_with_evm_factory(chain_spec.clone(), factory)
+            .with_extra_data(ctx.payload_builder_config().extra_data_bytes()),
+    )
 }
 
 /// Thin wrapper so we can plug the EV executor into the node components builder.

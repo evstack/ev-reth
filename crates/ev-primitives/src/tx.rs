@@ -12,6 +12,10 @@ use reth_codecs::{
     txtype::COMPACT_EXTENDED_IDENTIFIER_FLAG,
     Compact,
 };
+use reth_db_api::{
+    table::{Compress, Decompress},
+    DatabaseError,
+};
 use reth_primitives_traits::{InMemorySize, SignedTransaction};
 use std::vec::Vec;
 
@@ -21,7 +25,17 @@ pub const EVNODE_TX_TYPE_ID: u8 = 0x76;
 pub const EVNODE_SPONSOR_DOMAIN: u8 = 0x78;
 
 /// Single call entry in an EvNode transaction.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, RlpEncodable, RlpDecodable, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Clone,
+    Debug,
+    PartialEq,
+    Eq,
+    Hash,
+    RlpEncodable,
+    RlpDecodable,
+    serde::Serialize,
+    serde::Deserialize,
+)]
 pub struct Call {
     /// Destination (CALL or CREATE).
     pub to: TxKind,
@@ -82,7 +96,10 @@ impl EvNodeTransaction {
     }
 
     /// Recovers the executor address from the provided signature.
-    pub fn recover_executor(&self, signature: &Signature) -> Result<Address, alloy_primitives::SignatureError> {
+    pub fn recover_executor(
+        &self,
+        signature: &Signature,
+    ) -> Result<Address, alloy_primitives::SignatureError> {
         signature.recover_address_from_prehash(&self.executor_signing_hash())
     }
 
@@ -101,14 +118,25 @@ impl EvNodeTransaction {
 
     fn encoded_payload(&self, fee_payer_signature: Option<&Signature>) -> Vec<u8> {
         let payload_len = self.payload_fields_length(fee_payer_signature);
-        let mut out = Vec::with_capacity(Header { list: true, payload_length: payload_len }.length_with_payload());
-        Header { list: true, payload_length: payload_len }.encode(&mut out);
+        let mut out = Vec::with_capacity(
+            Header {
+                list: true,
+                payload_length: payload_len,
+            }
+            .length_with_payload(),
+        );
+        Header {
+            list: true,
+            payload_length: payload_len,
+        }
+        .encode(&mut out);
         self.encode_payload_fields(&mut out, fee_payer_signature);
         out
     }
 
     fn encoded_payload_with_executor(&self, executor: Address) -> Vec<u8> {
-        let mut out = Vec::with_capacity(self.payload_fields_length(self.fee_payer_signature.as_ref()) + 32);
+        let mut out =
+            Vec::with_capacity(self.payload_fields_length(self.fee_payer_signature.as_ref()) + 32);
         out.extend_from_slice(executor.as_slice());
         self.encode_payload_fields(&mut out, self.fee_payer_signature.as_ref());
         out
@@ -139,7 +167,7 @@ impl EvNodeTransaction {
 
 impl Transaction for EvNodeTransaction {
     fn chain_id(&self) -> Option<alloy_primitives::ChainId> {
-        Some(self.chain_id.into())
+        Some(self.chain_id)
     }
 
     fn nonce(&self) -> u64 {
@@ -189,7 +217,9 @@ impl Transaction for EvNodeTransaction {
     }
 
     fn kind(&self) -> TxKind {
-        self.first_call().map(|call| call.to).unwrap_or(TxKind::Create)
+        self.first_call()
+            .map(|call| call.to)
+            .unwrap_or(TxKind::Create)
     }
 
     fn is_create(&self) -> bool {
@@ -228,18 +258,26 @@ impl alloy_eips::Typed2718 for EvNodeTransaction {
 
 impl SignableTransaction<Signature> for EvNodeTransaction {
     fn set_chain_id(&mut self, chain_id: alloy_primitives::ChainId) {
-        self.chain_id = chain_id.into();
+        self.chain_id = chain_id;
     }
 
     fn encode_for_signing(&self, out: &mut dyn BufMut) {
         out.put_u8(EVNODE_TX_TYPE_ID);
         let payload_len = self.payload_fields_length(None);
-        Header { list: true, payload_length: payload_len }.encode(out);
+        Header {
+            list: true,
+            payload_length: payload_len,
+        }
+        .encode(out);
         self.encode_payload_fields(out, None);
     }
 
     fn payload_len_for_signature(&self) -> usize {
-        1 + Header { list: true, payload_length: self.payload_fields_length(None) }.length_with_payload()
+        1 + Header {
+            list: true,
+            payload_length: self.payload_fields_length(None),
+        }
+        .length_with_payload()
     }
 }
 
@@ -272,7 +310,11 @@ impl RlpEcdsaDecodableTx for EvNodeTransaction {
 
 impl Encodable for EvNodeTransaction {
     fn length(&self) -> usize {
-        Header { list: true, payload_length: self.rlp_encoded_fields_length() }.length_with_payload()
+        Header {
+            list: true,
+            payload_length: self.rlp_encoded_fields_length(),
+        }
+        .length_with_payload()
     }
 
     fn encode(&self, out: &mut dyn BufMut) {
@@ -418,8 +460,9 @@ impl FromTxCompact for EvTxEnvelope {
     {
         match tx_type {
             EvTxType::Ethereum(inner) => {
-                let (tx, buf) =
-                    reth_ethereum_primitives::TransactionSigned::from_tx_compact(buf, inner, signature);
+                let (tx, buf) = reth_ethereum_primitives::TransactionSigned::from_tx_compact(
+                    buf, inner, signature,
+                );
                 (Self::Ethereum(tx), buf)
             }
             EvTxType::EvNode => {
@@ -459,6 +502,21 @@ impl SignedTransaction for EvTxEnvelope {}
 
 impl reth_primitives_traits::serde_bincode_compat::RlpBincode for EvTxEnvelope {}
 
+impl Compress for EvTxEnvelope {
+    type Compressed = Vec<u8>;
+
+    fn compress_to_buf<B: bytes::BufMut + AsMut<[u8]>>(&self, buf: &mut B) {
+        let _ = Compact::to_compact(self, buf);
+    }
+}
+
+impl Decompress for EvTxEnvelope {
+    fn decompress(value: &[u8]) -> Result<Self, DatabaseError> {
+        let (obj, _) = Compact::from_compact(value, value.len());
+        Ok(obj)
+    }
+}
+
 fn optional_signature_length(value: Option<&Signature>) -> usize {
     match value {
         Some(sig) => sig.as_bytes().as_slice().length(),
@@ -478,7 +536,9 @@ fn decode_optional_signature(buf: &mut &[u8]) -> alloy_rlp::Result<Option<Signat
     if bytes.is_empty() {
         return Ok(None);
     }
-    let raw: [u8; 65] = bytes.try_into().map_err(|_| alloy_rlp::Error::UnexpectedLength)?;
+    let raw: [u8; 65] = bytes
+        .try_into()
+        .map_err(|_| alloy_rlp::Error::UnexpectedLength)?;
     Signature::from_raw_array(&raw)
         .map(Some)
         .map_err(|_| alloy_rlp::Error::Custom("invalid signature bytes"))
@@ -502,7 +562,11 @@ mod tests {
             max_priority_fee_per_gas: 1,
             max_fee_per_gas: 2,
             gas_limit: 30_000,
-            calls: vec![Call { to: TxKind::Create, value: U256::from(1), input: Bytes::new() }],
+            calls: vec![Call {
+                to: TxKind::Create,
+                value: U256::from(1),
+                input: Bytes::new(),
+            }],
             access_list: AccessList::default(),
             fee_payer_signature: None,
         }

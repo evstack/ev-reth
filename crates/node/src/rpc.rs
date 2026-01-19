@@ -3,11 +3,13 @@
 use alloy_consensus::error::ValueError;
 use alloy_consensus::transaction::Recovered;
 use alloy_consensus::SignableTransaction;
+use alloy_consensus::Transaction as ConsensusTransaction;
 use alloy_consensus_any::AnyReceiptEnvelope;
 use alloy_network::{Ethereum, ReceiptResponse, TransactionResponse, TxSigner};
 use alloy_primitives::{Address, Signature, U256};
-use alloy_rpc_types_eth::{Log, Transaction, TransactionInfo, TransactionRequest, TransactionReceipt};
-use alloy_consensus::Transaction as ConsensusTransaction;
+use alloy_rpc_types_eth::{
+    Log, Transaction, TransactionInfo, TransactionReceipt, TransactionRequest,
+};
 use reth_chainspec::{ChainSpecProvider, EthChainSpec, EthereumHardforks, Hardforks};
 use reth_evm::{ConfigureEvm, SpecFor, TxEnvFor};
 use reth_node_api::{FullNodeComponents, FullNodeTypes, NodeTypes};
@@ -23,15 +25,15 @@ use reth_rpc_convert::{
 };
 use reth_rpc_eth_api::{
     helpers::{pending_block::BuildPendingEnv, AddDevSigners},
-    FullEthApiServer, FromEvmError, RpcNodeCore,
+    FromEvmError, FullEthApiServer, RpcNodeCore,
 };
 use reth_rpc_eth_types::receipt::build_receipt;
 use reth_rpc_eth_types::EthApiError;
 use std::marker::PhantomData;
 
+use crate::EvolveEvmConfig;
 use ev_primitives::{EvPrimitives, EvTxEnvelope};
 use ev_revm::EvTxEnv;
-use crate::EvolveEvmConfig;
 
 /// Ev-specific RPC types using Ethereum responses with a custom request wrapper.
 #[derive(Clone, Debug)]
@@ -258,11 +260,12 @@ impl SignableTxRequest<EvTxEnvelope> for EvTransactionRequest {
         self,
         signer: impl TxSigner<Signature> + Send,
     ) -> Result<EvTxEnvelope, SignTxRequestError> {
-        let mut tx =
-            self.0.build_typed_tx().map_err(|_| SignTxRequestError::InvalidTransactionRequest)?;
+        let mut tx = self
+            .0
+            .build_typed_tx()
+            .map_err(|_| SignTxRequestError::InvalidTransactionRequest)?;
         let signature = signer.sign_transaction(&mut tx).await?;
-        let signed: reth_ethereum_primitives::TransactionSigned =
-            tx.into_signed(signature).into();
+        let signed: reth_ethereum_primitives::TransactionSigned = tx.into_signed(signature).into();
         Ok(EvTxEnvelope::Ethereum(signed))
     }
 }
@@ -297,6 +300,7 @@ pub struct EvReceiptConverter<ChainSpec> {
 }
 
 impl<ChainSpec> EvReceiptConverter<ChainSpec> {
+    /// Creates a new receipt converter bound to the provided chain spec.
     pub const fn new(chain_spec: std::sync::Arc<ChainSpec>) -> Self {
         Self { chain_spec }
     }
@@ -316,7 +320,9 @@ where
         let mut receipts = Vec::with_capacity(inputs.len());
 
         for input in inputs {
-            let blob_params = self.chain_spec.blob_params_at_timestamp(input.meta.timestamp);
+            let blob_params = self
+                .chain_spec
+                .blob_params_at_timestamp(input.meta.timestamp);
             let fee_payer = match input.tx.inner() {
                 EvTxEnvelope::EvNode(ev) => ev
                     .tx()
@@ -329,7 +335,10 @@ where
                 let rpc_receipt = receipt.into_rpc(next_log_index, meta);
                 let tx_type = u8::from(rpc_receipt.tx_type);
                 let inner = <alloy_consensus::Receipt<Log>>::from(rpc_receipt).with_bloom();
-                AnyReceiptEnvelope { inner, r#type: tx_type }
+                AnyReceiptEnvelope {
+                    inner,
+                    r#type: tx_type,
+                }
             });
             receipts.push(EvRpcReceipt::new(receipt, fee_payer));
         }
@@ -360,21 +369,25 @@ pub struct EvEthApiBuilder;
 impl<N> EthApiBuilder<N> for EvEthApiBuilder
 where
     N: FullNodeComponents<
-        Types: NodeTypes<
+            Types: NodeTypes<
+                Primitives = EvPrimitives,
+                ChainSpec: Hardforks
+                               + EthereumHardforks
+                               + EthChainSpec
+                               + std::fmt::Debug
+                               + Send
+                               + Sync
+                               + 'static,
+            >,
+            Evm = EvolveEvmConfig,
+        > + RpcNodeCore<
             Primitives = EvPrimitives,
-            ChainSpec:
-                Hardforks + EthereumHardforks + EthChainSpec + std::fmt::Debug + Send + Sync + 'static,
+            Provider = <N as FullNodeTypes>::Provider,
+            Pool = <N as FullNodeComponents>::Pool,
+            Evm = EvolveEvmConfig,
         >,
-        Evm = EvolveEvmConfig,
-    > + RpcNodeCore<
-        Primitives = EvPrimitives,
-        Provider = <N as FullNodeTypes>::Provider,
-        Pool = <N as FullNodeComponents>::Pool,
-        Evm = EvolveEvmConfig,
-    >,
-    <N as FullNodeTypes>::Provider: ChainSpecProvider<
-        ChainSpec = <<N as FullNodeTypes>::Types as NodeTypes>::ChainSpec,
-    >,
+    <N as FullNodeTypes>::Provider:
+        ChainSpecProvider<ChainSpec = <<N as FullNodeTypes>::Types as NodeTypes>::ChainSpec>,
     <N as FullNodeComponents>::Evm:
         ConfigureEvm<NextBlockEnvCtx: BuildPendingEnv<alloy_consensus::Header>>,
     TxEnvFor<<N as FullNodeComponents>::Evm>: From<EvTxEnv>,
@@ -402,7 +415,10 @@ where
         let rpc_converter =
             rpc_converter.with_tx_env_converter(EvTxEnvConverter::<EvolveEvmConfig>::default());
 
-        Ok(ctx.eth_api_builder().with_rpc_converter(rpc_converter).build())
+        Ok(ctx
+            .eth_api_builder()
+            .with_rpc_converter(rpc_converter)
+            .build())
     }
 }
 
@@ -410,7 +426,9 @@ where
 #[derive(Clone, Debug, Default)]
 pub struct EvRpcTxConverter;
 
-impl RpcTxConverter<EvTxEnvelope, RpcTransaction<EvRpcTypes>, TransactionInfo> for EvRpcTxConverter {
+impl RpcTxConverter<EvTxEnvelope, RpcTransaction<EvRpcTypes>, TransactionInfo>
+    for EvRpcTxConverter
+{
     type Err = EthApiError;
 
     fn convert_rpc_tx(
@@ -428,7 +446,10 @@ impl RpcTxConverter<EvTxEnvelope, RpcTransaction<EvRpcTypes>, TransactionInfo> f
             EvTxEnvelope::Ethereum(_) => None,
         };
         let recovered = Recovered::new_unchecked(tx, signer);
-        Ok(EvRpcTransaction::new(Transaction::from_transaction(recovered, tx_info), fee_payer))
+        Ok(EvRpcTransaction::new(
+            Transaction::from_transaction(recovered, tx_info),
+            fee_payer,
+        ))
     }
 }
 

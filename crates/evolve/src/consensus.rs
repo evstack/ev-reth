@@ -1,5 +1,6 @@
 //! Evolve custom consensus implementation that allows same timestamps across blocks.
 
+use ev_primitives::{Block, BlockBody, EvPrimitives, Receipt};
 use reth_chainspec::ChainSpec;
 use reth_consensus::{Consensus, ConsensusError, FullConsensus, HeaderValidator};
 use reth_consensus_common::validation::{
@@ -8,7 +9,6 @@ use reth_consensus_common::validation::{
 };
 use reth_ethereum::node::builder::{components::ConsensusBuilder, BuilderContext};
 use reth_ethereum_consensus::EthBeaconConsensus;
-use ev_primitives::{Block, BlockBody, EvPrimitives, Receipt};
 use reth_execution_types::BlockExecutionResult;
 use reth_node_api::{FullNodeTypes, NodeTypes};
 use reth_primitives_traits::{RecoveredBlock, SealedBlock, SealedHeader};

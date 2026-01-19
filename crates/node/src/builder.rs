@@ -1,5 +1,7 @@
 use crate::config::EvolvePayloadBuilderConfig;
+use crate::executor::EvEvmConfig;
 use alloy_consensus::transaction::Transaction;
+use alloy_consensus::transaction::TxHashRef;
 use alloy_primitives::Address;
 use ev_revm::EvTxEvmFactory;
 use evolve_ev_reth::EvolvePayloadAttributes;
@@ -9,10 +11,8 @@ use reth_evm::{
     execute::{BlockBuilder, BlockBuilderOutcome},
     ConfigureEvm, NextBlockEnvAttributes,
 };
-use crate::executor::EvEvmConfig;
 use reth_payload_builder_primitives::PayloadBuilderError;
 use reth_primitives::{transaction::SignedTransaction, Header, SealedHeader};
-use alloy_consensus::transaction::TxHashRef;
 use reth_primitives_traits::SealedBlock;
 use reth_provider::{HeaderProvider, StateProviderFactory};
 use reth_revm::{database::StateProviderDatabase, State};

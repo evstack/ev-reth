@@ -10,7 +10,9 @@ alloy-consensus = { workspace = true }
 alloy-eips = { workspace = true, features = ["serde"] }
 alloy-primitives = { workspace = true, features = ["k256", "rlp", "serde"] }
 alloy-rlp = { workspace = true, features = ["derive"] }
+bytes = { workspace = true }
 reth-codecs = { workspace = true }
+reth-db-api = { workspace = true }
 reth-ethereum-primitives = { workspace = true }
 reth-primitives-traits = { workspace = true, features = ["serde-bincode-compat"] }
 serde = { workspace = true, features = ["derive"] }

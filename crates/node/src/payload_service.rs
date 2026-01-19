@@ -28,8 +28,8 @@ use crate::{
     payload_types::EvBuiltPayload,
 };
 
-use evolve_ev_reth::config::set_current_block_gas_limit;
 use ev_primitives::{EvPrimitives, TransactionSigned};
+use evolve_ev_reth::config::set_current_block_gas_limit;
 
 /// Evolve payload service builder that integrates with the evolve payload builder.
 #[derive(Debug, Clone)]

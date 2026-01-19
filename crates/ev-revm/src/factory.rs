@@ -9,6 +9,7 @@ use alloy_evm::{
 use alloy_primitives::{Address, U256};
 use ev_precompiles::mint::{MintPrecompile, MINT_PRECOMPILE_ADDR};
 use reth_evm_ethereum::EthEvmConfig;
+use reth_revm::revm::context_interface::journaled_state::JournalTr;
 use reth_revm::{
     inspector::NoOpInspector,
     revm::{
@@ -20,11 +21,10 @@ use reth_revm::{
         handler::instructions::EthInstructions,
         interpreter::interpreter::EthInterpreter,
         precompile::{PrecompileSpecId, Precompiles},
-        Context, Inspector,
         primitives::hardfork::SpecId,
+        Context, Inspector,
     },
 };
-use reth_revm::revm::context_interface::journaled_state::JournalTr;
 use std::sync::Arc;
 
 /// Settings for enabling the base-fee redirect at a specific block height.
@@ -227,7 +227,12 @@ pub struct EvTxEvmFactory {
     contract_size_limit: Option<ContractSizeLimitSettings>,
 }
 
-type EvEvmContext<DB> = Context<reth_revm::revm::context::BlockEnv, EvTxEnv, reth_revm::revm::context::CfgEnv<SpecId>, DB>;
+type EvEvmContext<DB> = Context<
+    reth_revm::revm::context::BlockEnv,
+    EvTxEnv,
+    reth_revm::revm::context::CfgEnv<SpecId>,
+    DB,
+>;
 type EvRevmEvm<DB, I> = RevmEvm<
     EvEvmContext<DB>,
     I,
@@ -237,12 +242,17 @@ type EvRevmEvm<DB, I> = RevmEvm<
 >;
 
 impl EvTxEvmFactory {
+    /// Creates a new EV EVM factory with optional redirect and precompile settings.
     pub const fn new(
         redirect: Option<BaseFeeRedirectSettings>,
         mint_precompile: Option<MintPrecompileSettings>,
         contract_size_limit: Option<ContractSizeLimitSettings>,
     ) -> Self {
-        Self { redirect, mint_precompile, contract_size_limit }
+        Self {
+            redirect,
+            mint_precompile,
+            contract_size_limit,
+        }
     }
 
     fn contract_size_limit_for_block(&self, block_number: U256) -> Option<usize> {
@@ -291,9 +301,9 @@ impl EvTxEvmFactory {
         env: EvmEnv<SpecId>,
         inspector: I,
     ) -> EvRevmEvm<DB, I> {
-        let precompiles = PrecompilesMap::from_static(Precompiles::new(PrecompileSpecId::from_spec_id(
-            env.cfg_env.spec,
-        )));
+        let precompiles = PrecompilesMap::from_static(Precompiles::new(
+            PrecompileSpecId::from_spec_id(env.cfg_env.spec),
+        ));
 
         let mut journaled_state = reth_revm::revm::Journal::new(db);
         journaled_state.set_spec_id(env.cfg_env.spec);

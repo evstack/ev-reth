@@ -6,8 +6,8 @@ use alloy_evm::{
     block::{
         state_changes::{balance_increment_state, post_block_balance_increments},
         BlockExecutionError, BlockExecutionResult, BlockExecutor, BlockExecutorFactory,
-        BlockExecutorFor, BlockValidationError, ExecutableTx, OnStateHook, StateChangePostBlockSource,
-        StateChangeSource, SystemCaller,
+        BlockExecutorFor, BlockValidationError, ExecutableTx, OnStateHook,
+        StateChangePostBlockSource, StateChangeSource, SystemCaller,
     },
     eth::{
         dao_fork, eip6110,
@@ -21,7 +21,9 @@ use alloy_primitives::Log;
 use ev_primitives::{Receipt, TransactionSigned};
 use reth_codecs::alloy::transaction::Envelope;
 use reth_ethereum_forks::EthereumHardfork;
-use reth_revm::revm::{context_interface::result::ResultAndState, database::State, DatabaseCommit, Inspector};
+use reth_revm::revm::{
+    context_interface::result::ResultAndState, database::State, DatabaseCommit, Inspector,
+};
 
 /// Receipt builder that works with Ev transaction envelopes.
 #[derive(Debug, Clone, Copy, Default)]
@@ -36,7 +38,12 @@ impl ReceiptBuilder for EvReceiptBuilder {
         &self,
         ctx: ReceiptBuilderCtx<'_, Self::Transaction, E>,
     ) -> Self::Receipt {
-        let ReceiptBuilderCtx { tx, result, cumulative_gas_used, .. } = ctx;
+        let ReceiptBuilderCtx {
+            tx,
+            result,
+            cumulative_gas_used,
+            ..
+        } = ctx;
         Receipt {
             tx_type: tx.tx_type(),
             success: result.is_success(),
@@ -50,6 +57,7 @@ impl ReceiptBuilder for EvReceiptBuilder {
 #[derive(Debug)]
 pub struct EvBlockExecutor<'a, Evm, Spec, R: ReceiptBuilder> {
     spec: Spec,
+    /// Block execution context (parent hash, withdrawals, ommers, etc.).
     pub ctx: EthBlockExecutionCtx<'a>,
     evm: Evm,
     system_caller: SystemCaller<Spec>,
@@ -63,6 +71,7 @@ where
     Spec: Clone,
     R: ReceiptBuilder,
 {
+    /// Creates a new block executor with the provided EVM, context, spec, and receipt builder.
     pub fn new(evm: Evm, ctx: EthBlockExecutionCtx<'a>, spec: Spec, receipt_builder: R) -> Self {
         Self {
             evm,
@@ -91,11 +100,13 @@ where
     type Evm = E;
 
     fn apply_pre_execution_changes(&mut self) -> Result<(), BlockExecutionError> {
-        let state_clear_flag =
-            self.spec.is_spurious_dragon_active_at_block(self.evm.block().number.saturating_to());
+        let state_clear_flag = self
+            .spec
+            .is_spurious_dragon_active_at_block(self.evm.block().number.saturating_to());
         self.evm.db_mut().set_state_clear_flag(state_clear_flag);
 
-        self.system_caller.apply_blockhashes_contract_call(self.ctx.parent_hash, &mut self.evm)?;
+        self.system_caller
+            .apply_blockhashes_contract_call(self.ctx.parent_hash, &mut self.evm)?;
         self.system_caller
             .apply_beacon_root_contract_call(self.ctx.parent_beacon_block_root, &mut self.evm)?;
 
@@ -109,11 +120,13 @@ where
         let block_available_gas = self.evm.block().gas_limit - self.gas_used;
 
         if tx.tx().gas_limit() > block_available_gas {
-            return Err(BlockValidationError::TransactionGasLimitMoreThanAvailableBlockGas {
-                transaction_gas_limit: tx.tx().gas_limit(),
-                block_available_gas,
-            }
-            .into());
+            return Err(
+                BlockValidationError::TransactionGasLimitMoreThanAvailableBlockGas {
+                    transaction_gas_limit: tx.tx().gas_limit(),
+                    block_available_gas,
+                }
+                .into(),
+            );
         }
 
         self.evm.transact(&tx).map_err(|err| {
@@ -129,18 +142,20 @@ where
     ) -> Result<u64, BlockExecutionError> {
         let ResultAndState { result, state } = output;
 
-        self.system_caller.on_state(StateChangeSource::Transaction(self.receipts.len()), &state);
+        self.system_caller
+            .on_state(StateChangeSource::Transaction(self.receipts.len()), &state);
 
         let gas_used = result.gas_used();
         self.gas_used += gas_used;
 
-        self.receipts.push(self.receipt_builder.build_receipt(ReceiptBuilderCtx {
-            tx: tx.tx(),
-            evm: &self.evm,
-            result,
-            state: &state,
-            cumulative_gas_used: self.gas_used,
-        }));
+        self.receipts
+            .push(self.receipt_builder.build_receipt(ReceiptBuilderCtx {
+                tx: tx.tx(),
+                evm: &self.evm,
+                result,
+                state: &state,
+                cumulative_gas_used: self.gas_used,
+            }));
 
         self.evm.db_mut().commit(state);
 
@@ -163,7 +178,10 @@ where
                 requests.push_request_with_type(eip6110::DEPOSIT_REQUEST_TYPE, deposit_requests);
             }
 
-            requests.extend(self.system_caller.apply_post_execution_changes(&mut self.evm)?);
+            requests.extend(
+                self.system_caller
+                    .apply_post_execution_changes(&mut self.evm)?,
+            );
             requests
         } else {
             Requests::default()
@@ -189,8 +207,9 @@ where
                 .into_iter()
                 .sum();
 
-            *balance_increments.entry(dao_fork::DAO_HARDFORK_BENEFICIARY).or_default() +=
-                drained_balance;
+            *balance_increments
+                .entry(dao_fork::DAO_HARDFORK_BENEFICIARY)
+                .or_default() += drained_balance;
         }
 
         self.evm
@@ -209,7 +228,11 @@ where
 
         Ok((
             self.evm,
-            BlockExecutionResult { receipts: self.receipts, requests, gas_used: self.gas_used },
+            BlockExecutionResult {
+                receipts: self.receipts,
+                requests,
+                gas_used: self.gas_used,
+            },
         ))
     }
 
@@ -228,25 +251,34 @@ where
 
 /// Block executor factory for EV transactions.
 #[derive(Debug, Clone, Default, Copy)]
-pub struct EvBlockExecutorFactory<R = EvReceiptBuilder, Spec = EthSpec, EvmFactory = EthEvmFactory> {
+pub struct EvBlockExecutorFactory<R = EvReceiptBuilder, Spec = EthSpec, EvmFactory = EthEvmFactory>
+{
     receipt_builder: R,
     spec: Spec,
     evm_factory: EvmFactory,
 }
 
 impl<R, Spec, EvmFactory> EvBlockExecutorFactory<R, Spec, EvmFactory> {
+    /// Creates a new EV block executor factory.
     pub const fn new(receipt_builder: R, spec: Spec, evm_factory: EvmFactory) -> Self {
-        Self { receipt_builder, spec, evm_factory }
+        Self {
+            receipt_builder,
+            spec,
+            evm_factory,
+        }
     }
 
+    /// Returns the receipt builder used by the factory.
     pub const fn receipt_builder(&self) -> &R {
         &self.receipt_builder
     }
 
+    /// Returns the spec configuration used by the factory.
     pub const fn spec(&self) -> &Spec {
         &self.spec
     }
 
+    /// Returns the underlying EVM factory.
     pub const fn evm_factory(&self) -> &EvmFactory {
         &self.evm_factory
     }

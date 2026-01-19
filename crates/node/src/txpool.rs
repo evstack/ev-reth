@@ -5,11 +5,8 @@ use alloy_consensus::{
     BlobTransactionValidationError, Signed, Typed2718,
 };
 use alloy_eips::{
-    eip2718::Encodable2718,
-    eip2718::WithEncoded,
-    eip7594::BlobTransactionSidecarVariant,
-    eip7840::BlobParams,
-    merge::EPOCH_SLOTS,
+    eip2718::Encodable2718, eip2718::WithEncoded, eip7594::BlobTransactionSidecarVariant,
+    eip7840::BlobParams, merge::EPOCH_SLOTS,
 };
 use alloy_primitives::{Address, U256};
 use c_kzg::KzgSettings;
@@ -29,16 +26,21 @@ use reth_transaction_pool::{
 };
 use tracing::{debug, info};
 
+/// Pool transaction wrapper for `EvTxEnvelope`.
 #[derive(Debug, Clone)]
 pub struct EvPooledTransaction {
     inner: EthPooledTransaction<EvTxEnvelope>,
 }
 
 impl EvPooledTransaction {
+    /// Creates a new pooled transaction from a recovered envelope and encoded length.
     pub fn new(transaction: Recovered<EvTxEnvelope>, encoded_length: usize) -> Self {
-        Self { inner: EthPooledTransaction::new(transaction, encoded_length) }
+        Self {
+            inner: EthPooledTransaction::new(transaction, encoded_length),
+        }
     }
 
+    /// Returns the recovered transaction.
     pub const fn transaction(&self) -> &Recovered<EvTxEnvelope> {
         self.inner.transaction()
     }
@@ -198,7 +200,10 @@ impl alloy_consensus::Transaction for EvPooledTransaction {
 impl EthPoolTransaction for EvPooledTransaction {
     fn take_blob(&mut self) -> EthBlobTransactionSidecar {
         if self.is_eip4844() {
-            std::mem::replace(&mut self.inner.blob_sidecar, EthBlobTransactionSidecar::Missing)
+            std::mem::replace(
+                &mut self.inner.blob_sidecar,
+                EthBlobTransactionSidecar::Missing,
+            )
         } else {
             EthBlobTransactionSidecar::None
         }
@@ -211,8 +216,9 @@ impl EthPoolTransaction for EvPooledTransaction {
         let (signed_transaction, signer) = self.into_consensus().into_parts();
         match signed_transaction {
             EvTxEnvelope::Ethereum(tx) => {
-                let pooled_transaction =
-                    tx.try_into_pooled_eip4844(std::sync::Arc::unwrap_or_clone(sidecar)).ok()?;
+                let pooled_transaction = tx
+                    .try_into_pooled_eip4844(std::sync::Arc::unwrap_or_clone(sidecar))
+                    .ok()?;
                 Some(Recovered::new_unchecked(
                     EvPooledTxEnvelope::Ethereum(pooled_transaction),
                     signer,
@@ -245,21 +251,30 @@ impl EthPoolTransaction for EvPooledTransaction {
         match self.inner.transaction.inner() {
             EvTxEnvelope::Ethereum(tx) => match tx.as_eip4844() {
                 Some(tx) => tx.tx().validate_blob(sidecar, settings),
-                None => Err(BlobTransactionValidationError::NotBlobTransaction(self.ty())),
+                None => Err(BlobTransactionValidationError::NotBlobTransaction(
+                    self.ty(),
+                )),
             },
-            EvTxEnvelope::EvNode(_) => Err(BlobTransactionValidationError::NotBlobTransaction(self.ty())),
+            EvTxEnvelope::EvNode(_) => Err(BlobTransactionValidationError::NotBlobTransaction(
+                self.ty(),
+            )),
         }
     }
 }
 
+/// Errors returned by EV-specific transaction pool validation.
 #[derive(Debug, thiserror::Error)]
 pub enum EvTxPoolError {
+    /// EvNode transaction must include at least one call.
     #[error("evnode transaction must include at least one call")]
     EmptyCalls,
+    /// Only the first call may be a CREATE.
     #[error("only the first call may be CREATE")]
     InvalidCreatePosition,
+    /// Sponsor signature failed verification.
     #[error("invalid sponsor signature")]
     InvalidSponsorSignature,
+    /// Error while querying account info from the state provider.
     #[error("state provider error: {0}")]
     StateProvider(String),
 }
@@ -277,22 +292,33 @@ impl PoolTransactionError for EvTxPoolError {
     }
 }
 
+/// Transaction validator that adds EV-specific checks on top of the base validator.
 #[derive(Debug, Clone)]
 pub struct EvTransactionValidator<Client> {
     inner: Arc<EthTransactionValidator<Client, EvPooledTransaction>>,
 }
 
 impl<Client> EvTransactionValidator<Client> {
+    /// Wraps the provided Ethereum validator with EV-specific validation logic.
     pub fn new(inner: EthTransactionValidator<Client, EvPooledTransaction>) -> Self {
-        Self { inner: Arc::new(inner) }
+        Self {
+            inner: Arc::new(inner),
+        }
     }
 
-    fn validate_evnode_calls(&self, tx: &EvNodeTransaction) -> Result<(), InvalidPoolTransactionError> {
+    fn validate_evnode_calls(
+        &self,
+        tx: &EvNodeTransaction,
+    ) -> Result<(), InvalidPoolTransactionError> {
         if tx.calls.is_empty() {
-            return Err(InvalidPoolTransactionError::other(EvTxPoolError::EmptyCalls));
+            return Err(InvalidPoolTransactionError::other(
+                EvTxPoolError::EmptyCalls,
+            ));
         }
         if tx.calls.iter().skip(1).any(|call| call.to.is_create()) {
-            return Err(InvalidPoolTransactionError::other(EvTxPoolError::InvalidCreatePosition));
+            return Err(InvalidPoolTransactionError::other(
+                EvTxPoolError::InvalidCreatePosition,
+            ));
         }
         Ok(())
     }
@@ -305,11 +331,9 @@ impl<Client> EvTransactionValidator<Client> {
         Client: StateProviderFactory,
     {
         if state.is_none() {
-            let new_state = self
-                .inner
-                .client()
-                .latest()
-                .map_err(|err| InvalidPoolTransactionError::other(EvTxPoolError::StateProvider(err.to_string())))?;
+            let new_state = self.inner.client().latest().map_err(|err| {
+                InvalidPoolTransactionError::other(EvTxPoolError::StateProvider(err.to_string()))
+            })?;
             *state = Some(Box::new(new_state));
         }
         Ok(())
@@ -328,10 +352,15 @@ impl<Client> EvTransactionValidator<Client> {
         let state = state.as_ref().expect("state provider is set");
         let account = state
             .basic_account(&sponsor)
-            .map_err(|err| InvalidPoolTransactionError::other(EvTxPoolError::StateProvider(err.to_string())))?
+            .map_err(|err| {
+                InvalidPoolTransactionError::other(EvTxPoolError::StateProvider(err.to_string()))
+            })?
             .unwrap_or_default();
         if account.balance < gas_cost {
-            return Err(InvalidPoolTransactionError::Overdraft { cost: gas_cost, balance: account.balance });
+            return Err(InvalidPoolTransactionError::Overdraft {
+                cost: gas_cost,
+                balance: account.balance,
+            });
         }
         Ok(())
     }
@@ -348,7 +377,10 @@ impl<Client> EvTransactionValidator<Client> {
         let consensus = pooled.transaction().inner();
         let EvTxEnvelope::EvNode(tx) = consensus else {
             if sender_balance < *pooled.cost() {
-                return Err(InvalidPoolTransactionError::Overdraft { cost: *pooled.cost(), balance: sender_balance });
+                return Err(InvalidPoolTransactionError::Overdraft {
+                    cost: *pooled.cost(),
+                    balance: sender_balance,
+                });
             }
             return Ok(());
         };
@@ -358,9 +390,9 @@ impl<Client> EvTransactionValidator<Client> {
 
         if let Some(signature) = tx.fee_payer_signature.as_ref() {
             let executor = pooled.transaction().signer();
-            let sponsor = tx
-                .recover_sponsor(executor, signature)
-                .map_err(|_| InvalidPoolTransactionError::other(EvTxPoolError::InvalidSponsorSignature))?;
+            let sponsor = tx.recover_sponsor(executor, signature).map_err(|_| {
+                InvalidPoolTransactionError::other(EvTxPoolError::InvalidSponsorSignature)
+            })?;
 
             let gas_cost = U256::from(tx.max_fee_per_gas).saturating_mul(U256::from(tx.gas_limit));
             self.validate_sponsor_balance(state, sponsor, gas_cost)?;
@@ -403,7 +435,9 @@ where
                     propagate,
                     authorities,
                 },
-                Err(err) => TransactionValidationOutcome::Invalid(transaction.into_transaction(), err),
+                Err(err) => {
+                    TransactionValidationOutcome::Invalid(transaction.into_transaction(), err)
+                }
             },
             other => other,
         }
@@ -437,8 +471,9 @@ where
         let blob_cache_size = if let Some(blob_cache_size) = pool_config.blob_cache_size {
             Some(blob_cache_size)
         } else {
-            let current_timestamp =
-                std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_secs();
+            let current_timestamp = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_secs();
             let blob_params = ctx
                 .chain_spec()
                 .blob_params_at_timestamp(current_timestamp)
@@ -460,7 +495,10 @@ where
             .with_minimum_priority_fee(ctx.config().txpool.minimum_priority_fee)
             .disable_balance_check()
             .with_additional_tasks(ctx.config().txpool.additional_validation_tasks)
-            .build_with_tasks::<EvPooledTransaction, _, _>(ctx.task_executor().clone(), blob_store.clone())
+            .build_with_tasks::<EvPooledTransaction, _, _>(
+                ctx.task_executor().clone(),
+                blob_store.clone(),
+            )
             .map(EvTransactionValidator::new);
 
         if validator.validator().inner.eip4844() {

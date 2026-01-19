@@ -10,18 +10,17 @@ use alloy_genesis::Genesis;
 use alloy_primitives::{Address, Bytes, ChainId, Signature, TxKind, B256, U256};
 use ev_primitives::{EvTxEnvelope, TransactionSigned};
 use ev_revm::{
-    with_ev_handler, BaseFeeRedirect, BaseFeeRedirectSettings, ContractSizeLimitSettings,
+    BaseFeeRedirect, BaseFeeRedirectSettings, ContractSizeLimitSettings, EvTxEvmFactory,
     MintPrecompileSettings,
 };
 use eyre::Result;
 use reth_chainspec::{ChainSpec, ChainSpecBuilder};
-use reth_evm_ethereum::EthEvmConfig;
 use reth_primitives::{Header, Transaction};
 use reth_provider::test_utils::{ExtendedAccount, MockEthProvider};
 use serde_json::json;
 use tempfile::TempDir;
 
-use ev_node::{EvolvePayloadBuilder, EvolvePayloadBuilderConfig};
+use ev_node::{EvolveEvmConfig, EvolvePayloadBuilder, EvolvePayloadBuilderConfig};
 use evolve_ev_reth::EvolvePayloadAttributes;
 
 // Test constants
@@ -133,7 +132,6 @@ impl EvolveTestFixture {
 
         // Create a test chain spec with our test chain ID
         let test_chainspec = create_test_chain_spec();
-        let evm_config = EthEvmConfig::new(test_chainspec.clone());
         let config = EvolvePayloadBuilderConfig::from_chain_spec(test_chainspec.as_ref()).unwrap();
         config.validate().unwrap();
 
@@ -148,12 +146,10 @@ impl EvolveTestFixture {
         let contract_size_limit = config
             .contract_size_limit_settings()
             .map(|(limit, activation)| ContractSizeLimitSettings::new(limit, activation));
-        let wrapped_evm = with_ev_handler(
-            evm_config,
-            base_fee_redirect,
-            mint_precompile,
-            contract_size_limit,
-        );
+        let evm_factory =
+            EvTxEvmFactory::new(base_fee_redirect, mint_precompile, contract_size_limit);
+        let wrapped_evm =
+            EvolveEvmConfig::new_with_evm_factory(test_chainspec.clone(), evm_factory);
 
         let builder = EvolvePayloadBuilder::new(Arc::new(provider.clone()), wrapped_evm, config);
 

@@ -4,6 +4,7 @@ use alloy_rpc_types::engine::{
     ExecutionData, ExecutionPayloadEnvelopeV2, ExecutionPayloadEnvelopeV3,
     ExecutionPayloadEnvelopeV4, ExecutionPayloadEnvelopeV5, ExecutionPayloadV1,
 };
+use ev_primitives::EvPrimitives;
 use reth_ethereum::{
     chainspec::ChainSpec,
     node::{
@@ -16,7 +17,6 @@ use reth_ethereum::{
         node::EthereumNetworkBuilder,
     },
 };
-use ev_primitives::EvPrimitives;
 use reth_primitives_traits::SealedBlock;
 use serde::{Deserialize, Serialize};
 use tracing::info;

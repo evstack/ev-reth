@@ -55,8 +55,10 @@ impl<EVM, ERROR, FRAME> EvHandler<EVM, ERROR, FRAME> {
 impl<EVM, ERROR, FRAME> Handler for EvHandler<EVM, ERROR, FRAME>
 where
     EVM: EvmTr<
-        Context: ContextTr<Journal: JournalTr<State = EvmState>, Tx: SponsorPayerTx + BatchCallsTx>
-            + ContextSetters,
+        Context: ContextTr<
+            Journal: JournalTr<State = EvmState>,
+            Tx: SponsorPayerTx + BatchCallsTx,
+        > + ContextSetters,
         Frame = FRAME,
     >,
     <<EVM as EvmTr>::Context as ContextTr>::Tx: Clone,
@@ -76,19 +78,18 @@ where
         let tx = ctx.tx();
         if let Some(calls) = tx.batch_calls() {
             if calls.is_empty() {
-                return Err(Self::Error::from_string("evnode transaction must include at least one call".into()));
+                return Err(Self::Error::from_string(
+                    "evnode transaction must include at least one call".into(),
+                ));
             }
             if calls.iter().skip(1).any(|call| call.to.is_create()) {
-                return Err(Self::Error::from_string("only the first call may be CREATE".into()));
+                return Err(Self::Error::from_string(
+                    "only the first call may be CREATE".into(),
+                ));
             }
             if calls.len() > 1 {
-                return validate_batch_initial_tx_gas(
-                    tx,
-                    calls,
-                    ctx.cfg().spec().into(),
-                    false,
-                )
-                .map_err(From::from);
+                return validate_batch_initial_tx_gas(tx, calls, ctx.cfg().spec().into(), false)
+                    .map_err(From::from);
             }
         }
 
@@ -155,9 +156,10 @@ where
                 }
             }
 
-            let effective_balance_spending = tx
-                .effective_balance_spending(basefee, blob_price)
-                .expect("effective balance is always smaller than max balance so it can't overflow");
+            let effective_balance_spending =
+                tx.effective_balance_spending(basefee, blob_price).expect(
+                    "effective balance is always smaller than max balance so it can't overflow",
+                );
             let gas_cost = effective_balance_spending - total_value;
 
             let sponsor_account = journal.load_account_code(sponsor)?.data;
@@ -183,8 +185,13 @@ where
                 is_eip3607_disabled,
                 is_nonce_check_disabled,
             )?;
-            let new_caller_balance =
-                calculate_caller_fee(caller.info.balance, tx, basefee, blob_price, is_balance_check_disabled)?;
+            let new_caller_balance = calculate_caller_fee(
+                caller.info.balance,
+                tx,
+                basefee,
+                blob_price,
+                is_balance_check_disabled,
+            )?;
             caller.info.set_balance(new_caller_balance);
             if is_call {
                 caller.info.set_nonce(caller.info.nonce.saturating_add(1));
@@ -236,12 +243,7 @@ where
 
             if !instruction_result.is_ok() {
                 evm.ctx_mut().journal_mut().checkpoint_revert(checkpoint);
-                finalize_batch_gas(
-                    &mut frame_result,
-                    gas_limit,
-                    remaining_gas,
-                    0,
-                );
+                finalize_batch_gas(&mut frame_result, gas_limit, remaining_gas, 0);
                 return Ok(frame_result);
             }
 
@@ -251,12 +253,7 @@ where
         evm.ctx_mut().journal_mut().checkpoint_commit();
 
         let mut frame_result = last_result.expect("batch execution requires at least one call");
-        finalize_batch_gas(
-            &mut frame_result,
-            gas_limit,
-            remaining_gas,
-            total_refunded,
-        );
+        finalize_batch_gas(&mut frame_result, gas_limit, remaining_gas, total_refunded);
 
         Ok(frame_result)
     }
@@ -398,7 +395,10 @@ fn calculate_caller_fee<Tx>(
     basefee: u128,
     blob_price: u128,
     is_balance_check_disabled: bool,
-) -> Result<reth_revm::revm::primitives::U256, reth_revm::revm::context_interface::result::InvalidTransaction>
+) -> Result<
+    reth_revm::revm::primitives::U256,
+    reth_revm::revm::context_interface::result::InvalidTransaction,
+>
 where
     Tx: Transaction,
 {
@@ -435,14 +435,8 @@ fn validate_batch_initial_tx_gas<Tx: Transaction>(
     let mut floor_gas = 0u64;
 
     for call in calls {
-        let call_gas = calculate_initial_tx_gas(
-            spec,
-            call.input.as_ref(),
-            call.to.is_create(),
-            0,
-            0,
-            0,
-        );
+        let call_gas =
+            calculate_initial_tx_gas(spec, call.input.as_ref(), call.to.is_create(), 0, 0, 0);
         initial_gas = initial_gas.saturating_add(call_gas.initial_gas);
         floor_gas = floor_gas.saturating_add(call_gas.floor_gas);
     }
@@ -496,7 +490,12 @@ fn validate_batch_initial_tx_gas<Tx: Transaction>(
     Ok(InitialAndFloorGas::new(initial_gas, floor_gas))
 }
 
-fn finalize_batch_gas(frame_result: &mut FrameResult, tx_gas_limit: u64, remaining_gas: u64, refund: i64) {
+fn finalize_batch_gas(
+    frame_result: &mut FrameResult,
+    tx_gas_limit: u64,
+    remaining_gas: u64,
+    refund: i64,
+) {
     let instruction_result = frame_result.interpreter_result().result;
     let mut gas = Gas::new_spent(tx_gas_limit);
     if instruction_result.is_ok_or_revert() {
@@ -518,8 +517,8 @@ mod tests {
         inspector::NoOpInspector,
         revm::{
             context::Context,
-            context_interface::transaction::{AccessList, AccessListItem, TransactionType},
             context_interface::result::ExecutionResult,
+            context_interface::transaction::{AccessList, AccessListItem, TransactionType},
             database::{CacheDB, EmptyDB},
             handler::{EthFrame, FrameResult},
             interpreter::{CallOutcome, Gas, InstructionResult, InterpreterResult},
@@ -527,8 +526,7 @@ mod tests {
             primitives::KECCAK_EMPTY,
             state::{AccountInfo, EvmState},
         },
-        State,
-        MainContext,
+        MainContext, State,
     };
     use std::convert::Infallible;
 
@@ -539,9 +537,9 @@ mod tests {
     type TestError = EVMError<Infallible, InvalidTransaction>;
     type TestHandler = EvHandler<TestEvm, TestError, EthFrame<EthInterpreter>>;
 
-    use reth_revm::revm::context::{BlockEnv, CfgEnv, TxEnv};
-    use reth_revm::revm::bytecode::Bytecode as RevmBytecode;
     use alloy_evm::{Evm, EvmEnv, EvmFactory};
+    use reth_revm::revm::bytecode::Bytecode as RevmBytecode;
+    use reth_revm::revm::context::{BlockEnv, CfgEnv, TxEnv};
 
     const BASE_FEE: u64 = 100;
     const GAS_PRICE: u128 = 200;
@@ -619,10 +617,11 @@ mod tests {
             },
         ];
 
-        let gas_call_1 = calculate_initial_tx_gas(SpecId::PRAGUE, calls[0].input.as_ref(), false, 0, 0, 0);
-        let gas_call_2 = calculate_initial_tx_gas(SpecId::PRAGUE, calls[1].input.as_ref(), false, 0, 0, 0);
-        let access_list_cost =
-            ACCESS_LIST_ADDRESS + 2 * ACCESS_LIST_STORAGE_KEY;
+        let gas_call_1 =
+            calculate_initial_tx_gas(SpecId::PRAGUE, calls[0].input.as_ref(), false, 0, 0, 0);
+        let gas_call_2 =
+            calculate_initial_tx_gas(SpecId::PRAGUE, calls[1].input.as_ref(), false, 0, 0, 0);
+        let access_list_cost = ACCESS_LIST_ADDRESS + 2 * ACCESS_LIST_STORAGE_KEY;
 
         let result = validate_batch_initial_tx_gas(&tx_env, &calls, SpecId::PRAGUE, false)
             .expect("batch gas should validate");
@@ -631,9 +630,7 @@ mod tests {
             .initial_gas
             .saturating_add(gas_call_2.initial_gas)
             .saturating_add(access_list_cost);
-        let expected_floor = gas_call_1
-            .floor_gas
-            .saturating_add(gas_call_2.floor_gas);
+        let expected_floor = gas_call_1.floor_gas.saturating_add(gas_call_2.floor_gas);
 
         assert_eq!(result.initial_gas, expected_initial);
         assert_eq!(result.floor_gas, expected_floor);
@@ -740,7 +737,10 @@ mod tests {
             .transact_raw(tx)
             .expect("batch execution should complete");
 
-        assert!(matches!(result_and_state.result, ExecutionResult::Revert { .. }));
+        assert!(matches!(
+            result_and_state.result,
+            ExecutionResult::Revert { .. }
+        ));
 
         let state: EvmState = result_and_state.state;
         let storage_account = state
@@ -821,7 +821,10 @@ mod tests {
             .transact_raw(tx)
             .expect("batch execution should complete");
 
-        assert!(matches!(result_and_state.result, ExecutionResult::Success { .. }));
+        assert!(matches!(
+            result_and_state.result,
+            ExecutionResult::Success { .. }
+        ));
 
         let state: EvmState = result_and_state.state;
         let storage_account = state

@@ -22,47 +22,68 @@ pub struct EvBuiltPayload {
     requests: Option<Requests>,
 }
 
+/// Errors encountered when converting an EV payload into an engine API envelope.
 #[derive(Debug, thiserror::Error)]
 pub enum EvBuiltPayloadConversionError {
+    /// EIP-7594 sidecars are not valid for this envelope version.
     #[error("unexpected EIP-7594 sidecars for this payload")]
     UnexpectedEip7594Sidecars,
+    /// EIP-4844 sidecars are not valid for this envelope version.
     #[error("unexpected EIP-4844 sidecars for this payload")]
     UnexpectedEip4844Sidecars,
 }
 
 impl EvBuiltPayload {
+    /// Creates a new EV built payload.
     pub const fn new(
         id: PayloadId,
         block: Arc<SealedBlock<ev_primitives::Block>>,
         fees: U256,
         requests: Option<Requests>,
     ) -> Self {
-        Self { id, block, fees, requests, sidecars: BlobSidecars::Empty }
+        Self {
+            id,
+            block,
+            fees,
+            requests,
+            sidecars: BlobSidecars::Empty,
+        }
     }
 
+    /// Returns the payload identifier.
     pub const fn id(&self) -> PayloadId {
         self.id
     }
 
+    /// Returns the sealed block backing this payload.
     pub fn block(&self) -> &SealedBlock<ev_primitives::Block> {
         &self.block
     }
 
+    /// Returns the total fees for this payload.
     pub const fn fees(&self) -> U256 {
         self.fees
     }
 
+    /// Returns the sidecar bundle.
     pub const fn sidecars(&self) -> &BlobSidecars {
         &self.sidecars
     }
 
+    /// Attaches the provided sidecars and returns the updated payload.
     pub fn with_sidecars(mut self, sidecars: impl Into<BlobSidecars>) -> Self {
         self.sidecars = sidecars.into();
         self
     }
 
+    /// Converts this payload into an ExecutionPayloadEnvelopeV3.
     pub fn try_into_v3(self) -> Result<ExecutionPayloadEnvelopeV3, EvBuiltPayloadConversionError> {
-        let Self { block, fees, sidecars, .. } = self;
+        let Self {
+            block,
+            fees,
+            sidecars,
+            ..
+        } = self;
 
         let blobs_bundle = match sidecars {
             BlobSidecars::Empty => BlobsBundleV1::empty(),
@@ -83,6 +104,7 @@ impl EvBuiltPayload {
         })
     }
 
+    /// Converts this payload into an ExecutionPayloadEnvelopeV4.
     pub fn try_into_v4(self) -> Result<ExecutionPayloadEnvelopeV4, EvBuiltPayloadConversionError> {
         Ok(ExecutionPayloadEnvelopeV4 {
             execution_requests: self.requests.clone().unwrap_or_default(),
@@ -90,8 +112,15 @@ impl EvBuiltPayload {
         })
     }
 
+    /// Converts this payload into an ExecutionPayloadEnvelopeV5.
     pub fn try_into_v5(self) -> Result<ExecutionPayloadEnvelopeV5, EvBuiltPayloadConversionError> {
-        let Self { block, fees, sidecars, requests, .. } = self;
+        let Self {
+            block,
+            fees,
+            sidecars,
+            requests,
+            ..
+        } = self;
 
         let blobs_bundle = match sidecars {
             BlobSidecars::Empty => BlobsBundleV2::empty(),

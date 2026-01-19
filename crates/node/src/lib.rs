@@ -17,16 +17,16 @@ pub mod chainspec;
 pub mod config;
 /// Shared error types for evolve node wiring.
 pub mod error;
-/// Executor wiring for EV aware execution.
-pub mod executor;
 /// EV-specific EVM executor building blocks.
 pub mod evm_executor;
+/// Executor wiring for EV aware execution.
+pub mod executor;
 /// Node composition and payload types.
 pub mod node;
-/// Payload types for EvPrimitives.
-pub mod payload_types;
 /// Payload service integration.
 pub mod payload_service;
+/// Payload types for EvPrimitives.
+pub mod payload_types;
 /// RPC wiring for EvTxEnvelope support.
 pub mod rpc;
 /// Transaction pool wiring and validation.
@@ -43,6 +43,6 @@ pub use config::{ConfigError, EvolvePayloadBuilderConfig};
 pub use error::EvolveEngineError;
 pub use executor::{build_evm_config, EvolveEvmConfig, EvolveExecutorBuilder};
 pub use node::{log_startup, EvolveEngineTypes, EvolveNode, EvolveNodeAddOns};
-pub use payload_types::EvBuiltPayload;
 pub use payload_service::{EvolveEnginePayloadBuilder, EvolvePayloadBuilderBuilder};
+pub use payload_types::EvBuiltPayload;
 pub use validator::{EvolveEngineValidator, EvolveEngineValidatorBuilder};

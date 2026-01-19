@@ -1,15 +1,15 @@
 use alloy_evm::{FromRecoveredTx, FromTxWithEncoded};
 use alloy_primitives::{Address, Bytes, U256};
 use ev_primitives::{Call, EvTxEnvelope};
+use reth_evm::TransactionEnv;
 use reth_revm::revm::context::TxEnv;
+use reth_revm::revm::context_interface::either::Either;
 use reth_revm::revm::context_interface::transaction::{
     AccessList, AccessListItem, RecoveredAuthorization, SignedAuthorization,
     Transaction as RevmTransaction,
 };
 use reth_revm::revm::handler::SystemCallTx;
 use reth_revm::revm::primitives::{Address as RevmAddress, Bytes as RevmBytes, TxKind, B256};
-use reth_revm::revm::context_interface::either::Either;
-use reth_evm::TransactionEnv;
 
 /// Transaction environment wrapper that supports EvTxEnvelope conversions.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -110,8 +110,14 @@ impl From<EvTxEnv> for TxEnv {
 }
 
 impl RevmTransaction for EvTxEnv {
-    type AccessListItem<'a> = &'a AccessListItem where Self: 'a;
-    type Authorization<'a> = &'a Either<SignedAuthorization, RecoveredAuthorization> where Self: 'a;
+    type AccessListItem<'a>
+        = &'a AccessListItem
+    where
+        Self: 'a;
+    type Authorization<'a>
+        = &'a Either<SignedAuthorization, RecoveredAuthorization>
+    where
+        Self: 'a;
 
     fn tx_type(&self) -> u8 {
         self.inner.tx_type
@@ -220,9 +226,19 @@ impl FromRecoveredTx<EvTxEnvelope> for EvTxEnv {
                 env.caller = sender;
                 env.gas_limit = ev.tx().gas_limit;
                 env.gas_price = ev.tx().max_fee_per_gas;
-                env.kind = ev.tx().calls.first().map(|call| call.to).unwrap_or(TxKind::Create);
+                env.kind = ev
+                    .tx()
+                    .calls
+                    .first()
+                    .map(|call| call.to)
+                    .unwrap_or(TxKind::Create);
                 env.value = batch_value;
-                env.data = ev.tx().calls.first().map(|call| call.input.clone()).unwrap_or_default();
+                env.data = ev
+                    .tx()
+                    .calls
+                    .first()
+                    .map(|call| call.input.clone())
+                    .unwrap_or_default();
                 let mut tx_env = EvTxEnv::new(env);
                 tx_env.sponsor = sponsor;
                 tx_env.sponsor_signature_invalid = sponsor_signature_invalid;

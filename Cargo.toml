@@ -48,6 +48,7 @@ reth-transaction-pool = { git = "https://github.com/paradigmxyz/reth.git", tag =
 reth-network = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.8.4" }
 reth-network-types = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.8.4" }
 reth-chain-state = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.8.4" }
+reth-db-api = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.8.4" }
 reth-ethereum = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.8.4" }
 reth-ethereum-cli = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.8.4" }
 reth-basic-payload-builder = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.8.4" }
@@ -118,6 +119,9 @@ alloy-rlp = { version = "0.3.12", default-features = false }
 alloy-genesis = { version = "1.0.37", default-features = false }
 alloy-rpc-types-txpool = { version = "1.0.37", default-features = false }
 alloy-sol-types = { version = "1.3.1", default-features = false }
+
+# Utility dependencies
+bytes = "1.10.1"
 
 revm-inspector = { version = "10.0.1" }
 # Core dependencies
