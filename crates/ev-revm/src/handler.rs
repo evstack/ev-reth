@@ -598,13 +598,15 @@ mod tests {
 
     #[test]
     fn batch_initial_gas_sums_calls_and_access_list() {
-        let mut tx_env = TxEnv::default();
-        tx_env.gas_limit = 1_000_000;
-        tx_env.tx_type = TransactionType::Eip1559.into();
-        tx_env.access_list = AccessList(vec![AccessListItem {
-            address: address!("0x00000000000000000000000000000000000000aa"),
-            storage_keys: vec![B256::ZERO, B256::from([0x11; 32])],
-        }]);
+        let tx_env = TxEnv {
+            gas_limit: 1_000_000,
+            tx_type: TransactionType::Eip1559.into(),
+            access_list: AccessList(vec![AccessListItem {
+                address: address!("0x00000000000000000000000000000000000000aa"),
+                storage_keys: vec![B256::ZERO, B256::from([0x11; 32])],
+            }]),
+            ..Default::default()
+        };
 
         let calls = vec![
             Call {
@@ -640,8 +642,10 @@ mod tests {
 
     #[test]
     fn batch_initial_gas_rejects_when_gas_limit_too_low() {
-        let mut tx_env = TxEnv::default();
-        tx_env.gas_limit = 10_000;
+        let tx_env = TxEnv {
+            gas_limit: 10_000,
+            ..Default::default()
+        };
 
         let calls = vec![Call {
             to: TxKind::Call(address!("0x00000000000000000000000000000000000000dd")),
@@ -725,13 +729,15 @@ mod tests {
             },
         ];
 
-        let mut tx_env = TxEnv::default();
-        tx_env.caller = caller;
-        tx_env.gas_limit = 200_000;
-        tx_env.gas_price = 1;
-        tx_env.gas_priority_fee = Some(1);
-        tx_env.chain_id = Some(1);
-        tx_env.tx_type = TransactionType::Eip1559.into();
+        let tx_env = TxEnv {
+            caller,
+            gas_limit: 200_000,
+            gas_price: 1,
+            gas_priority_fee: Some(1),
+            chain_id: Some(1),
+            tx_type: TransactionType::Eip1559.into(),
+            ..Default::default()
+        };
 
         let tx = EvTxEnv::with_calls(tx_env, calls);
 
@@ -809,13 +815,15 @@ mod tests {
             },
         ];
 
-        let mut tx_env = TxEnv::default();
-        tx_env.caller = caller;
-        tx_env.gas_limit = 200_000;
-        tx_env.gas_price = 1;
-        tx_env.gas_priority_fee = Some(1);
-        tx_env.chain_id = Some(1);
-        tx_env.tx_type = TransactionType::Eip1559.into();
+        let tx_env = TxEnv {
+            caller,
+            gas_limit: 200_000,
+            gas_price: 1,
+            gas_priority_fee: Some(1),
+            chain_id: Some(1),
+            tx_type: TransactionType::Eip1559.into(),
+            ..Default::default()
+        };
 
         let tx = EvTxEnv::with_calls(tx_env, calls);
 

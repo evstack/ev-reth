@@ -87,7 +87,7 @@ impl EvTxEnv {
             inner.data = first.input.clone();
         }
         inner.value = batch_value;
-        let mut env = EvTxEnv::new(inner);
+        let mut env = Self::new(inner);
         env.calls = calls;
         env.batch_value = batch_value;
         env
