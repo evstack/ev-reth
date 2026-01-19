@@ -2,16 +2,20 @@ use alloy_evm::{FromRecoveredTx, FromTxWithEncoded};
 use alloy_primitives::{Address, Bytes, U256};
 use ev_primitives::{Call, EvTxEnvelope};
 use reth_evm::TransactionEnv;
-use reth_revm::revm::context::TxEnv;
-use reth_revm::revm::context_interface::either::Either;
-use reth_revm::revm::context_interface::transaction::{
-    AccessList, AccessListItem, RecoveredAuthorization, SignedAuthorization,
-    Transaction as RevmTransaction,
+use reth_revm::revm::{
+    context::TxEnv,
+    context_interface::{
+        either::Either,
+        transaction::{
+            AccessList, AccessListItem, RecoveredAuthorization, SignedAuthorization,
+            Transaction as RevmTransaction,
+        },
+    },
+    handler::SystemCallTx,
+    primitives::{Address as RevmAddress, Bytes as RevmBytes, TxKind, B256},
 };
-use reth_revm::revm::handler::SystemCallTx;
-use reth_revm::revm::primitives::{Address as RevmAddress, Bytes as RevmBytes, TxKind, B256};
 
-/// Transaction environment wrapper that supports EvTxEnvelope conversions.
+/// Transaction environment wrapper that supports `EvTxEnvelope` conversions.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct EvTxEnv {
     inner: TxEnv,
@@ -23,14 +27,13 @@ pub struct EvTxEnv {
 
 impl EvTxEnv {
     /// Wrap a `TxEnv` with EV-specific metadata.
-    pub fn new(inner: TxEnv) -> Self {
-        let batch_value = inner.value;
+    pub const fn new(inner: TxEnv) -> Self {
         Self {
+            batch_value: inner.value,
             inner,
             sponsor: None,
             sponsor_signature_invalid: false,
             calls: Vec::new(),
-            batch_value,
         }
     }
 
@@ -198,8 +201,8 @@ impl TransactionEnv for EvTxEnv {
     }
 }
 
-impl alloy_evm::ToTxEnv<EvTxEnv> for EvTxEnv {
-    fn to_tx_env(&self) -> EvTxEnv {
+impl alloy_evm::ToTxEnv<Self> for EvTxEnv {
+    fn to_tx_env(&self) -> Self {
         self.clone()
     }
 }
@@ -207,7 +210,7 @@ impl alloy_evm::ToTxEnv<EvTxEnv> for EvTxEnv {
 impl FromRecoveredTx<EvTxEnvelope> for EvTxEnv {
     fn from_recovered_tx(tx: &EvTxEnvelope, sender: Address) -> Self {
         match tx {
-            EvTxEnvelope::Ethereum(inner) => EvTxEnv::new(TxEnv::from_recovered_tx(inner, sender)),
+            EvTxEnvelope::Ethereum(inner) => Self::new(TxEnv::from_recovered_tx(inner, sender)),
             EvTxEnvelope::EvNode(ev) => {
                 let (sponsor, sponsor_signature_invalid) =
                     if let Some(signature) = ev.tx().fee_payer_signature.as_ref() {
@@ -222,29 +225,32 @@ impl FromRecoveredTx<EvTxEnvelope> for EvTxEnv {
                 let batch_value = calls
                     .iter()
                     .fold(U256::ZERO, |acc, call| acc.saturating_add(call.value));
-                let mut env = TxEnv::default();
-                env.caller = sender;
-                env.gas_limit = ev.tx().gas_limit;
-                env.gas_price = ev.tx().max_fee_per_gas;
-                env.kind = ev
-                    .tx()
-                    .calls
-                    .first()
-                    .map(|call| call.to)
-                    .unwrap_or(TxKind::Create);
-                env.value = batch_value;
-                env.data = ev
-                    .tx()
-                    .calls
-                    .first()
-                    .map(|call| call.input.clone())
-                    .unwrap_or_default();
-                let mut tx_env = EvTxEnv::new(env);
-                tx_env.sponsor = sponsor;
-                tx_env.sponsor_signature_invalid = sponsor_signature_invalid;
-                tx_env.calls = calls;
-                tx_env.batch_value = batch_value;
-                tx_env
+                let env = TxEnv {
+                    caller: sender,
+                    gas_limit: ev.tx().gas_limit,
+                    gas_price: ev.tx().max_fee_per_gas,
+                    kind: ev
+                        .tx()
+                        .calls
+                        .first()
+                        .map(|call| call.to)
+                        .unwrap_or(TxKind::Create),
+                    value: batch_value,
+                    data: ev
+                        .tx()
+                        .calls
+                        .first()
+                        .map(|call| call.input.clone())
+                        .unwrap_or_default(),
+                    ..Default::default()
+                };
+                Self {
+                    inner: env,
+                    sponsor,
+                    sponsor_signature_invalid,
+                    calls,
+                    batch_value,
+                }
             }
         }
     }
@@ -262,7 +268,7 @@ impl SystemCallTx for EvTxEnv {
         system_contract_address: Address,
         data: Bytes,
     ) -> Self {
-        EvTxEnv::new(
+        Self::new(
             TxEnv::builder()
                 .caller(caller)
                 .data(data)

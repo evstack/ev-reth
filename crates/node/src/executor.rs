@@ -2,8 +2,7 @@
 
 use alloy_consensus::{BlockHeader, Header};
 use alloy_eips::Decodable2718;
-use alloy_evm::eth::spec::EthExecutorSpec;
-use alloy_evm::{FromRecoveredTx, FromTxWithEncoded};
+use alloy_evm::{eth::spec::EthExecutorSpec, FromRecoveredTx, FromTxWithEncoded};
 use alloy_primitives::U256;
 use alloy_rpc_types_engine::ExecutionData;
 use ev_revm::{
@@ -35,15 +34,18 @@ use reth_revm::revm::{
 };
 use tracing::info;
 
-use crate::evm_executor::{EvBlockExecutorFactory, EvReceiptBuilder};
-use crate::{config::EvolvePayloadBuilderConfig, EvolveNode};
+use crate::{
+    config::EvolvePayloadBuilderConfig,
+    evm_executor::{EvBlockExecutorFactory, EvReceiptBuilder},
+    EvolveNode,
+};
 use ev_primitives::{EvPrimitives, EvTxEnvelope};
 use reth_evm_ethereum::{revm_spec, revm_spec_by_timestamp_and_block_number, EthBlockAssembler};
 
 /// Type alias for the EV-aware EVM config we install into the node.
 pub type EvolveEvmConfig = EvEvmConfig<ChainSpec, EvTxEvmFactory>;
 
-/// EVM config wired for EvPrimitives.
+/// EVM config wired for `EvPrimitives`.
 #[derive(Debug, Clone)]
 pub struct EvEvmConfig<C = ChainSpec, EvmFactory = EvTxEvmFactory> {
     /// Factory used to create block executors.
@@ -210,10 +212,7 @@ where
                     }
                 });
 
-        let mut gas_limit = parent.gas_limit;
-        let mut basefee = None;
-
-        if self
+        let (gas_limit, basefee) = if self
             .chain_spec()
             .fork(reth_ethereum_forks::EthereumHardfork::London)
             .transitions_at_block(parent.number + 1)
@@ -222,9 +221,13 @@ where
                 .chain_spec()
                 .base_fee_params_at_timestamp(attributes.timestamp)
                 .elasticity_multiplier;
-            gas_limit *= elasticity_multiplier as u64;
-            basefee = Some(alloy_eips::eip1559::INITIAL_BASE_FEE);
-        }
+            (
+                parent.gas_limit * elasticity_multiplier as u64,
+                Some(alloy_eips::eip1559::INITIAL_BASE_FEE),
+            )
+        } else {
+            (parent.gas_limit, None)
+        };
 
         let block_env = BlockEnv {
             number: U256::from(parent.number + 1),
@@ -407,10 +410,8 @@ where
 
     let factory = EvTxEvmFactory::new(redirect, mint_precompile, contract_size_limit);
 
-    Ok(
-        EvEvmConfig::new_with_evm_factory(chain_spec.clone(), factory)
-            .with_extra_data(ctx.payload_builder_config().extra_data_bytes()),
-    )
+    Ok(EvEvmConfig::new_with_evm_factory(chain_spec, factory)
+        .with_extra_data(ctx.payload_builder_config().extra_data_bytes()))
 }
 
 /// Thin wrapper so we can plug the EV executor into the node components builder.

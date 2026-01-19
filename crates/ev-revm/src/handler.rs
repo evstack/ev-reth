@@ -7,8 +7,7 @@ use crate::{
 use reth_revm::{
     inspector::{Inspector, InspectorEvmTr, InspectorHandler},
     revm::{
-        context::result::ExecutionResult,
-        context::ContextSetters,
+        context::{result::ExecutionResult, ContextSetters},
         context_interface::{
             result::HaltReason,
             transaction::{AccessListItemTr, TransactionType},
@@ -215,7 +214,7 @@ where
         init_and_floor_gas: &InitialAndFloorGas,
     ) -> Result<FrameResult, Self::Error> {
         let calls = match evm.ctx().tx().batch_calls() {
-            Some(calls) if calls.is_empty() => {
+            Some([]) => {
                 return Err(Self::Error::from_string(
                     "evnode transaction must include at least one call".into(),
                 ));
@@ -231,7 +230,7 @@ where
         let mut total_refunded: i64 = 0;
         let mut last_result: Option<FrameResult> = None;
 
-        for call in calls.iter() {
+        for call in &calls {
             let mut call_tx = base_tx.clone();
             call_tx.set_batch_call(call);
             evm.ctx_mut().set_tx(call_tx);
@@ -517,13 +516,14 @@ mod tests {
         inspector::NoOpInspector,
         revm::{
             context::Context,
-            context_interface::result::ExecutionResult,
-            context_interface::transaction::{AccessList, AccessListItem, TransactionType},
+            context_interface::{
+                result::ExecutionResult,
+                transaction::{AccessList, AccessListItem, TransactionType},
+            },
             database::{CacheDB, EmptyDB},
             handler::{EthFrame, FrameResult},
             interpreter::{CallOutcome, Gas, InstructionResult, InterpreterResult},
-            primitives::hardfork::SpecId,
-            primitives::KECCAK_EMPTY,
+            primitives::{hardfork::SpecId, KECCAK_EMPTY},
             state::{AccountInfo, EvmState},
         },
         MainContext, State,
@@ -538,8 +538,10 @@ mod tests {
     type TestHandler = EvHandler<TestEvm, TestError, EthFrame<EthInterpreter>>;
 
     use alloy_evm::{Evm, EvmEnv, EvmFactory};
-    use reth_revm::revm::bytecode::Bytecode as RevmBytecode;
-    use reth_revm::revm::context::{BlockEnv, CfgEnv, TxEnv};
+    use reth_revm::revm::{
+        bytecode::Bytecode as RevmBytecode,
+        context::{BlockEnv, CfgEnv, TxEnv},
+    };
 
     const BASE_FEE: u64 = 100;
     const GAS_PRICE: u128 = 200;

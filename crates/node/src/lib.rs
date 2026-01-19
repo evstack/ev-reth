@@ -25,7 +25,7 @@ pub mod executor;
 pub mod node;
 /// Payload service integration.
 pub mod payload_service;
-/// Payload types for EvPrimitives.
+/// Payload types for `EvPrimitives`.
 pub mod payload_types;
 /// RPC wiring for EvTxEnvelope support.
 pub mod rpc;

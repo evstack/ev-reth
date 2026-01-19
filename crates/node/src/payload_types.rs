@@ -12,7 +12,7 @@ use reth_payload_builder::BlobSidecars;
 use reth_payload_primitives::BuiltPayload;
 use reth_primitives_traits::SealedBlock;
 
-/// Built payload for EvPrimitives.
+/// Built payload for `EvPrimitives`.
 #[derive(Debug, Clone)]
 pub struct EvBuiltPayload {
     id: PayloadId,
@@ -76,7 +76,7 @@ impl EvBuiltPayload {
         self
     }
 
-    /// Converts this payload into an ExecutionPayloadEnvelopeV3.
+    /// Converts this payload into an `ExecutionPayloadEnvelopeV3`.
     pub fn try_into_v3(self) -> Result<ExecutionPayloadEnvelopeV3, EvBuiltPayloadConversionError> {
         let Self {
             block,
@@ -104,7 +104,7 @@ impl EvBuiltPayload {
         })
     }
 
-    /// Converts this payload into an ExecutionPayloadEnvelopeV4.
+    /// Converts this payload into an `ExecutionPayloadEnvelopeV4`.
     pub fn try_into_v4(self) -> Result<ExecutionPayloadEnvelopeV4, EvBuiltPayloadConversionError> {
         Ok(ExecutionPayloadEnvelopeV4 {
             execution_requests: self.requests.clone().unwrap_or_default(),
@@ -112,7 +112,7 @@ impl EvBuiltPayload {
         })
     }
 
-    /// Converts this payload into an ExecutionPayloadEnvelopeV5.
+    /// Converts this payload into an `ExecutionPayloadEnvelopeV5`.
     pub fn try_into_v5(self) -> Result<ExecutionPayloadEnvelopeV5, EvBuiltPayloadConversionError> {
         let Self {
             block,

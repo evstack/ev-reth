@@ -9,7 +9,6 @@ use alloy_evm::{
 use alloy_primitives::{Address, U256};
 use ev_precompiles::mint::{MintPrecompile, MINT_PRECOMPILE_ADDR};
 use reth_evm_ethereum::EthEvmConfig;
-use reth_revm::revm::context_interface::journaled_state::JournalTr;
 use reth_revm::{
     inspector::NoOpInspector,
     revm::{
@@ -17,7 +16,7 @@ use reth_revm::{
             result::{EVMError, HaltReason},
             Evm as RevmEvm, FrameStack, TxEnv,
         },
-        context_interface::result::InvalidTransaction,
+        context_interface::{journaled_state::JournalTr, result::InvalidTransaction},
         handler::instructions::EthInstructions,
         interpreter::interpreter::EthInterpreter,
         precompile::{PrecompileSpecId, Precompiles},

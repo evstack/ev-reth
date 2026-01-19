@@ -5,16 +5,20 @@ use alloy_consensus::{
     BlobTransactionValidationError, Signed, Typed2718,
 };
 use alloy_eips::{
-    eip2718::Encodable2718, eip2718::WithEncoded, eip7594::BlobTransactionSidecarVariant,
-    eip7840::BlobParams, merge::EPOCH_SLOTS,
+    eip2718::{Encodable2718, WithEncoded},
+    eip7594::BlobTransactionSidecarVariant,
+    eip7840::BlobParams,
+    merge::EPOCH_SLOTS,
 };
 use alloy_primitives::{Address, U256};
 use c_kzg::KzgSettings;
 use ev_primitives::{EvNodeTransaction, EvPooledTxEnvelope, EvTxEnvelope, TransactionSigned};
 use reth_chainspec::{ChainSpecProvider, EthChainSpec, EthereumHardforks};
 use reth_node_api::{FullNodeTypes, NodeTypes};
-use reth_node_builder::components::{create_blob_store_with_cache, PoolBuilder, TxPoolBuilder};
-use reth_node_builder::BuilderContext;
+use reth_node_builder::{
+    components::{create_blob_store_with_cache, PoolBuilder, TxPoolBuilder},
+    BuilderContext,
+};
 use reth_primitives_traits::NodePrimitives;
 use reth_storage_api::{AccountInfoReader, StateProviderFactory};
 use reth_transaction_pool::{
@@ -265,7 +269,7 @@ impl EthPoolTransaction for EvPooledTransaction {
 /// Errors returned by EV-specific transaction pool validation.
 #[derive(Debug, thiserror::Error)]
 pub enum EvTxPoolError {
-    /// EvNode transaction must include at least one call.
+    /// `EvNode` transaction must include at least one call.
     #[error("evnode transaction must include at least one call")]
     EmptyCalls,
     /// Only the first call may be a CREATE.
@@ -444,7 +448,7 @@ where
     }
 }
 
-/// Pool builder that wires the custom EvNode transaction validator.
+/// Pool builder that wires the custom `EvNode` transaction validator.
 #[derive(Debug, Default, Clone, Copy)]
 #[non_exhaustive]
 pub struct EvolvePoolBuilder;

@@ -1,7 +1,5 @@
-use crate::config::EvolvePayloadBuilderConfig;
-use crate::executor::EvEvmConfig;
-use alloy_consensus::transaction::Transaction;
-use alloy_consensus::transaction::TxHashRef;
+use crate::{config::EvolvePayloadBuilderConfig, executor::EvEvmConfig};
+use alloy_consensus::transaction::{Transaction, TxHashRef};
 use alloy_primitives::Address;
 use ev_revm::EvTxEvmFactory;
 use evolve_ev_reth::EvolvePayloadAttributes;

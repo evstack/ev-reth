@@ -1,9 +1,9 @@
 //! RPC wiring for EvTxEnvelope support.
 
-use alloy_consensus::error::ValueError;
-use alloy_consensus::transaction::Recovered;
-use alloy_consensus::SignableTransaction;
-use alloy_consensus::Transaction as ConsensusTransaction;
+use alloy_consensus::{
+    error::ValueError, transaction::Recovered, SignableTransaction,
+    Transaction as ConsensusTransaction,
+};
 use alloy_consensus_any::AnyReceiptEnvelope;
 use alloy_network::{Ethereum, ReceiptResponse, TransactionResponse, TxSigner};
 use alloy_primitives::{Address, Signature, U256};
@@ -15,11 +15,11 @@ use reth_evm::{ConfigureEvm, SpecFor, TxEnvFor};
 use reth_node_api::{FullNodeComponents, FullNodeTypes, NodeTypes};
 use reth_node_builder::rpc::{EthApiBuilder, EthApiCtx};
 use reth_rpc::EthApi;
-use reth_rpc_convert::transaction::{
-    ConvertReceiptInput, EthTxEnvError, ReceiptConverter, RpcTxConverter, SimTxConverter,
-    TryIntoSimTx, TryIntoTxEnv, TxEnvConverter,
-};
 use reth_rpc_convert::{
+    transaction::{
+        ConvertReceiptInput, EthTxEnvError, ReceiptConverter, RpcTxConverter, SimTxConverter,
+        TryIntoSimTx, TryIntoTxEnv, TxEnvConverter,
+    },
     RpcConvert, RpcConverter, RpcTransaction, RpcTxReq, RpcTypes, SignTxRequestError,
     SignableTxRequest,
 };
@@ -27,8 +27,7 @@ use reth_rpc_eth_api::{
     helpers::{pending_block::BuildPendingEnv, AddDevSigners},
     FromEvmError, FullEthApiServer, RpcNodeCore,
 };
-use reth_rpc_eth_types::receipt::build_receipt;
-use reth_rpc_eth_types::EthApiError;
+use reth_rpc_eth_types::{receipt::build_receipt, EthApiError};
 use std::marker::PhantomData;
 
 use crate::EvolveEvmConfig;
@@ -56,7 +55,7 @@ pub struct EvRpcTransaction {
 }
 
 impl EvRpcTransaction {
-    fn new(inner: Transaction<EvTxEnvelope>, fee_payer: Option<Address>) -> Self {
+    const fn new(inner: Transaction<EvTxEnvelope>, fee_payer: Option<Address>) -> Self {
         Self { inner, fee_payer }
     }
 }
@@ -169,7 +168,10 @@ pub struct EvRpcReceipt {
 }
 
 impl EvRpcReceipt {
-    fn new(inner: TransactionReceipt<AnyReceiptEnvelope<Log>>, fee_payer: Option<Address>) -> Self {
+    const fn new(
+        inner: TransactionReceipt<AnyReceiptEnvelope<Log>>,
+        fee_payer: Option<Address>,
+    ) -> Self {
         Self { inner, fee_payer }
     }
 }
@@ -293,7 +295,7 @@ impl TryIntoTxEnv<EvTxEnv> for EvTransactionRequest {
     }
 }
 
-/// Receipt converter for EvPrimitives.
+/// Receipt converter for `EvPrimitives`.
 #[derive(Debug, Clone)]
 pub struct EvReceiptConverter<ChainSpec> {
     chain_spec: std::sync::Arc<ChainSpec>,
@@ -362,7 +364,7 @@ pub type EvRpcConvert<N> = RpcConverter<
 /// Eth API type for EvTxEnvelope-based nodes.
 pub type EvEthApiFor<N> = EthApi<N, EvRpcConvert<N>>;
 
-/// Builds [`EthApi`] for EvTxEnvelope nodes.
+/// Builds [`EthApi`] for `EvTxEnvelope` nodes.
 #[derive(Debug, Default)]
 pub struct EvEthApiBuilder;
 
@@ -410,8 +412,8 @@ where
         let receipt_converter =
             EvReceiptConverter::new(FullNodeComponents::provider(ctx.components).chain_spec());
         let rpc_converter = RpcConverter::new(receipt_converter)
-            .with_sim_tx_converter(EvSimTxConverter::default())
-            .with_rpc_tx_converter(EvRpcTxConverter::default());
+            .with_sim_tx_converter(EvSimTxConverter)
+            .with_rpc_tx_converter(EvRpcTxConverter);
         let rpc_converter =
             rpc_converter.with_tx_env_converter(EvTxEnvConverter::<EvolveEvmConfig>::default());
 
@@ -422,7 +424,7 @@ where
     }
 }
 
-/// Converts EvTxEnvelope into RPC transaction responses.
+/// Converts `EvTxEnvelope` into RPC transaction responses.
 #[derive(Clone, Debug, Default)]
 pub struct EvRpcTxConverter;
 
@@ -453,7 +455,7 @@ impl RpcTxConverter<EvTxEnvelope, RpcTransaction<EvRpcTypes>, TransactionInfo>
     }
 }
 
-/// Converts transaction requests into simulated EvTxEnvelope transactions.
+/// Converts transaction requests into simulated `EvTxEnvelope` transactions.
 #[derive(Clone, Debug, Default)]
 pub struct EvSimTxConverter;
 
@@ -469,7 +471,7 @@ impl SimTxConverter<RpcTxReq<EvRpcTypes>, EvTxEnvelope> for EvSimTxConverter {
     }
 }
 
-/// Converts transaction requests into EvTxEnv.
+/// Converts transaction requests into `EvTxEnv`.
 #[derive(Clone, Debug)]
 pub struct EvTxEnvConverter<Evm>(PhantomData<Evm>);
 
