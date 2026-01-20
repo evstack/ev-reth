@@ -347,7 +347,7 @@ How it works:
 - Only top-level `CREATE` transactions from allowlisted callers are accepted.
 - Contract-to-contract `CREATE/CREATE2` is still allowed (by design).
 - If `deployAllowlistActivationHeight` is omitted, it defaults to `0` when the list is non-empty.
-- If the list is empty or missing, contract deployment remains unrestricted.
+- If the list is empty or missing, contract deployment remains unrestricted (treated as disabled).
 
 Operational notes:
 

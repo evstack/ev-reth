@@ -16,6 +16,7 @@ regular call transactions and is not a full transaction allowlist.
 - Only top-level contract creation transactions are checked.
 - Contract-to-contract `CREATE/CREATE2` is still allowed (by design).
 - If no allowlist is configured, behavior matches standard Ethereum.
+- An empty allowlist is treated as disabled and allows all deployers.
 
 **Chainspec configuration** (inside `config.evolve`):
 
