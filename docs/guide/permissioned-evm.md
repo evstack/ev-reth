@@ -34,7 +34,7 @@ regular call transactions and is not a full transaction allowlist.
 
 - If `deployAllowlist` is set and `deployAllowlistActivationHeight` is omitted, activation
   defaults to `0`.
-- If the allowlist is empty or missing, contract deployment is unrestricted.
+- If the allowlist is empty or missing, contract deployment is unrestricted (treated as disabled).
 - Duplicate entries or the zero address are rejected at startup.
 - The list is capped at 1024 addresses.
 
