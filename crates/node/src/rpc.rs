@@ -58,6 +58,16 @@ impl EvRpcTransaction {
     const fn new(inner: Transaction<EvTxEnvelope>, fee_payer: Option<Address>) -> Self {
         Self { inner, fee_payer }
     }
+
+    /// Returns the optional fee payer address.
+    pub const fn fee_payer(&self) -> Option<Address> {
+        self.fee_payer
+    }
+
+    /// Returns the inner transaction.
+    pub const fn inner(&self) -> &Transaction<EvTxEnvelope> {
+        &self.inner
+    }
 }
 
 impl ConsensusTransaction for EvRpcTransaction {
@@ -173,6 +183,16 @@ impl EvRpcReceipt {
         fee_payer: Option<Address>,
     ) -> Self {
         Self { inner, fee_payer }
+    }
+
+    /// Returns the optional fee payer address.
+    pub const fn fee_payer(&self) -> Option<Address> {
+        self.fee_payer
+    }
+
+    /// Returns the inner receipt.
+    pub const fn inner(&self) -> &TransactionReceipt<AnyReceiptEnvelope<Log>> {
+        &self.inner
     }
 }
 

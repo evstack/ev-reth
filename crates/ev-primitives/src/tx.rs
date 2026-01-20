@@ -135,10 +135,11 @@ impl EvNodeTransaction {
     }
 
     fn encoded_payload_with_executor(&self, executor: Address) -> Vec<u8> {
-        let mut out =
-            Vec::with_capacity(self.payload_fields_length(self.fee_payer_signature.as_ref()) + 32);
+        // Sponsor signatures must be computed over the unsigned sponsor field to avoid
+        // self-referential hashing.
+        let mut out = Vec::with_capacity(self.payload_fields_length(None) + 32);
         out.extend_from_slice(executor.as_slice());
-        self.encode_payload_fields(&mut out, self.fee_payer_signature.as_ref());
+        self.encode_payload_fields(&mut out, None);
         out
     }
 

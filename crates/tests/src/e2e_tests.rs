@@ -1,5 +1,5 @@
-use alloy_consensus::{TxEnvelope, TxReceipt};
-use alloy_eips::{eip2718::Encodable2718, BlockNumberOrTag};
+use alloy_consensus::{SignableTransaction, TxEnvelope, TxReceipt};
+use alloy_eips::{eip2718::Encodable2718, eip2930::AccessList, BlockNumberOrTag};
 use alloy_network::eip2718::Decodable2718;
 use alloy_primitives::{address, Address, Bytes, TxKind, B256, U256};
 use alloy_rpc_types::{
@@ -10,6 +10,7 @@ use alloy_rpc_types::{
     BlockId,
 };
 use alloy_rpc_types_engine::{ForkchoiceState, PayloadAttributes, PayloadStatusEnum};
+use alloy_signer::SignerSync;
 use alloy_sol_types::{sol, SolCall};
 use eyre::Result;
 use futures::future;
@@ -28,6 +29,8 @@ use crate::common::{
     create_test_chain_spec, create_test_chain_spec_with_base_fee_sink,
     create_test_chain_spec_with_mint_admin, TEST_CHAIN_ID,
 };
+use ev_node::rpc::{EvRpcReceipt, EvRpcTransaction, EvTransactionRequest};
+use ev_primitives::{Call, EvNodeTransaction, EvTxEnvelope};
 use ev_precompiles::mint::MINT_PRECOMPILE_ADDR;
 
 sol! {
@@ -367,6 +370,197 @@ async fn test_e2e_base_fee_sink_receives_base_fee() -> Result<()> {
     assert_eq!(
         credited, expected_total_credit,
         "base fee sink should collect base fee plus tip"
+    );
+
+    drop(setup);
+
+    Ok(())
+}
+
+/// Tests that a sponsored EvNode transaction charges gas to the sponsor, not the executor.
+///
+/// # Test Flow
+/// 1. Creates an executor and sponsor account from genesis-funded wallets
+/// 2. Builds a sponsored EvNode transfer transaction (type 0x76)
+/// 3. Includes the transaction in a block via the Engine API
+/// 4. Verifies `feePayer` appears in the RPC tx and receipt responses
+/// 5. Asserts balances: executor pays value, sponsor pays gas
+///
+/// # Success Criteria
+/// - Receipt and transaction expose the sponsor address
+/// - Recipient receives the transfer value
+/// - Executor balance decreases by exactly `value`
+/// - Sponsor balance decreases by exactly `gas_used * effective_gas_price`
+#[tokio::test(flavor = "multi_thread")]
+async fn test_e2e_sponsored_evnode_transaction() -> Result<()> {
+    reth_tracing::init_test_tracing();
+
+    let chain_spec = create_test_chain_spec();
+    let chain_id = chain_spec.chain().id();
+
+    let mut setup = Setup::<EvolveEngineTypes>::default()
+        .with_chain_spec(chain_spec)
+        .with_network(NetworkSetup::single_node())
+        .with_dev_mode(true);
+
+    let mut env = Environment::<EvolveEngineTypes>::default();
+    setup.apply::<EvolveNode>(&mut env).await?;
+
+    let parent_block = env.node_clients[0]
+        .get_block_by_number(BlockNumberOrTag::Latest)
+        .await?
+        .expect("parent block should exist");
+    let mut parent_hash = parent_block.header.hash;
+    let mut parent_timestamp = parent_block.header.inner.timestamp;
+    let mut parent_number = parent_block.header.inner.number;
+    let gas_limit = parent_block.header.inner.gas_limit;
+
+    let mut wallets = Wallet::new(3).with_chain_id(chain_id).wallet_gen();
+    let executor = wallets.remove(0);
+    let sponsor = wallets.remove(0);
+    let recipient = Address::random();
+    let executor_address = executor.address();
+    let sponsor_address = sponsor.address();
+
+    let executor_balance_before =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+            &env.node_clients[0].rpc,
+            executor_address,
+            Some(BlockId::latest()),
+        )
+        .await?;
+    let sponsor_balance_before =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+            &env.node_clients[0].rpc,
+            sponsor_address,
+            Some(BlockId::latest()),
+        )
+        .await?;
+    let recipient_balance_before =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+            &env.node_clients[0].rpc,
+            recipient,
+            Some(BlockId::latest()),
+        )
+        .await?;
+
+    let executor_nonce = EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::transaction_count(
+        &env.node_clients[0].rpc,
+        executor_address,
+        Some(BlockId::latest()),
+    )
+    .await?;
+    let executor_nonce = u64::try_from(executor_nonce).expect("nonce fits into u64");
+
+    let transfer_value = U256::from(1_000_000_000_000_000u64); // 0.001 ETH
+    let call = Call {
+        to: TxKind::Call(recipient),
+        value: transfer_value,
+        input: Bytes::default(),
+    };
+
+    let ev_tx = EvNodeTransaction {
+        chain_id,
+        nonce: executor_nonce,
+        max_priority_fee_per_gas: 1_000_000_000,
+        max_fee_per_gas: 2_000_000_000,
+        gas_limit: 100_000,
+        calls: vec![call],
+        access_list: AccessList::default(),
+        fee_payer_signature: None,
+    };
+
+    let executor_sig = executor
+        .sign_hash_sync(&ev_tx.signature_hash())
+        .expect("executor signature");
+    let mut signed = ev_tx.into_signed(executor_sig);
+    let sponsor_hash = signed.tx().sponsor_signing_hash(executor_address);
+    let sponsor_sig = sponsor
+        .sign_hash_sync(&sponsor_hash)
+        .expect("sponsor signature");
+    signed.tx_mut().fee_payer_signature = Some(sponsor_sig);
+
+    let envelope = EvTxEnvelope::EvNode(signed);
+    let raw_tx: Bytes = envelope.encoded_2718().into();
+    let tx_hash = *envelope.tx_hash();
+
+    build_block_with_transactions(
+        &mut env,
+        &mut parent_hash,
+        &mut parent_number,
+        &mut parent_timestamp,
+        Some(gas_limit),
+        vec![raw_tx],
+        Address::ZERO,
+    )
+    .await?;
+
+    type EvRpcBlock = Block<EvRpcTransaction, Header>;
+    let receipt = EthApiClient::<EvTransactionRequest, EvRpcTransaction, EvRpcBlock, EvRpcReceipt, Header>::transaction_receipt(
+        &env.node_clients[0].rpc,
+        tx_hash,
+    )
+    .await?
+    .expect("sponsored transaction receipt available");
+    let receipt_inner = receipt.inner();
+    assert!(receipt_inner.status(), "sponsored transaction should succeed");
+    assert_eq!(
+        receipt.fee_payer(),
+        Some(sponsor_address),
+        "receipt should expose sponsor fee payer"
+    );
+
+    let tx = EthApiClient::<EvTransactionRequest, EvRpcTransaction, EvRpcBlock, EvRpcReceipt, Header>::transaction_by_hash(
+        &env.node_clients[0].rpc,
+        tx_hash,
+    )
+    .await?
+    .expect("sponsored transaction available");
+    assert_eq!(
+        tx.fee_payer(),
+        Some(sponsor_address),
+        "transaction should expose sponsor fee payer"
+    );
+
+    let executor_balance_after =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+            &env.node_clients[0].rpc,
+            executor_address,
+            Some(BlockId::latest()),
+        )
+        .await?;
+    let sponsor_balance_after =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+            &env.node_clients[0].rpc,
+            sponsor_address,
+            Some(BlockId::latest()),
+        )
+        .await?;
+    let recipient_balance_after =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+            &env.node_clients[0].rpc,
+            recipient,
+            Some(BlockId::latest()),
+        )
+        .await?;
+
+    let executor_spent = executor_balance_before.saturating_sub(executor_balance_after);
+    let sponsor_spent = sponsor_balance_before.saturating_sub(sponsor_balance_after);
+    let recipient_gain = recipient_balance_after.saturating_sub(recipient_balance_before);
+    assert_eq!(
+        recipient_gain, transfer_value,
+        "recipient should receive transfer value"
+    );
+    assert_eq!(
+        executor_spent, transfer_value,
+        "executor should only pay value when sponsored"
+    );
+
+    let expected_gas_cost = U256::from(receipt_inner.gas_used)
+        .saturating_mul(U256::from(receipt_inner.effective_gas_price));
+    assert_eq!(
+        sponsor_spent, expected_gas_cost,
+        "sponsor should pay gas cost"
     );
 
     drop(setup);
