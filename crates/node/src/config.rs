@@ -625,4 +625,5 @@ mod tests {
             DEFAULT_CONTRACT_SIZE_LIMIT
         );
     }
+
 }
