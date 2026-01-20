@@ -329,6 +329,36 @@ How it works:
 
 This design ensures safe upgrades for existing networks: contracts that were previously rejected due to size limits won't suddenly become deployable until the network explicitly activates the new limit at a specific block height.
 
+### Restricting Contract Deployment
+
+If you want a permissioned chain where only specific EOAs can deploy contracts, configure a deploy allowlist in the chainspec:
+
+```json
+"config": {
+  ...,
+  "evolve": {
+    "deployAllowlist": [
+      "0xYourDeployerAddressHere",
+      "0xAnotherDeployerAddressHere"
+    ],
+    "deployAllowlistActivationHeight": 0
+  }
+}
+```
+
+How it works:
+
+- The allowlist is enforced at the EVM handler before execution.
+- Only top-level `CREATE` transactions from allowlisted callers are accepted.
+- Contract-to-contract `CREATE/CREATE2` is still allowed (by design).
+- If `deployAllowlistActivationHeight` is omitted, it defaults to `0` when the list is non-empty.
+- If the list is empty or missing, contract deployment remains unrestricted (treated as disabled).
+
+Operational notes:
+
+- The allowlist is static and must be changed via a chainspec update.
+- Duplicate entries or the zero address are rejected at startup.
+
 ### Payload Builder Configuration
 
 The payload builder can be configured with:
