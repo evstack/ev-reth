@@ -55,6 +55,11 @@ Custom RPC namespace `txpoolExt` that provides:
 - Configurable byte limit for transaction retrieval (default: 1.98 MB)
 - Efficient iteration that stops when reaching the byte limit
 
+Note: ev-node uses this endpoint indirectly. It pulls pending txs via `txpoolExt_getTxs`,
+then injects those RLP bytes into Engine API payload attributes (`transactions`) for block
+building. This means ev-reth's txpool is not used for block construction directly, but it
+is used as a source of transactions.
+
 ### 6. Base Fee Redirect
 
 On vanilla Ethereum, EIP-1559 burns the base fee. For custom networks, ev-reth can redirect the base fee to a designated address:
