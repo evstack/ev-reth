@@ -1,5 +1,8 @@
+use std::{collections::BTreeMap, sync::Arc};
+
 use alloy_consensus::{TxEnvelope, TxReceipt};
 use alloy_eips::{eip2718::Encodable2718, BlockNumberOrTag};
+use alloy_genesis::{Genesis, GenesisAccount};
 use alloy_network::eip2718::Decodable2718;
 use alloy_primitives::{address, Address, Bytes, TxKind, B256, U256};
 use alloy_rpc_types::{
@@ -13,6 +16,7 @@ use alloy_rpc_types_engine::{ForkchoiceState, PayloadAttributes, PayloadStatusEn
 use alloy_sol_types::{sol, SolCall};
 use eyre::Result;
 use futures::future;
+use reth_chainspec::{Chain, ChainSpecBuilder};
 use reth_e2e_test_utils::{
     testsuite::{
         actions::MakeCanonical,
@@ -23,6 +27,7 @@ use reth_e2e_test_utils::{
     wallet::Wallet,
 };
 use reth_rpc_api::clients::{EngineApiClient, EthApiClient};
+use serde::Deserialize;
 
 use crate::common::{
     create_test_chain_spec, create_test_chain_spec_with_base_fee_sink,
@@ -48,6 +53,14 @@ sol! {
         function mint(address to, uint256 amount);
         function burn(address from, uint256 amount);
     }
+
+    interface AdminProxy {
+        function execute(address target, bytes data) external returns (bytes result);
+    }
+
+    interface FeeVault {
+        function setMinimumAmount(uint256 minimumAmount) external;
+    }
 }
 
 /// Bytecode for the `MintAdminProxy` contract.
@@ -61,6 +74,14 @@ const ADMIN_PROXY_INITCODE: [u8; 54] = alloy_primitives::hex!(
 
 /// Test recipient address used in mint/burn tests.
 const TEST_MINT_RECIPIENT: Address = address!("0x0101010101010101010101010101010101010101");
+
+#[derive(Deserialize)]
+struct EvolveGenesisConfig {
+    #[serde(rename = "baseFeeSink")]
+    base_fee_sink: Address,
+    #[serde(rename = "mintAdmin")]
+    mint_admin: Address,
+}
 
 /// Computes the contract address that will be created by a deployer at a given nonce.
 ///
@@ -1052,6 +1073,178 @@ async fn test_e2e_mint_precompile_via_contract() -> Result<()> {
         final_balance,
         recipient_initial_balance + mint_amount - burn_amount,
         "burn should reduce the previously minted balance",
+    );
+
+    drop(setup);
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_e2e_admin_proxy_fee_vault_flow() -> Result<()> {
+    reth_tracing::init_test_tracing();
+
+    let mut genesis: Genesis =
+        serde_json::from_str(include_str!("../../../etc/eden-genesis.json"))?;
+    let chain_id = genesis.config.chain_id;
+
+    let evolve_config: EvolveGenesisConfig = genesis
+        .config
+        .extra_fields
+        .get_deserialized("evolve")
+        .expect("evolve config missing")
+        .expect("evolve config invalid");
+
+    let fee_vault_address = evolve_config.base_fee_sink;
+    let admin_proxy_address = evolve_config.mint_admin;
+
+    let mut wallets = Wallet::new(1).with_chain_id(chain_id).wallet_gen();
+    let admin = wallets.remove(0);
+    let admin_address = admin.address();
+
+    genesis.alloc.insert(
+        admin_address,
+        GenesisAccount {
+            balance: U256::MAX,
+            ..Default::default()
+        },
+    );
+
+    let admin_proxy_account = genesis
+        .alloc
+        .get_mut(&admin_proxy_address)
+        .expect("admin proxy account in genesis");
+    let storage = admin_proxy_account
+        .storage
+        .get_or_insert_with(BTreeMap::new);
+    storage.insert(B256::ZERO, admin_address.into_word());
+
+    let chain_spec = Arc::new(
+        ChainSpecBuilder::default()
+            .chain(Chain::from_id(chain_id))
+            .genesis(genesis)
+            .cancun_activated()
+            .build(),
+    );
+
+    let mut setup = Setup::<EvolveEngineTypes>::default()
+        .with_chain_spec(chain_spec)
+        .with_network(NetworkSetup::single_node())
+        .with_dev_mode(true);
+
+    let mut env = Environment::<EvolveEngineTypes>::default();
+    setup.apply::<EvolveNode>(&mut env).await?;
+
+    let parent_block = env.node_clients[0]
+        .get_block_by_number(BlockNumberOrTag::Latest)
+        .await?
+        .expect("parent block should exist");
+    let mut parent_hash = parent_block.header.hash;
+    let mut parent_timestamp = parent_block.header.inner.timestamp;
+    let mut parent_number = parent_block.header.inner.number;
+    let gas_limit = parent_block.header.inner.gas_limit;
+    let base_fee_per_gas = u128::from(parent_block.header.inner.base_fee_per_gas.unwrap_or(1));
+    let max_fee_per_gas = base_fee_per_gas.saturating_mul(2).max(1);
+
+    let initial_fee_vault_balance =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+            &env.node_clients[0].rpc,
+            fee_vault_address,
+            Some(BlockId::latest()),
+        )
+        .await?;
+
+    let new_minimum = U256::from(10_000u64);
+    let set_minimum_call = FeeVault::setMinimumAmountCall {
+        minimumAmount: new_minimum,
+    }
+    .abi_encode();
+    let execute_call = AdminProxy::executeCall {
+        target: fee_vault_address,
+        data: Bytes::from(set_minimum_call),
+    }
+    .abi_encode();
+
+    let execute_tx = TransactionRequest {
+        nonce: Some(0),
+        gas: Some(300_000),
+        max_fee_per_gas: Some(max_fee_per_gas),
+        max_priority_fee_per_gas: Some(1),
+        chain_id: Some(chain_id),
+        value: Some(U256::ZERO),
+        to: Some(TxKind::Call(admin_proxy_address)),
+        input: TransactionInput {
+            input: None,
+            data: Some(Bytes::from(execute_call)),
+        },
+        ..Default::default()
+    };
+
+    let execute_envelope = TransactionTestContext::sign_tx(admin.clone(), execute_tx).await;
+    let execute_raw: Bytes = execute_envelope.encoded_2718().into();
+
+    let transfer_tx = TransactionRequest {
+        nonce: Some(1),
+        gas: Some(21_000),
+        max_fee_per_gas: Some(max_fee_per_gas),
+        max_priority_fee_per_gas: Some(1),
+        chain_id: Some(chain_id),
+        value: Some(U256::from(1u64)),
+        to: Some(TxKind::Call(Address::random())),
+        input: TransactionInput::default(),
+        ..Default::default()
+    };
+
+    let transfer_envelope = TransactionTestContext::sign_tx(admin.clone(), transfer_tx).await;
+    let transfer_raw: Bytes = transfer_envelope.encoded_2718().into();
+
+    build_block_with_transactions(
+        &mut env,
+        &mut parent_hash,
+        &mut parent_number,
+        &mut parent_timestamp,
+        Some(gas_limit),
+        vec![execute_raw, transfer_raw],
+        admin_address,
+    )
+    .await?;
+
+    let execute_receipt =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::transaction_receipt(
+            &env.node_clients[0].rpc,
+            *execute_envelope.tx_hash(),
+        )
+        .await?
+        .expect("admin proxy receipt available");
+    assert!(
+        execute_receipt.status(),
+        "admin proxy execute should succeed"
+    );
+
+    let minimum_slot =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::storage_at(
+            &env.node_clients[0].rpc,
+            fee_vault_address,
+            U256::from(3).into(),
+            Some(BlockId::latest()),
+        )
+        .await?;
+    let minimum_value = U256::from_be_bytes(minimum_slot.0);
+    assert_eq!(
+        minimum_value, new_minimum,
+        "fee vault minimumAmount should update via admin proxy"
+    );
+
+    let final_fee_vault_balance =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+            &env.node_clients[0].rpc,
+            fee_vault_address,
+            Some(BlockId::latest()),
+        )
+        .await?;
+    assert!(
+        final_fee_vault_balance > initial_fee_vault_balance,
+        "fee vault should receive base fees after transactions"
     );
 
     drop(setup);
