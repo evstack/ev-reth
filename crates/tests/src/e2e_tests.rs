@@ -1,6 +1,6 @@
-use alloy_consensus::{SignableTransaction, TxEnvelope, TxReceipt};
+use alloy_consensus::{transaction::TxHashRef, SignableTransaction, TxEnvelope, TxReceipt};
 use alloy_eips::{eip2718::Encodable2718, eip2930::AccessList, BlockNumberOrTag};
-use alloy_network::eip2718::Decodable2718;
+use alloy_network::{eip2718::Decodable2718, ReceiptResponse};
 use alloy_primitives::{address, Address, Bytes, TxKind, B256, U256};
 use alloy_rpc_types::{
     eth::{
@@ -30,8 +30,8 @@ use crate::common::{
     create_test_chain_spec_with_mint_admin, TEST_CHAIN_ID,
 };
 use ev_node::rpc::{EvRpcReceipt, EvRpcTransaction, EvTransactionRequest};
-use ev_primitives::{Call, EvNodeTransaction, EvTxEnvelope};
 use ev_precompiles::mint::MINT_PRECOMPILE_ADDR;
+use ev_primitives::{Call, EvNodeTransaction, EvTxEnvelope};
 
 sol! {
     /// Interface for the native token precompile used in e2e tests.
@@ -377,11 +377,11 @@ async fn test_e2e_base_fee_sink_receives_base_fee() -> Result<()> {
     Ok(())
 }
 
-/// Tests that a sponsored EvNode transaction charges gas to the sponsor, not the executor.
+/// Tests that a sponsored `EvNode` transaction charges gas to the sponsor, not the executor.
 ///
 /// # Test Flow
 /// 1. Creates an executor and sponsor account from genesis-funded wallets
-/// 2. Builds a sponsored EvNode transfer transaction (type 0x76)
+/// 2. Builds a sponsored `EvNode` transfer transaction (type 0x76)
 /// 3. Includes the transaction in a block via the Engine API
 /// 4. Verifies `feePayer` appears in the RPC tx and receipt responses
 /// 5. Asserts balances: executor pays value, sponsor pays gas
@@ -444,12 +444,13 @@ async fn test_e2e_sponsored_evnode_transaction() -> Result<()> {
         )
         .await?;
 
-    let executor_nonce = EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::transaction_count(
-        &env.node_clients[0].rpc,
-        executor_address,
-        Some(BlockId::latest()),
-    )
-    .await?;
+    let executor_nonce =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::transaction_count(
+            &env.node_clients[0].rpc,
+            executor_address,
+            Some(BlockId::latest()),
+        )
+        .await?;
     let executor_nonce = u64::try_from(executor_nonce).expect("nonce fits into u64");
 
     let transfer_value = U256::from(1_000_000_000_000_000u64); // 0.001 ETH
@@ -496,14 +497,20 @@ async fn test_e2e_sponsored_evnode_transaction() -> Result<()> {
     .await?;
 
     type EvRpcBlock = Block<EvRpcTransaction, Header>;
-    let receipt = EthApiClient::<EvTransactionRequest, EvRpcTransaction, EvRpcBlock, EvRpcReceipt, Header>::transaction_receipt(
-        &env.node_clients[0].rpc,
-        tx_hash,
-    )
+    let receipt = EthApiClient::<
+        EvTransactionRequest,
+        EvRpcTransaction,
+        EvRpcBlock,
+        EvRpcReceipt,
+        Header,
+    >::transaction_receipt(&env.node_clients[0].rpc, tx_hash)
     .await?
     .expect("sponsored transaction receipt available");
     let receipt_inner = receipt.inner();
-    assert!(receipt_inner.status(), "sponsored transaction should succeed");
+    assert!(
+        receipt_inner.status(),
+        "sponsored transaction should succeed"
+    );
     assert_eq!(
         receipt.fee_payer(),
         Some(sponsor_address),
