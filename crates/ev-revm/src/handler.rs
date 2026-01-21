@@ -908,6 +908,56 @@ mod tests {
     }
 
     #[test]
+    fn batch_execution_rejects_empty_calls() {
+        let caller = address!("0x0000000000000000000000000000000000000aaa");
+
+        let mut state = State::builder()
+            .with_database(CacheDB::<EmptyDB>::default())
+            .with_bundle_update()
+            .build();
+
+        state.insert_account(
+            caller,
+            AccountInfo {
+                balance: U256::from(10_000_000_000u64),
+                nonce: 0,
+                code_hash: KECCAK_EMPTY,
+                code: None,
+            },
+        );
+
+        let mut evm_env: EvmEnv<SpecId> = EvmEnv::default();
+        evm_env.cfg_env.chain_id = 1;
+        evm_env.cfg_env.spec = SpecId::CANCUN;
+        evm_env.block_env.basefee = 1;
+        evm_env.block_env.gas_limit = 30_000_000;
+        evm_env.block_env.number = U256::from(1);
+
+        let mut evm = EvTxEvmFactory::default().create_evm(state, evm_env);
+
+        let tx_env = TxEnv {
+            caller,
+            gas_limit: 200_000,
+            gas_price: 1,
+            gas_priority_fee: Some(1),
+            chain_id: Some(1),
+            tx_type: TransactionType::Eip1559.into(),
+            ..Default::default()
+        };
+
+        let tx = EvTxEnv::with_calls(tx_env, Vec::new());
+
+        let err = evm
+            .transact_raw(tx)
+            .expect_err("empty call batch should reject");
+        assert!(
+            err.to_string()
+                .contains("evnode transaction must include at least one call"),
+            "unexpected error: {err:?}"
+        );
+    }
+
+    #[test]
     fn reject_deploy_for_non_allowlisted_caller() {
         let allowlisted = address!("0x00000000000000000000000000000000000000aa");
         let caller = address!("0x00000000000000000000000000000000000000bb");

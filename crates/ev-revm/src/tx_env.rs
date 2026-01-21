@@ -23,6 +23,7 @@ pub struct EvTxEnv {
     sponsor_signature_invalid: bool,
     calls: Vec<Call>,
     batch_value: U256,
+    is_evnode: bool,
 }
 
 impl EvTxEnv {
@@ -34,6 +35,7 @@ impl EvTxEnv {
             sponsor: None,
             sponsor_signature_invalid: false,
             calls: Vec::new(),
+            is_evnode: false,
         }
     }
 
@@ -90,6 +92,7 @@ impl EvTxEnv {
         let mut env = Self::new(inner);
         env.calls = calls;
         env.batch_value = batch_value;
+        env.is_evnode = true;
         env
     }
 }
@@ -102,6 +105,7 @@ impl From<TxEnv> for EvTxEnv {
             sponsor: None,
             sponsor_signature_invalid: false,
             calls: Vec::new(),
+            is_evnode: false,
         }
     }
 }
@@ -255,6 +259,7 @@ impl FromRecoveredTx<EvTxEnvelope> for EvTxEnv {
                     sponsor_signature_invalid,
                     calls,
                     batch_value,
+                    is_evnode: true,
                 }
             }
         }
@@ -315,10 +320,10 @@ impl SponsorPayerTx for EvTxEnv {
 
 impl BatchCallsTx for EvTxEnv {
     fn batch_calls(&self) -> Option<&[Call]> {
-        if self.calls.is_empty() {
-            None
-        } else {
+        if self.is_evnode || !self.calls.is_empty() {
             Some(&self.calls)
+        } else {
+            None
         }
     }
 
@@ -359,7 +364,7 @@ impl BatchCallsTx for TxEnv {
 
 #[cfg(test)]
 mod tests {
-    use super::EvTxEnv;
+    use super::{BatchCallsTx, EvTxEnv};
     use alloy_evm::FromRecoveredTx;
     use alloy_primitives::{Address, Bytes, Signature, TxKind, U256};
     use ev_primitives::{Call, EvNodeSignedTx, EvNodeTransaction, EvTxEnvelope};
@@ -418,5 +423,24 @@ mod tests {
 
         assert!(env.sponsor().is_none());
         assert!(!env.sponsor_signature_invalid());
+    }
+
+    #[test]
+    fn batch_calls_exposes_empty_evnode_calls() {
+        let executor = Address::from([0x33; 20]);
+        let mut tx = sample_evnode_tx();
+        tx.calls = Vec::new();
+
+        let signed = EvNodeSignedTx::new_unhashed(tx, signature_with_parity(27, 1, 1));
+        let env = EvTxEnv::from_recovered_tx(&EvTxEnvelope::EvNode(signed), executor);
+
+        let calls = env.batch_calls().expect("evnode should expose batch calls");
+        assert!(calls.is_empty());
+    }
+
+    #[test]
+    fn batch_calls_omits_non_evnode_calls() {
+        let env = EvTxEnv::from(reth_revm::revm::context::TxEnv::default());
+        assert!(env.batch_calls().is_none());
     }
 }

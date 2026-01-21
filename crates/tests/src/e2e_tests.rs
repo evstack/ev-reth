@@ -693,6 +693,108 @@ async fn test_e2e_invalid_sponsor_signature_skipped() -> Result<()> {
     Ok(())
 }
 
+/// Tests that an `EvNode` transaction with empty calls is skipped during payload construction.
+///
+/// # Test Flow
+/// 1. Creates an executor account from genesis-funded wallets
+/// 2. Builds an `EvNode` transaction with an empty calls list
+/// 3. Attempts to build a payload via the Engine API
+///
+/// # Success Criteria
+/// - Payload is built successfully
+/// - Invalid transaction is not included
+#[tokio::test(flavor = "multi_thread")]
+async fn test_e2e_empty_calls_skipped() -> Result<()> {
+    reth_tracing::init_test_tracing();
+
+    let chain_spec = create_test_chain_spec();
+    let chain_id = chain_spec.chain().id();
+
+    let mut setup = Setup::<EvolveEngineTypes>::default()
+        .with_chain_spec(chain_spec)
+        .with_network(NetworkSetup::single_node())
+        .with_dev_mode(true);
+
+    let mut env = Environment::<EvolveEngineTypes>::default();
+    setup.apply::<EvolveNode>(&mut env).await?;
+
+    let parent_block = env.node_clients[0]
+        .get_block_by_number(BlockNumberOrTag::Latest)
+        .await?
+        .expect("parent block should exist");
+    let mut parent_hash = parent_block.header.hash;
+    let mut parent_timestamp = parent_block.header.inner.timestamp;
+    let mut parent_number = parent_block.header.inner.number;
+    let gas_limit = parent_block.header.inner.gas_limit;
+
+    let mut wallets = Wallet::new(1).with_chain_id(chain_id).wallet_gen();
+    let executor = wallets.remove(0);
+    let executor_address = executor.address();
+
+    let executor_nonce =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::transaction_count(
+            &env.node_clients[0].rpc,
+            executor_address,
+            Some(BlockId::latest()),
+        )
+        .await?;
+    let executor_nonce = u64::try_from(executor_nonce).expect("nonce fits into u64");
+
+    let ev_tx = EvNodeTransaction {
+        chain_id,
+        nonce: executor_nonce,
+        max_priority_fee_per_gas: 1_000_000_000,
+        max_fee_per_gas: 2_000_000_000,
+        gas_limit: 100_000,
+        calls: Vec::new(),
+        access_list: AccessList::default(),
+        fee_payer_signature: None,
+    };
+
+    let executor_sig = executor
+        .sign_hash_sync(&ev_tx.signature_hash())
+        .expect("executor signature");
+    let signed = ev_tx.into_signed(executor_sig);
+
+    let envelope = EvTxEnvelope::EvNode(signed);
+    let raw_tx: Bytes = envelope.encoded_2718().into();
+    let tx_hash = *envelope.tx_hash();
+
+    let payload_envelope = build_block_with_transactions(
+        &mut env,
+        &mut parent_hash,
+        &mut parent_number,
+        &mut parent_timestamp,
+        Some(gas_limit),
+        vec![raw_tx],
+        Address::ZERO,
+    )
+    .await?;
+
+    let payload_inner = payload_envelope
+        .execution_payload
+        .payload_inner
+        .payload_inner;
+    assert!(
+        payload_inner.transactions.is_empty(),
+        "empty calls tx should be skipped"
+    );
+
+    let tx = EthApiClient::<
+        EvTransactionRequest,
+        EvRpcTransaction,
+        Block<EvRpcTransaction, Header>,
+        EvRpcReceipt,
+        Header,
+    >::transaction_by_hash(&env.node_clients[0].rpc, tx_hash)
+    .await?;
+    assert!(tx.is_none(), "empty calls tx should not be in the block");
+
+    drop(setup);
+
+    Ok(())
+}
+
 /// Tests minting and burning tokens to/from a dynamically generated wallet not in genesis.
 ///
 /// # Test Flow
