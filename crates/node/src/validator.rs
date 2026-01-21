@@ -109,7 +109,7 @@ fn convert_sealed_block(
     SealedBlock::new_unchecked(ev_block, hash)
 }
 
-/// Parses an execution payload containing EvNode transactions.
+/// Parses an execution payload containing `EvNode` transactions.
 fn parse_evolve_payload(
     payload: ExecutionData,
 ) -> Result<SealedBlock<ev_primitives::Block>, NewPayloadError> {
