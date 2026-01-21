@@ -675,12 +675,18 @@ async fn test_e2e_invalid_sponsor_signature_skipped() -> Result<()> {
         "invalid sponsor tx should be skipped"
     );
 
-    let tx = EthApiClient::<EvTransactionRequest, EvRpcTransaction, Block<EvRpcTransaction, Header>, EvRpcReceipt, Header>::transaction_by_hash(
-        &env.node_clients[0].rpc,
-        tx_hash,
-    )
+    let tx = EthApiClient::<
+        EvTransactionRequest,
+        EvRpcTransaction,
+        Block<EvRpcTransaction, Header>,
+        EvRpcReceipt,
+        Header,
+    >::transaction_by_hash(&env.node_clients[0].rpc, tx_hash)
     .await?;
-    assert!(tx.is_none(), "invalid sponsor tx should not be in the block");
+    assert!(
+        tx.is_none(),
+        "invalid sponsor tx should not be in the block"
+    );
 
     drop(setup);
 

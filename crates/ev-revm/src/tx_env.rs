@@ -261,67 +261,6 @@ impl FromRecoveredTx<EvTxEnvelope> for EvTxEnv {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::EvTxEnv;
-    use alloy_evm::FromRecoveredTx;
-    use alloy_primitives::{Address, Bytes, Signature, TxKind, U256};
-    use ev_primitives::{Call, EvNodeSignedTx, EvNodeTransaction, EvTxEnvelope};
-
-    fn sample_evnode_tx() -> EvNodeTransaction {
-        EvNodeTransaction {
-            chain_id: 1,
-            nonce: 1,
-            max_priority_fee_per_gas: 1,
-            max_fee_per_gas: 2,
-            gas_limit: 21_000,
-            calls: vec![Call {
-                to: TxKind::Call(Address::ZERO),
-                value: U256::ZERO,
-                input: Bytes::default(),
-            }],
-            access_list: Default::default(),
-            fee_payer_signature: None,
-        }
-    }
-
-    fn signature_with_parity(v: u8, r: u8, s: u8) -> Signature {
-        let mut bytes = [0u8; 65];
-        bytes[0] = r;
-        bytes[32] = s;
-        bytes[64] = v;
-        Signature::from_raw_array(&bytes).expect("valid parity")
-    }
-
-    #[test]
-    fn from_recovered_tx_marks_invalid_sponsor_signature() {
-        let executor = Address::from([0x11; 20]);
-        let mut tx = sample_evnode_tx();
-        tx.fee_payer_signature = Some(signature_with_parity(27, 0, 0));
-
-        let signed = EvNodeSignedTx::new_unhashed(tx, signature_with_parity(27, 1, 1));
-        let env = EvTxEnv::from_recovered_tx(&EvTxEnvelope::EvNode(signed), executor);
-
-        assert!(env.sponsor().is_none(), "invalid signature should not recover sponsor");
-        assert!(
-            env.sponsor_signature_invalid(),
-            "invalid signature should be flagged"
-        );
-    }
-
-    #[test]
-    fn from_recovered_tx_allows_missing_sponsor_signature() {
-        let executor = Address::from([0x22; 20]);
-        let tx = sample_evnode_tx();
-
-        let signed = EvNodeSignedTx::new_unhashed(tx, signature_with_parity(27, 1, 1));
-        let env = EvTxEnv::from_recovered_tx(&EvTxEnvelope::EvNode(signed), executor);
-
-        assert!(env.sponsor().is_none());
-        assert!(!env.sponsor_signature_invalid());
-    }
-}
-
 impl FromTxWithEncoded<EvTxEnvelope> for EvTxEnv {
     fn from_encoded_tx(tx: &EvTxEnvelope, caller: Address, _encoded: Bytes) -> Self {
         Self::from_recovered_tx(tx, caller)
@@ -415,5 +354,69 @@ impl BatchCallsTx for TxEnv {
         self.kind = call.to;
         self.value = call.value;
         self.data = call.input.clone();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::EvTxEnv;
+    use alloy_evm::FromRecoveredTx;
+    use alloy_primitives::{Address, Bytes, Signature, TxKind, U256};
+    use ev_primitives::{Call, EvNodeSignedTx, EvNodeTransaction, EvTxEnvelope};
+
+    fn sample_evnode_tx() -> EvNodeTransaction {
+        EvNodeTransaction {
+            chain_id: 1,
+            nonce: 1,
+            max_priority_fee_per_gas: 1,
+            max_fee_per_gas: 2,
+            gas_limit: 21_000,
+            calls: vec![Call {
+                to: TxKind::Call(Address::ZERO),
+                value: U256::ZERO,
+                input: Bytes::default(),
+            }],
+            access_list: Default::default(),
+            fee_payer_signature: None,
+        }
+    }
+
+    fn signature_with_parity(v: u8, r: u8, s: u8) -> Signature {
+        let mut bytes = [0u8; 65];
+        bytes[0] = r;
+        bytes[32] = s;
+        bytes[64] = v;
+        Signature::from_raw_array(&bytes).expect("valid parity")
+    }
+
+    #[test]
+    fn from_recovered_tx_marks_invalid_sponsor_signature() {
+        let executor = Address::from([0x11; 20]);
+        let mut tx = sample_evnode_tx();
+        tx.fee_payer_signature = Some(signature_with_parity(27, 0, 0));
+
+        let signed = EvNodeSignedTx::new_unhashed(tx, signature_with_parity(27, 1, 1));
+        let env = EvTxEnv::from_recovered_tx(&EvTxEnvelope::EvNode(signed), executor);
+
+        assert!(
+            env.sponsor().is_none(),
+            "invalid signature should not recover sponsor"
+        );
+        assert!(
+            env.sponsor_signature_invalid(),
+            "invalid signature should be flagged"
+        );
+    }
+
+    #[test]
+    fn from_recovered_tx_allows_missing_sponsor_signature() {
+        let executor = Address::from([0x22; 20]);
+        let tx = sample_evnode_tx();
+
+        let signed = EvNodeSignedTx::new_unhashed(tx, signature_with_parity(27, 1, 1));
+        let env = EvTxEnv::from_recovered_tx(&EvTxEnvelope::EvNode(signed), executor);
+
+        assert!(env.sponsor().is_none());
+        assert!(!env.sponsor_signature_invalid());
     }
 }

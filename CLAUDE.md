@@ -21,6 +21,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Check formatting**: `make fmt-check`
 - **Run linter**: `make lint`
 - **Run all checks**: `make check-all`
+  - After changes, run `make check-all`.
 
 ### Running the Node
 - **Run with defaults**: `make run`
