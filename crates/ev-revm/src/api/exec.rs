@@ -50,9 +50,11 @@ where
 
     fn transact_one(&mut self, tx: Self::Tx) -> Result<Self::ExecutionResult, Self::Error> {
         let redirect = self.redirect();
+        let deploy_allowlist = self.deploy_allowlist();
         let inner = self.inner_mut();
         inner.ctx.set_tx(tx);
-        let mut handler = EvHandler::<_, _, EthFrame<EthInterpreter>>::new(redirect);
+        let mut handler =
+            EvHandler::<_, _, EthFrame<EthInterpreter>>::new(redirect, deploy_allowlist);
         handler.run(inner)
     }
 
@@ -64,8 +66,10 @@ where
         &mut self,
     ) -> Result<ExecResultAndState<Self::ExecutionResult, Self::State>, Self::Error> {
         let redirect = self.redirect();
+        let deploy_allowlist = self.deploy_allowlist();
         let inner = self.inner_mut();
-        let mut handler = EvHandler::<_, _, EthFrame<EthInterpreter>>::new(redirect);
+        let mut handler =
+            EvHandler::<_, _, EthFrame<EthInterpreter>>::new(redirect, deploy_allowlist);
         handler.run(inner).map(|result| {
             let state = inner.journal_mut().finalize();
             ExecResultAndState::new(result, state)
@@ -106,9 +110,11 @@ where
 
     fn inspect_one_tx(&mut self, tx: Self::Tx) -> Result<Self::ExecutionResult, Self::Error> {
         let redirect = self.redirect();
+        let deploy_allowlist = self.deploy_allowlist();
         let inner = self.inner_mut();
         inner.ctx.set_tx(tx);
-        let mut handler = EvHandler::<_, _, EthFrame<EthInterpreter>>::new(redirect);
+        let mut handler =
+            EvHandler::<_, _, EthFrame<EthInterpreter>>::new(redirect, deploy_allowlist);
         handler.inspect_run(inner)
     }
 }
@@ -142,6 +148,7 @@ where
         data: Bytes,
     ) -> Result<Self::ExecutionResult, Self::Error> {
         let redirect = self.redirect();
+        let deploy_allowlist = self.deploy_allowlist();
         let inner = self.inner_mut();
         inner
             .ctx
@@ -150,7 +157,8 @@ where
                 system_contract_address,
                 data,
             ));
-        let mut handler = EvHandler::<_, _, EthFrame<EthInterpreter>>::new(redirect);
+        let mut handler =
+            EvHandler::<_, _, EthFrame<EthInterpreter>>::new(redirect, deploy_allowlist);
         handler.run_system_call(inner)
     }
 }
@@ -172,6 +180,7 @@ where
         data: Bytes,
     ) -> Result<Self::ExecutionResult, Self::Error> {
         let redirect = self.redirect();
+        let deploy_allowlist = self.deploy_allowlist();
         let inner = self.inner_mut();
         inner
             .ctx
@@ -180,7 +189,8 @@ where
                 system_contract_address,
                 data,
             ));
-        let mut handler = EvHandler::<_, _, EthFrame<EthInterpreter>>::new(redirect);
+        let mut handler =
+            EvHandler::<_, _, EthFrame<EthInterpreter>>::new(redirect, deploy_allowlist);
         handler.inspect_run_system_call(inner)
     }
 }

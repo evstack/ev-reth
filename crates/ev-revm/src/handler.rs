@@ -2,9 +2,10 @@
 
 use crate::{
     base_fee::{BaseFeeRedirect, BaseFeeRedirectError},
+    deploy::DeployAllowlistSettings,
     tx_env::{BatchCallsTx, SponsorPayerTx},
 };
-use alloy_primitives::U256;
+use alloy_primitives::{TxKind, U256};
 use reth_revm::{
     inspector::{Inspector, InspectorEvmTr, InspectorHandler},
     revm::{
@@ -35,20 +36,60 @@ use std::cmp::Ordering;
 pub struct EvHandler<EVM, ERROR, FRAME> {
     inner: MainnetHandler<EVM, ERROR, FRAME>,
     redirect: Option<BaseFeeRedirect>,
+    deploy_allowlist: Option<DeployAllowlistSettings>,
 }
 
 impl<EVM, ERROR, FRAME> EvHandler<EVM, ERROR, FRAME> {
     /// Creates a new handler wrapper with the provided redirect policy.
-    pub fn new(redirect: Option<BaseFeeRedirect>) -> Self {
+    pub fn new(
+        redirect: Option<BaseFeeRedirect>,
+        deploy_allowlist: Option<DeployAllowlistSettings>,
+    ) -> Self {
         Self {
             inner: MainnetHandler::default(),
             redirect,
+            deploy_allowlist,
         }
     }
 
     /// Returns the configured redirect policy, if any.
     pub const fn redirect(&self) -> Option<BaseFeeRedirect> {
         self.redirect
+    }
+
+    const fn deploy_allowlist_for_block(
+        &self,
+        block_number: u64,
+    ) -> Option<&DeployAllowlistSettings> {
+        match self.deploy_allowlist.as_ref() {
+            Some(settings) if settings.is_active(block_number) => Some(settings),
+            _ => None,
+        }
+    }
+
+    fn ensure_deploy_allowed(&self, evm: &EVM) -> Result<(), ERROR>
+    where
+        EVM: EvmTr<Context: ContextTr<Journal: JournalTr<State = EvmState>>>,
+        ERROR: EvmTrError<EVM>,
+    {
+        let block_number = evm
+            .ctx_ref()
+            .block()
+            .number()
+            .try_into()
+            .unwrap_or(u64::MAX);
+        let Some(settings) = self.deploy_allowlist_for_block(block_number) else {
+            return Ok(());
+        };
+        let tx = evm.ctx_ref().tx();
+        if matches!(tx.kind(), TxKind::Create) && !settings.is_allowed(tx.caller()) {
+            return Err(
+                <ERROR as reth_revm::revm::context::result::FromStringError>::from_string(
+                    "contract deployment not allowed".to_string(),
+                ),
+            );
+        }
+        Ok(())
     }
 }
 
@@ -108,6 +149,8 @@ where
         &self,
         evm: &mut Self::Evm,
     ) -> Result<(), Self::Error> {
+        self.ensure_deploy_allowed(evm)?;
+
         let ctx = evm.ctx_mut();
         let tx = ctx.tx();
         let sponsor_invalid = tx.sponsor_signature_invalid();
@@ -525,7 +568,7 @@ fn finalize_batch_gas(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{EvEvm, EvTxEnv, EvTxEvmFactory};
+    use crate::{DeployAllowlistSettings, EvEvm, EvTxEnv, EvTxEvmFactory};
     use alloy_primitives::{address, Address, Bytes, TxKind, B256, U256};
     use ev_primitives::Call;
     use reth_revm::{
@@ -864,6 +907,26 @@ mod tests {
         assert!(slot.is_changed());
     }
 
+    #[test]
+    fn reject_deploy_for_non_allowlisted_caller() {
+        let allowlisted = address!("0x00000000000000000000000000000000000000aa");
+        let caller = address!("0x00000000000000000000000000000000000000bb");
+        let allowlist = DeployAllowlistSettings::new(vec![allowlisted], 0);
+
+        let mut ctx = Context::mainnet().with_db(EmptyDB::default());
+        ctx.block.number = U256::from(1);
+        ctx.cfg.spec = SpecId::CANCUN;
+        ctx.tx.caller = caller;
+        ctx.tx.kind = TxKind::Create;
+        ctx.tx.gas_limit = 1_000_000;
+
+        let mut evm = EvEvm::new(ctx, NoOpInspector, None);
+        let handler: TestHandler = EvHandler::new(None, Some(allowlist));
+
+        let result = handler.validate_against_state_and_deduct_caller(&mut evm);
+        assert!(matches!(result, Err(EVMError::Custom(_))));
+    }
+
     fn setup_evm(redirect: BaseFeeRedirect, beneficiary: Address) -> (TestEvm, TestHandler) {
         let mut ctx = Context::mainnet().with_db(EmptyDB::default());
         ctx.block.basefee = BASE_FEE;
@@ -880,7 +943,7 @@ mod tests {
             journal.load_account(beneficiary).unwrap();
         }
 
-        let handler: TestHandler = EvHandler::new(Some(redirect));
+        let handler: TestHandler = EvHandler::new(Some(redirect), None);
         (evm, handler)
     }
 

@@ -1,6 +1,8 @@
 //! Helpers for wrapping Reth EVM factories with the EV handler.
 
-use crate::{base_fee::BaseFeeRedirect, evm::EvEvm, tx_env::EvTxEnv};
+use crate::{
+    base_fee::BaseFeeRedirect, deploy::DeployAllowlistSettings, evm::EvEvm, tx_env::EvTxEnv,
+};
 use alloy_evm::{
     eth::{EthBlockExecutorFactory, EthEvmContext, EthEvmFactory},
     precompiles::{DynPrecompile, Precompile, PrecompilesMap},
@@ -107,6 +109,7 @@ pub struct EvEvmFactory<F> {
     inner: F,
     redirect: Option<BaseFeeRedirectSettings>,
     mint_precompile: Option<MintPrecompileSettings>,
+    deploy_allowlist: Option<DeployAllowlistSettings>,
     contract_size_limit: Option<ContractSizeLimitSettings>,
 }
 
@@ -116,12 +119,14 @@ impl<F> EvEvmFactory<F> {
         inner: F,
         redirect: Option<BaseFeeRedirectSettings>,
         mint_precompile: Option<MintPrecompileSettings>,
+        deploy_allowlist: Option<DeployAllowlistSettings>,
         contract_size_limit: Option<ContractSizeLimitSettings>,
     ) -> Self {
         Self {
             inner,
             redirect,
             mint_precompile,
+            deploy_allowlist,
             contract_size_limit,
         }
     }
@@ -189,7 +194,12 @@ impl EvmFactory for EvEvmFactory<EthEvmFactory> {
             evm_env.cfg_env.limit_contract_code_size = Some(limit);
         }
         let inner = self.inner.create_evm(db, evm_env);
-        let mut evm = EvEvm::from_inner(inner, self.redirect_for_block(block_number), false);
+        let mut evm = EvEvm::from_inner(
+            inner,
+            self.redirect_for_block(block_number),
+            self.deploy_allowlist.clone(),
+            false,
+        );
         {
             let inner = evm.inner_mut();
             self.install_mint_precompile(&mut inner.precompiles, block_number);
@@ -209,7 +219,12 @@ impl EvmFactory for EvEvmFactory<EthEvmFactory> {
             input.cfg_env.limit_contract_code_size = Some(limit);
         }
         let inner = self.inner.create_evm_with_inspector(db, input, inspector);
-        let mut evm = EvEvm::from_inner(inner, self.redirect_for_block(block_number), true);
+        let mut evm = EvEvm::from_inner(
+            inner,
+            self.redirect_for_block(block_number),
+            self.deploy_allowlist.clone(),
+            true,
+        );
         {
             let inner = evm.inner_mut();
             self.install_mint_precompile(&mut inner.precompiles, block_number);
@@ -223,6 +238,7 @@ impl EvmFactory for EvEvmFactory<EthEvmFactory> {
 pub struct EvTxEvmFactory {
     redirect: Option<BaseFeeRedirectSettings>,
     mint_precompile: Option<MintPrecompileSettings>,
+    deploy_allowlist: Option<DeployAllowlistSettings>,
     contract_size_limit: Option<ContractSizeLimitSettings>,
 }
 
@@ -241,15 +257,17 @@ type EvRevmEvm<DB, I> = RevmEvm<
 >;
 
 impl EvTxEvmFactory {
-    /// Creates a new EV EVM factory with optional redirect and precompile settings.
+    /// Creates a new EV EVM factory with optional redirect, mint, allowlist, and size settings.
     pub const fn new(
         redirect: Option<BaseFeeRedirectSettings>,
         mint_precompile: Option<MintPrecompileSettings>,
+        deploy_allowlist: Option<DeployAllowlistSettings>,
         contract_size_limit: Option<ContractSizeLimitSettings>,
     ) -> Self {
         Self {
             redirect,
             mint_precompile,
+            deploy_allowlist,
             contract_size_limit,
         }
     }
@@ -348,7 +366,12 @@ impl EvmFactory for EvTxEvmFactory {
             env.cfg_env.limit_contract_code_size = Some(limit);
         }
         let inner = self.build_evm(db, env, NoOpInspector {});
-        let mut evm = EvEvm::from_inner(inner, self.redirect_for_block(block_number), false);
+        let mut evm = EvEvm::from_inner(
+            inner,
+            self.redirect_for_block(block_number),
+            self.deploy_allowlist.clone(),
+            false,
+        );
         {
             let inner = evm.inner_mut();
             self.install_mint_precompile(&mut inner.precompiles, block_number);
@@ -367,7 +390,12 @@ impl EvmFactory for EvTxEvmFactory {
             env.cfg_env.limit_contract_code_size = Some(limit);
         }
         let inner = self.build_evm(db, env, inspector);
-        let mut evm = EvEvm::from_inner(inner, self.redirect_for_block(block_number), true);
+        let mut evm = EvEvm::from_inner(
+            inner,
+            self.redirect_for_block(block_number),
+            self.deploy_allowlist.clone(),
+            true,
+        );
         {
             let inner = evm.inner_mut();
             self.install_mint_precompile(&mut inner.precompiles, block_number);
@@ -381,6 +409,7 @@ pub fn with_ev_handler<ChainSpec>(
     config: EthEvmConfig<ChainSpec, EthEvmFactory>,
     redirect: Option<BaseFeeRedirectSettings>,
     mint_precompile: Option<MintPrecompileSettings>,
+    deploy_allowlist: Option<DeployAllowlistSettings>,
     contract_size_limit: Option<ContractSizeLimitSettings>,
 ) -> EthEvmConfig<ChainSpec, EvEvmFactory<EthEvmFactory>> {
     let EthEvmConfig {
@@ -391,6 +420,7 @@ pub fn with_ev_handler<ChainSpec>(
         *executor_factory.evm_factory(),
         redirect,
         mint_precompile,
+        deploy_allowlist,
         contract_size_limit,
     );
     let new_executor_factory = EthBlockExecutorFactory::new(
@@ -475,6 +505,7 @@ mod tests {
         let mut evm = EvEvmFactory::new(
             alloy_evm::eth::EthEvmFactory::default(),
             Some(BaseFeeRedirectSettings::new(redirect, 0)),
+            None,
             None,
             None,
         )
@@ -568,6 +599,7 @@ mod tests {
             None,
             Some(MintPrecompileSettings::new(contract, 0)),
             None,
+            None,
         )
         .create_evm(state, evm_env);
 
@@ -607,6 +639,7 @@ mod tests {
         let factory = EvEvmFactory::new(
             alloy_evm::eth::EthEvmFactory::default(),
             Some(BaseFeeRedirectSettings::new(BaseFeeRedirect::new(sink), 5)),
+            None,
             None,
             None,
         );
@@ -675,6 +708,7 @@ mod tests {
             alloy_evm::eth::EthEvmFactory::default(),
             None,
             Some(MintPrecompileSettings::new(contract, 3)),
+            None,
             None,
         );
 

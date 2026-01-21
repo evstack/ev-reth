@@ -156,6 +156,10 @@ In this example, the owner EOA is `0xYourEOAAddressHere` (replace with your actu
       "baseFeeRedirectActivationHeight": 0,
       "mintAdmin": "0x000000000000000000000000000000000000Ad00",
       "mintPrecompileActivationHeight": 0,
+      "deployAllowlist": [
+        "0xYourEOAAddressHere"
+      ],
+      "deployAllowlistActivationHeight": 0,
       "contractSizeLimit": 131072,
       "contractSizeLimitActivationHeight": 0
     }

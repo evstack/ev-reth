@@ -6,8 +6,8 @@ use alloy_evm::{eth::spec::EthExecutorSpec, FromRecoveredTx, FromTxWithEncoded};
 use alloy_primitives::U256;
 use alloy_rpc_types_engine::ExecutionData;
 use ev_revm::{
-    BaseFeeRedirect, BaseFeeRedirectSettings, ContractSizeLimitSettings, EvTxEvmFactory,
-    MintPrecompileSettings,
+    BaseFeeRedirect, BaseFeeRedirectSettings, ContractSizeLimitSettings, DeployAllowlistSettings,
+    EvTxEvmFactory, MintPrecompileSettings,
 };
 use reth_chainspec::{ChainSpec, EthChainSpec};
 use reth_errors::RethError;
@@ -413,7 +413,25 @@ where
                 ContractSizeLimitSettings::new(limit, activation)
             });
 
-    let factory = EvTxEvmFactory::new(redirect, mint_precompile, contract_size_limit);
+    let deploy_allowlist =
+        evolve_config
+            .deploy_allowlist_settings()
+            .map(|(allowlist, activation)| {
+                info!(
+                    target = "ev-reth::executor",
+                    allowlist_len = allowlist.len(),
+                    activation_height = activation,
+                    "Deploy allowlist enabled"
+                );
+                DeployAllowlistSettings::new(allowlist, activation)
+            });
+
+    let factory = EvTxEvmFactory::new(
+        redirect,
+        mint_precompile,
+        deploy_allowlist,
+        contract_size_limit,
+    );
 
     Ok(EvEvmConfig::new_with_evm_factory(chain_spec, factory)
         .with_extra_data(ctx.payload_builder_config().extra_data_bytes()))
