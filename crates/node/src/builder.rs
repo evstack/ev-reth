@@ -156,19 +156,6 @@ where
                 ))
             })?;
 
-            // Validate sponsor signature for EvNode transactions (early check before EVM execution)
-            if let ev_primitives::EvTxEnvelope::EvNode(ev) = recovered_tx.inner() {
-                if let Some(signature) = ev.tx().fee_payer_signature.as_ref() {
-                    ev.tx()
-                        .recover_sponsor(recovered_tx.signer(), signature)
-                        .map_err(|_| {
-                            PayloadBuilderError::Internal(RethError::Other(
-                                "Invalid sponsor signature".into(),
-                            ))
-                        })?;
-                }
-            }
-
             // Execute the transaction
             match builder.execute_transaction(recovered_tx) {
                 Ok(gas_used) => {
