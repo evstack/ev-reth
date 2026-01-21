@@ -1,8 +1,6 @@
 //! EV-specific EVM wrapper that installs the base-fee redirect handler.
 
-use crate::{
-    base_fee::BaseFeeRedirect, deploy::DeployAllowlistSettings, tx_env::EvTxEnv,
-};
+use crate::{base_fee::BaseFeeRedirect, deploy::DeployAllowlistSettings, tx_env::EvTxEnv};
 use alloy_evm::{Evm as AlloyEvm, EvmEnv};
 use alloy_primitives::{Address, Bytes};
 use reth_revm::{
