@@ -4,6 +4,7 @@ use crate::{
     base_fee::{BaseFeeRedirect, BaseFeeRedirectError},
     tx_env::{BatchCallsTx, SponsorPayerTx},
 };
+use alloy_primitives::U256;
 use reth_revm::{
     inspector::{Inspector, InspectorEvmTr, InspectorHandler},
     revm::{
@@ -135,31 +136,25 @@ where
                     is_nonce_check_disabled,
                 )?;
 
-                let mut new_caller_balance = caller.info.balance;
-                if !is_balance_check_disabled && new_caller_balance < total_value {
+                // Only validate that caller has enough balance for the value transfer.
+                // Do NOT pre-deduct the value - it will be transferred during execution.
+                // This matches the mainnet behavior where only gas is pre-deducted.
+                if !is_balance_check_disabled && caller.info.balance < total_value {
                     return Err(reth_revm::revm::context_interface::result::InvalidTransaction::LackOfFundForMaxFee {
                         fee: Box::new(total_value),
-                        balance: Box::new(new_caller_balance),
+                        balance: Box::new(caller.info.balance),
                     }
                     .into());
                 }
 
-                new_caller_balance = new_caller_balance.saturating_sub(total_value);
-                if is_balance_check_disabled {
-                    new_caller_balance = new_caller_balance.max(total_value);
-                }
-
-                caller.info.set_balance(new_caller_balance);
                 if is_call {
                     caller.info.set_nonce(caller.info.nonce.saturating_add(1));
                 }
             }
 
-            let effective_balance_spending =
-                tx.effective_balance_spending(basefee, blob_price).expect(
-                    "effective balance is always smaller than max balance so it can't overflow",
-                );
-            let gas_cost = effective_balance_spending - total_value;
+            let effective_gas_price = tx.effective_gas_price(basefee);
+            let gas_cost =
+                U256::from(tx.gas_limit()).saturating_mul(U256::from(effective_gas_price));
 
             let sponsor_account = journal.load_account_code(sponsor)?.data;
             let sponsor_balance = sponsor_account.info.balance;
@@ -176,6 +171,8 @@ where
                 new_sponsor_balance = new_sponsor_balance.max(gas_cost);
             }
             sponsor_account.info.set_balance(new_sponsor_balance);
+            // Mark the sponsor account as touched so state changes are included in the final state
+            journal.touch_account(sponsor);
         } else {
             let caller = journal.load_account_code(caller_address)?.data;
             validate_account_nonce_and_code(
@@ -297,7 +294,26 @@ where
         evm: &mut Self::Evm,
         exec_result: &mut <FRAME as FrameTr>::FrameResult,
     ) -> Result<(), Self::Error> {
-        self.inner.reimburse_caller(evm, exec_result)
+        // For sponsored transactions, reimburse the sponsor instead of the caller
+        let sponsor = evm.ctx().tx().sponsor();
+        if let Some(sponsor) = sponsor {
+            let gas = exec_result.gas();
+            let basefee = evm.ctx().block().basefee() as u128;
+            let effective_gas_price = evm.ctx().tx().effective_gas_price(basefee);
+            let reimbursement = U256::from(
+                effective_gas_price
+                    .saturating_mul((gas.remaining() + gas.refunded() as u64) as u128),
+            );
+            let journal = evm.ctx_mut().journal_mut();
+            let sponsor_account = journal.load_account(sponsor)?.data;
+            let new_balance = sponsor_account.info.balance.saturating_add(reimbursement);
+            sponsor_account.info.set_balance(new_balance);
+            // Mark the sponsor account as touched so state changes are included in the final state
+            journal.touch_account(sponsor);
+            Ok(())
+        } else {
+            self.inner.reimburse_caller(evm, exec_result)
+        }
     }
 
     fn reward_beneficiary(

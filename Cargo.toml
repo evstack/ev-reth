@@ -112,6 +112,7 @@ alloy-rpc-types-eth = { version = "1.0.37", default-features = false }
 alloy-rpc-types-engine = { version = "1.0.37", default-features = false }
 alloy-signer = { version = "1.0.37", default-features = false }
 alloy-signer-local = { version = "1.0.37", features = ["mnemonic"] }
+alloy-serde = { version = "1.0.37", default-features = false }
 alloy-primitives = { version = "1.3.1", default-features = false }
 alloy-consensus = { version = "1.0.37", default-features = false }
 alloy-consensus-any = { version = "1.0.37", default-features = false }

@@ -47,11 +47,17 @@ pub struct Call {
 
 /// EvNode batch + sponsorship transaction payload.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct EvNodeTransaction {
+    #[serde(with = "alloy_serde::quantity")]
     pub chain_id: u64,
+    #[serde(with = "alloy_serde::quantity")]
     pub nonce: u64,
+    #[serde(with = "alloy_serde::quantity")]
     pub max_priority_fee_per_gas: u128,
+    #[serde(with = "alloy_serde::quantity")]
     pub max_fee_per_gas: u128,
+    #[serde(with = "alloy_serde::quantity")]
     pub gas_limit: u64,
     pub calls: Vec<Call>,
     pub access_list: AccessList,

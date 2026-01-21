@@ -8,7 +8,7 @@ use reth_revm::revm::{
         either::Either,
         transaction::{
             AccessList, AccessListItem, RecoveredAuthorization, SignedAuthorization,
-            Transaction as RevmTransaction,
+            Transaction as RevmTransaction, TransactionType,
         },
     },
     handler::SystemCallTx,
@@ -229,6 +229,7 @@ impl FromRecoveredTx<EvTxEnvelope> for EvTxEnv {
                     caller: sender,
                     gas_limit: ev.tx().gas_limit,
                     gas_price: ev.tx().max_fee_per_gas,
+                    gas_priority_fee: Some(ev.tx().max_priority_fee_per_gas),
                     kind: ev
                         .tx()
                         .calls
@@ -242,6 +243,10 @@ impl FromRecoveredTx<EvTxEnvelope> for EvTxEnv {
                         .first()
                         .map(|call| call.input.clone())
                         .unwrap_or_default(),
+                    nonce: ev.tx().nonce,
+                    chain_id: Some(ev.tx().chain_id),
+                    access_list: ev.tx().access_list.clone(),
+                    tx_type: TransactionType::Eip1559.into(),
                     ..Default::default()
                 };
                 Self {

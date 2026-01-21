@@ -2971,6 +2971,7 @@ dependencies = [
  "alloy-eips",
  "alloy-primitives",
  "alloy-rlp",
+ "alloy-serde",
  "bytes",
  "reth-codecs",
  "reth-db-api",
