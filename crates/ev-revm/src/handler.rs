@@ -283,6 +283,17 @@ where
 
             if !instruction_result.is_ok() {
                 evm.ctx_mut().journal_mut().checkpoint_revert(checkpoint);
+                if calls.first().map(|call| call.to.is_create()).unwrap_or(false) {
+                    let caller = base_tx.caller();
+                    let journal = evm.ctx_mut().journal_mut();
+                    if let Ok(caller_account) = journal.load_account_code(caller) {
+                        caller_account
+                            .data
+                            .info
+                            .set_nonce(caller_account.data.info.nonce.saturating_add(1));
+                        journal.touch_account(caller);
+                    }
+                }
                 finalize_batch_gas(&mut frame_result, gas_limit, remaining_gas, 0);
                 return Ok(frame_result);
             }
@@ -819,6 +830,86 @@ mod tests {
             assert!(slot.present_value.is_zero());
             assert!(!slot.is_changed());
         }
+    }
+
+    #[test]
+    fn batch_execution_bumps_nonce_for_create_on_failure() {
+        let caller = address!("0x0000000000000000000000000000000000000aaa");
+        let revert_contract = address!("0x0000000000000000000000000000000000000ccc");
+
+        let mut state = State::builder()
+            .with_database(CacheDB::<EmptyDB>::default())
+            .with_bundle_update()
+            .build();
+
+        state.insert_account(
+            caller,
+            AccountInfo {
+                balance: U256::from(10_000_000_000u64),
+                nonce: 0,
+                code_hash: KECCAK_EMPTY,
+                code: None,
+            },
+        );
+
+        state.insert_account(
+            revert_contract,
+            AccountInfo {
+                balance: U256::ZERO,
+                nonce: 1,
+                code_hash: alloy_primitives::keccak256(REVERT_RUNTIME.as_slice()),
+                code: Some(RevmBytecode::new_raw(Bytes::copy_from_slice(
+                    REVERT_RUNTIME.as_slice(),
+                ))),
+            },
+        );
+
+        let mut evm_env: EvmEnv<SpecId> = EvmEnv::default();
+        evm_env.cfg_env.chain_id = 1;
+        evm_env.cfg_env.spec = SpecId::CANCUN;
+        evm_env.block_env.basefee = 1;
+        evm_env.block_env.gas_limit = 30_000_000;
+        evm_env.block_env.number = U256::from(1);
+
+        let mut evm = EvTxEvmFactory::default().create_evm(state, evm_env);
+
+        let calls = vec![
+            Call {
+                to: TxKind::Create,
+                value: U256::ZERO,
+                input: Bytes::new(),
+            },
+            Call {
+                to: TxKind::Call(revert_contract),
+                value: U256::ZERO,
+                input: Bytes::new(),
+            },
+        ];
+
+        let tx_env = TxEnv {
+            caller,
+            gas_limit: 200_000,
+            gas_price: 1,
+            gas_priority_fee: Some(1),
+            chain_id: Some(1),
+            tx_type: TransactionType::Eip1559.into(),
+            ..Default::default()
+        };
+
+        let tx = EvTxEnv::with_calls(tx_env, calls);
+
+        let result_and_state = evm
+            .transact_raw(tx)
+            .expect("batch execution should complete");
+
+        assert!(matches!(
+            result_and_state.result,
+            ExecutionResult::Revert { .. }
+        ));
+
+        let state: EvmState = result_and_state.state;
+        let caller_account = state.get(&caller).expect("caller should be loaded");
+        assert_eq!(caller_account.info.nonce, 1);
     }
 
     #[test]

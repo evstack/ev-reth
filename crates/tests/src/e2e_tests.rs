@@ -65,6 +65,10 @@ const ADMIN_PROXY_INITCODE: [u8; 54] = alloy_primitives::hex!(
 
 /// Test recipient address used in mint/burn tests.
 const TEST_MINT_RECIPIENT: Address = address!("0x0101010101010101010101010101010101010101");
+const REVERT_INITCODE: [u8; 17] = [
+    0x60, 0x05, 0x60, 0x0c, 0x60, 0x00, 0x39, 0x60, 0x05, 0x60, 0x00, 0xf3, 0x60, 0x00,
+    0x60, 0x00, 0xfd,
+];
 
 /// Computes the contract address that will be created by a deployer at a given nonce.
 ///
@@ -294,7 +298,7 @@ async fn test_e2e_base_fee_sink_receives_base_fee() -> Result<()> {
     let sender = wallets.remove(0);
     let raw_tx = TransactionTestContext::transfer_tx_bytes(chain_id, sender).await;
 
-    let payload_envelope = build_block_with_transactions(
+    let fee_payload_envelope = build_block_with_transactions(
         &mut env,
         &mut parent_hash,
         &mut parent_number,
@@ -305,7 +309,7 @@ async fn test_e2e_base_fee_sink_receives_base_fee() -> Result<()> {
     )
     .await?;
 
-    let execution_payload = payload_envelope.execution_payload.clone();
+    let execution_payload = fee_payload_envelope.execution_payload.clone();
 
     let latest_block = env.node_clients[0]
         .get_block_by_number(BlockNumberOrTag::Latest)
@@ -655,7 +659,7 @@ async fn test_e2e_invalid_sponsor_signature_skipped() -> Result<()> {
     let raw_tx: Bytes = envelope.encoded_2718().into();
     let tx_hash = *envelope.tx_hash();
 
-    let payload_envelope = build_block_with_transactions(
+    let invalid_payload_envelope = build_block_with_transactions(
         &mut env,
         &mut parent_hash,
         &mut parent_number,
@@ -666,7 +670,7 @@ async fn test_e2e_invalid_sponsor_signature_skipped() -> Result<()> {
     )
     .await?;
 
-    let payload_inner = payload_envelope
+    let payload_inner = invalid_payload_envelope
         .execution_payload
         .payload_inner
         .payload_inner;
@@ -675,7 +679,7 @@ async fn test_e2e_invalid_sponsor_signature_skipped() -> Result<()> {
         "invalid sponsor tx should be skipped"
     );
 
-    let tx = EthApiClient::<
+    let invalid_sponsor_tx = EthApiClient::<
         EvTransactionRequest,
         EvRpcTransaction,
         Block<EvRpcTransaction, Header>,
@@ -684,7 +688,7 @@ async fn test_e2e_invalid_sponsor_signature_skipped() -> Result<()> {
     >::transaction_by_hash(&env.node_clients[0].rpc, tx_hash)
     .await?;
     assert!(
-        tx.is_none(),
+        invalid_sponsor_tx.is_none(),
         "invalid sponsor tx should not be in the block"
     );
 
@@ -780,7 +784,7 @@ async fn test_e2e_empty_calls_skipped() -> Result<()> {
         "empty calls tx should be skipped"
     );
 
-    let tx = EthApiClient::<
+    let empty_calls_tx = EthApiClient::<
         EvTransactionRequest,
         EvRpcTransaction,
         Block<EvRpcTransaction, Header>,
@@ -788,7 +792,10 @@ async fn test_e2e_empty_calls_skipped() -> Result<()> {
         Header,
     >::transaction_by_hash(&env.node_clients[0].rpc, tx_hash)
     .await?;
-    assert!(tx.is_none(), "empty calls tx should not be in the block");
+    assert!(
+        empty_calls_tx.is_none(),
+        "empty calls tx should not be in the block"
+    );
 
     drop(setup);
 
@@ -931,6 +938,193 @@ async fn test_e2e_sponsor_insufficient_max_fee_skipped() -> Result<()> {
     assert!(
         tx.is_none(),
         "insufficient max fee tx should not be in the block"
+    );
+
+    drop(setup);
+
+    Ok(())
+}
+
+/// Tests that a batch with CREATE then revert still bumps the caller nonce.
+///
+/// # Test Flow
+/// 1. Deploy a contract that always reverts
+/// 2. Send a batched EvNode tx: first call CREATE, second call to revert contract
+/// 3. Build a payload and ensure the transaction is rejected
+///
+/// # Success Criteria
+/// - Transaction is skipped
+/// - Executor nonce is incremented on chain
+#[tokio::test(flavor = "multi_thread")]
+async fn test_e2e_nonce_bumped_on_create_batch_failure() -> Result<()> {
+    reth_tracing::init_test_tracing();
+
+    let chain_spec = create_test_chain_spec();
+    let chain_id = chain_spec.chain().id();
+
+    let mut setup = Setup::<EvolveEngineTypes>::default()
+        .with_chain_spec(chain_spec)
+        .with_network(NetworkSetup::single_node())
+        .with_dev_mode(true);
+
+    let mut env = Environment::<EvolveEngineTypes>::default();
+    setup.apply::<EvolveNode>(&mut env).await?;
+
+    let parent_block = env.node_clients[0]
+        .get_block_by_number(BlockNumberOrTag::Latest)
+        .await?
+        .expect("parent block should exist");
+    let mut parent_hash = parent_block.header.hash;
+    let mut parent_timestamp = parent_block.header.inner.timestamp;
+    let mut parent_number = parent_block.header.inner.number;
+    let gas_limit = parent_block.header.inner.gas_limit;
+
+    let mut wallets = Wallet::new(1).with_chain_id(chain_id).wallet_gen();
+    let executor = wallets.remove(0);
+    let executor_address = executor.address();
+
+    let executor_nonce_before =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::transaction_count(
+            &env.node_clients[0].rpc,
+            executor_address,
+            Some(BlockId::latest()),
+        )
+        .await?;
+    let executor_nonce_before = u64::try_from(executor_nonce_before).expect("nonce fits into u64");
+
+    let deploy_tx = TransactionRequest {
+        nonce: Some(executor_nonce_before),
+        gas: Some(1_000_000),
+        max_fee_per_gas: Some(20_000_000_000),
+        max_priority_fee_per_gas: Some(2_000_000_000),
+        chain_id: Some(chain_id),
+        value: Some(U256::ZERO),
+        to: Some(TxKind::Create),
+        input: TransactionInput {
+            input: None,
+            data: Some(Bytes::from(REVERT_INITCODE.to_vec())),
+        },
+        ..Default::default()
+    };
+
+    let deploy_envelope = TransactionTestContext::sign_tx(executor.clone(), deploy_tx).await;
+    let deploy_raw: Bytes = deploy_envelope.encoded_2718().into();
+
+    build_block_with_transactions(
+        &mut env,
+        &mut parent_hash,
+        &mut parent_number,
+        &mut parent_timestamp,
+        Some(gas_limit),
+        vec![deploy_raw],
+        Address::ZERO,
+    )
+    .await?;
+
+    let revert_address = contract_address_from_nonce(executor_address, executor_nonce_before);
+    let deployed_code =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::get_code(
+            &env.node_clients[0].rpc,
+            revert_address,
+            Some(BlockId::latest()),
+        )
+        .await?;
+    assert!(
+        !deployed_code.is_empty(),
+        "revert contract should be deployed"
+    );
+
+    let executor_nonce =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::transaction_count(
+            &env.node_clients[0].rpc,
+            executor_address,
+            Some(BlockId::latest()),
+        )
+        .await?;
+    let executor_nonce = u64::try_from(executor_nonce).expect("nonce fits into u64");
+
+    let revert_calldata = Bytes::from(vec![0x00]);
+    let calls = vec![
+        Call {
+            to: TxKind::Create,
+            value: U256::ZERO,
+            input: Bytes::new(),
+        },
+        Call {
+            to: TxKind::Call(revert_address),
+            value: U256::ZERO,
+            input: revert_calldata,
+        },
+    ];
+
+    let ev_tx = EvNodeTransaction {
+        chain_id,
+        nonce: executor_nonce,
+        max_priority_fee_per_gas: 1_000_000_000,
+        max_fee_per_gas: 2_000_000_000,
+        gas_limit: 300_000,
+        calls,
+        access_list: AccessList::default(),
+        fee_payer_signature: None,
+    };
+
+    let executor_sig = executor
+        .sign_hash_sync(&ev_tx.signature_hash())
+        .expect("executor signature");
+    let signed = ev_tx.into_signed(executor_sig);
+
+    let envelope = EvTxEnvelope::EvNode(signed);
+    let raw_tx: Bytes = envelope.encoded_2718().into();
+    let tx_hash = *envelope.tx_hash();
+
+    build_block_with_transactions(
+        &mut env,
+        &mut parent_hash,
+        &mut parent_number,
+        &mut parent_timestamp,
+        Some(gas_limit),
+        vec![raw_tx],
+        Address::ZERO,
+    )
+    .await?;
+
+    EthApiClient::<
+        EvTransactionRequest,
+        EvRpcTransaction,
+        Block<EvRpcTransaction, Header>,
+        EvRpcReceipt,
+        Header,
+    >::transaction_by_hash(&env.node_clients[0].rpc, tx_hash)
+    .await?
+    .expect("failed batch should be in the block");
+
+    let receipt = EthApiClient::<
+        EvTransactionRequest,
+        EvRpcTransaction,
+        Block<EvRpcTransaction, Header>,
+        EvRpcReceipt,
+        Header,
+    >::transaction_receipt(&env.node_clients[0].rpc, tx_hash)
+    .await?
+    .expect("receipt should be available");
+    assert!(
+        !receipt.inner().status(),
+        "batch should revert"
+    );
+
+    let executor_nonce_after =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::transaction_count(
+            &env.node_clients[0].rpc,
+            executor_address,
+            Some(BlockId::latest()),
+        )
+        .await?;
+    let executor_nonce_after =
+        u64::try_from(executor_nonce_after).expect("nonce fits into u64");
+    assert_eq!(
+        executor_nonce_after,
+        executor_nonce + 1,
+        "nonce should be bumped even when batch fails"
     );
 
     drop(setup);
