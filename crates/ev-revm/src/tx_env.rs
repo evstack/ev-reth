@@ -95,6 +95,25 @@ impl EvTxEnv {
         env.is_evnode = true;
         env
     }
+
+    /// Test helper to build an `EvTxEnv` with batch calls and a sponsor.
+    pub fn with_calls_and_sponsor(mut inner: TxEnv, calls: Vec<Call>, sponsor: Address) -> Self {
+        let batch_value = calls
+            .iter()
+            .fold(U256::ZERO, |acc, call| acc.saturating_add(call.value));
+        if let Some(first) = calls.first() {
+            inner.kind = first.to;
+            inner.data = first.input.clone();
+        }
+        inner.value = batch_value;
+        let mut env = Self::new(inner);
+        env.calls = calls;
+        env.batch_value = batch_value;
+        env.sponsor = Some(sponsor);
+        env.sponsor_signature_invalid = false;
+        env.is_evnode = true;
+        env
+    }
 }
 
 impl From<TxEnv> for EvTxEnv {

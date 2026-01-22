@@ -795,6 +795,149 @@ async fn test_e2e_empty_calls_skipped() -> Result<()> {
     Ok(())
 }
 
+/// Tests that a sponsored `EvNode` transaction is skipped when the sponsor cannot cover max fee.
+///
+/// # Test Flow
+/// 1. Creates executor and sponsor accounts
+/// 2. Builds a sponsored `EvNode` transaction where max_fee_per_gas * gas_limit exceeds sponsor balance
+/// 3. Attempts to build a payload via the Engine API
+///
+/// # Success Criteria
+/// - Payload is built successfully
+/// - Transaction is rejected for insufficient max fee coverage
+#[tokio::test(flavor = "multi_thread")]
+async fn test_e2e_sponsor_insufficient_max_fee_skipped() -> Result<()> {
+    reth_tracing::init_test_tracing();
+
+    let chain_spec = create_test_chain_spec();
+    let chain_id = chain_spec.chain().id();
+
+    let mut setup = Setup::<EvolveEngineTypes>::default()
+        .with_chain_spec(chain_spec)
+        .with_network(NetworkSetup::single_node())
+        .with_dev_mode(true);
+
+    let mut env = Environment::<EvolveEngineTypes>::default();
+    setup.apply::<EvolveNode>(&mut env).await?;
+
+    let parent_block = env.node_clients[0]
+        .get_block_by_number(BlockNumberOrTag::Latest)
+        .await?
+        .expect("parent block should exist");
+    let mut parent_hash = parent_block.header.hash;
+    let mut parent_timestamp = parent_block.header.inner.timestamp;
+    let mut parent_number = parent_block.header.inner.number;
+    let gas_limit = parent_block.header.inner.gas_limit;
+
+    let mut wallets = Wallet::new(2).with_chain_id(chain_id).wallet_gen();
+    let executor = wallets.remove(0);
+    let sponsor = wallets.remove(0);
+    let executor_address = executor.address();
+    let sponsor_address = sponsor.address();
+
+    let sponsor_balance =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+            &env.node_clients[0].rpc,
+            sponsor_address,
+            Some(BlockId::latest()),
+        )
+        .await?;
+
+    let executor_nonce =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::transaction_count(
+            &env.node_clients[0].rpc,
+            executor_address,
+            Some(BlockId::latest()),
+        )
+        .await?;
+    let executor_nonce = u64::try_from(executor_nonce).expect("nonce fits into u64");
+
+    let call = Call {
+        to: TxKind::Call(Address::random()),
+        value: U256::ZERO,
+        input: Bytes::default(),
+    };
+
+    let tx_gas_limit = 100_000u64;
+    let max_fee_per_gas_u256 =
+        sponsor_balance / U256::from(tx_gas_limit) + U256::from(1u64);
+    let mut max_fee_per_gas =
+        u128::try_from(max_fee_per_gas_u256).unwrap_or(u128::MAX);
+    let max_priority_fee_per_gas = 1_000_000_000u128;
+    if max_fee_per_gas < max_priority_fee_per_gas {
+        max_fee_per_gas = max_priority_fee_per_gas;
+    }
+
+    let max_gas_cost =
+        U256::from(max_fee_per_gas).saturating_mul(U256::from(tx_gas_limit));
+    assert!(
+        max_gas_cost > sponsor_balance,
+        "max fee must exceed sponsor balance"
+    );
+
+    let ev_tx = EvNodeTransaction {
+        chain_id,
+        nonce: executor_nonce,
+        max_priority_fee_per_gas,
+        max_fee_per_gas,
+        gas_limit: tx_gas_limit,
+        calls: vec![call],
+        access_list: AccessList::default(),
+        fee_payer_signature: None,
+    };
+
+    let executor_sig = executor
+        .sign_hash_sync(&ev_tx.signature_hash())
+        .expect("executor signature");
+    let mut signed = ev_tx.into_signed(executor_sig);
+    let sponsor_hash = signed.tx().sponsor_signing_hash(executor_address);
+    let sponsor_sig = sponsor
+        .sign_hash_sync(&sponsor_hash)
+        .expect("sponsor signature");
+    signed.tx_mut().fee_payer_signature = Some(sponsor_sig);
+
+    let envelope = EvTxEnvelope::EvNode(signed);
+    let raw_tx: Bytes = envelope.encoded_2718().into();
+    let tx_hash = *envelope.tx_hash();
+
+    let payload_envelope = build_block_with_transactions(
+        &mut env,
+        &mut parent_hash,
+        &mut parent_number,
+        &mut parent_timestamp,
+        Some(gas_limit),
+        vec![raw_tx],
+        Address::ZERO,
+    )
+    .await?;
+
+    let payload_inner = payload_envelope
+        .execution_payload
+        .payload_inner
+        .payload_inner;
+    assert!(
+        payload_inner.transactions.is_empty(),
+        "insufficient max fee tx should be skipped"
+    );
+
+    let tx = EthApiClient::<
+        EvTransactionRequest,
+        EvRpcTransaction,
+        Block<EvRpcTransaction, Header>,
+        EvRpcReceipt,
+        Header,
+    >::transaction_by_hash(&env.node_clients[0].rpc, tx_hash)
+    .await?;
+    assert!(
+        tx.is_none(),
+        "insufficient max fee tx should not be in the block"
+    );
+
+    drop(setup);
+
+    Ok(())
+}
+
 /// Tests minting and burning tokens to/from a dynamically generated wallet not in genesis.
 ///
 /// # Test Flow

@@ -195,20 +195,21 @@ where
                 }
             }
 
-            let effective_gas_price = tx.effective_gas_price(basefee);
-            let gas_cost =
-                U256::from(tx.gas_limit()).saturating_mul(U256::from(effective_gas_price));
-
             let sponsor_account = journal.load_account_code(sponsor)?.data;
             let sponsor_balance = sponsor_account.info.balance;
-            if !is_balance_check_disabled && sponsor_balance < gas_cost {
+            let max_gas_cost = U256::from(tx.gas_limit())
+                .saturating_mul(U256::from(tx.max_fee_per_gas()));
+            if !is_balance_check_disabled && sponsor_balance < max_gas_cost {
                 return Err(reth_revm::revm::context_interface::result::InvalidTransaction::LackOfFundForMaxFee {
-                    fee: Box::new(gas_cost),
+                    fee: Box::new(max_gas_cost),
                     balance: Box::new(sponsor_balance),
                 }
                 .into());
             }
 
+            let effective_gas_price = tx.effective_gas_price(basefee);
+            let gas_cost =
+                U256::from(tx.gas_limit()).saturating_mul(U256::from(effective_gas_price));
             let mut new_sponsor_balance = sponsor_balance.saturating_sub(gas_cost);
             if is_balance_check_disabled {
                 new_sponsor_balance = new_sponsor_balance.max(gas_cost);
@@ -953,6 +954,75 @@ mod tests {
         assert!(
             err.to_string()
                 .contains("evnode transaction must include at least one call"),
+            "unexpected error: {err:?}"
+        );
+    }
+
+    #[test]
+    fn sponsored_tx_rejects_when_balance_below_max_fee() {
+        let caller = address!("0x0000000000000000000000000000000000000aaa");
+        let sponsor = address!("0x0000000000000000000000000000000000000bbb");
+
+        let mut state = State::builder()
+            .with_database(CacheDB::<EmptyDB>::default())
+            .with_bundle_update()
+            .build();
+
+        state.insert_account(
+            caller,
+            AccountInfo {
+                balance: U256::from(10_000_000_000u64),
+                nonce: 0,
+                code_hash: KECCAK_EMPTY,
+                code: None,
+            },
+        );
+
+        state.insert_account(
+            sponsor,
+            AccountInfo {
+                balance: U256::from(500_000u64),
+                nonce: 0,
+                code_hash: KECCAK_EMPTY,
+                code: None,
+            },
+        );
+
+        let mut evm_env: EvmEnv<SpecId> = EvmEnv::default();
+        evm_env.cfg_env.chain_id = 1;
+        evm_env.cfg_env.spec = SpecId::CANCUN;
+        evm_env.block_env.basefee = 1;
+        evm_env.block_env.gas_limit = 30_000_000;
+        evm_env.block_env.number = U256::from(1);
+
+        let mut evm = EvTxEvmFactory::default().create_evm(state, evm_env);
+
+        let calls = vec![Call {
+            to: TxKind::Call(address!("0x0000000000000000000000000000000000000ccc")),
+            value: U256::ZERO,
+            input: Bytes::new(),
+        }];
+
+        let tx_env = TxEnv {
+            caller,
+            gas_limit: 100_000,
+            gas_price: 100,
+            gas_priority_fee: Some(1),
+            chain_id: Some(1),
+            tx_type: TransactionType::Eip1559.into(),
+            ..Default::default()
+        };
+
+        let tx = EvTxEnv::with_calls_and_sponsor(tx_env, calls, sponsor);
+
+        let err = evm
+            .transact_raw(tx)
+            .expect_err("sponsor should need max fee coverage");
+        assert!(
+            matches!(
+                err,
+                EVMError::Transaction(InvalidTransaction::LackOfFundForMaxFee { .. })
+            ),
             "unexpected error: {err:?}"
         );
     }
