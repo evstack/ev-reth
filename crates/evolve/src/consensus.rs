@@ -1,7 +1,7 @@
 //! Evolve custom consensus implementation that allows same timestamps across blocks.
 
 use reth_chainspec::ChainSpec;
-use reth_consensus::{Consensus, ConsensusError, FullConsensus, HeaderValidator};
+use reth_consensus::{Consensus, ConsensusError, FullConsensus, HeaderValidator, ReceiptRootBloom};
 use reth_consensus_common::validation::{
     validate_against_parent_eip1559_base_fee, validate_against_parent_gas_limit,
     validate_against_parent_hash_number, validate_body_against_header,
@@ -36,7 +36,7 @@ where
     Node: FullNodeTypes,
     Node::Types: NodeTypes<ChainSpec = ChainSpec, Primitives = EthPrimitives>,
 {
-    type Consensus = Arc<dyn FullConsensus<EthPrimitives, Error = ConsensusError>>;
+    type Consensus = Arc<dyn FullConsensus<EthPrimitives>>;
 
     async fn build_consensus(self, ctx: &BuilderContext<Node>) -> eyre::Result<Self::Consensus> {
         Ok(Arc::new(EvolveConsensus::new(ctx.chain_spec())) as Self::Consensus)
@@ -97,18 +97,16 @@ impl HeaderValidator for EvolveConsensus {
 }
 
 impl Consensus<Block> for EvolveConsensus {
-    type Error = ConsensusError;
-
     fn validate_body_against_header(
         &self,
         body: &BlockBody,
         header: &SealedHeader,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), ConsensusError> {
         validate_body_against_header(body, header.header())
     }
 
-    fn validate_block_pre_execution(&self, block: &SealedBlock) -> Result<(), Self::Error> {
-        // Use inner consensus for pre-execution validation
+    fn validate_block_pre_execution(&self, block: &SealedBlock) -> Result<(), ConsensusError> {
+        // use inner consensus for pre-execution validation
         self.inner.validate_block_pre_execution(block)
     }
 }
@@ -118,7 +116,8 @@ impl FullConsensus<EthPrimitives> for EvolveConsensus {
         &self,
         block: &RecoveredBlock<Block>,
         result: &BlockExecutionResult<Receipt>,
+        receipt_root_bloom: Option<ReceiptRootBloom>,
     ) -> Result<(), ConsensusError> {
-        <EthBeaconConsensus<ChainSpec> as FullConsensus<EthPrimitives>>::validate_block_post_execution(&self.inner, block, result)
+        <EthBeaconConsensus<ChainSpec> as FullConsensus<EthPrimitives>>::validate_block_post_execution(&self.inner, block, result, receipt_root_bloom)
     }
 }

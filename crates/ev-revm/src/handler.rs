@@ -97,7 +97,7 @@ where
         self.inner.validate_env(evm)
     }
 
-    fn validate_initial_tx_gas(&self, evm: &Self::Evm) -> Result<InitialAndFloorGas, Self::Error> {
+    fn validate_initial_tx_gas(&self, evm: &mut Self::Evm) -> Result<InitialAndFloorGas, Self::Error> {
         self.inner.validate_initial_tx_gas(evm)
     }
 

@@ -85,7 +85,7 @@ where
         // Get parent header using the client's HeaderProvider trait
         let parent_header = self
             .client
-            .header(&attributes.parent_hash)
+            .header(attributes.parent_hash)
             .map_err(PayloadBuilderError::other)?
             .ok_or_else(|| {
                 PayloadBuilderError::Internal(RethError::Other("Parent header not found".into()))
@@ -123,6 +123,7 @@ where
             // For post-Shanghai/Cancun chains, an empty withdrawals list is valid
             // and ensures version-specific fields are initialized.
             withdrawals: Some(Default::default()),
+            extra_data: Default::default(),
         };
 
         let mut builder = self
