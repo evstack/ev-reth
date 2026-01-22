@@ -15,7 +15,7 @@ use reth_revm::revm::{
     primitives::{Address as RevmAddress, Bytes as RevmBytes, TxKind, B256},
 };
 
-/// Transaction environment wrapper that supports both standard Ethereum and EvNode transactions.
+/// Transaction environment wrapper that supports both standard Ethereum and `EvNode` transactions.
 ///
 /// # Design Trade-off
 ///
@@ -389,7 +389,11 @@ mod tests {
         }
 
         /// Test helper to build an `EvTxEnv` with batch calls and a sponsor.
-        pub fn with_calls_and_sponsor(mut inner: TxEnv, calls: Vec<Call>, sponsor: Address) -> Self {
+        pub fn with_calls_and_sponsor(
+            mut inner: TxEnv,
+            calls: Vec<Call>,
+            sponsor: Address,
+        ) -> Self {
             let batch_value = calls
                 .iter()
                 .fold(U256::ZERO, |acc, call| acc.saturating_add(call.value));

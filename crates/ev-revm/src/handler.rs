@@ -539,6 +539,7 @@ fn finalize_batch_gas(
 
 /// Validates and deducts fees for a sponsored transaction.
 /// The sponsor pays the gas fees while the caller pays the value transfer.
+#[allow(clippy::too_many_arguments)]
 fn validate_and_deduct_sponsored_tx<Tx, J, E>(
     journal: &mut J,
     tx: &Tx,
@@ -588,8 +589,7 @@ where
     // Validate and deduct gas from sponsor
     let sponsor_account = journal.load_account_code(sponsor)?.data;
     let sponsor_balance = sponsor_account.info.balance;
-    let max_gas_cost =
-        U256::from(tx.gas_limit()).saturating_mul(U256::from(tx.max_fee_per_gas()));
+    let max_gas_cost = U256::from(tx.gas_limit()).saturating_mul(U256::from(tx.max_fee_per_gas()));
     if !is_balance_check_disabled && sponsor_balance < max_gas_cost {
         return Err(
             reth_revm::revm::context_interface::result::InvalidTransaction::LackOfFundForMaxFee {
@@ -615,6 +615,7 @@ where
 
 /// Validates and deducts fees for a normal (non-sponsored) transaction.
 /// The caller pays both gas fees and value transfer.
+#[allow(clippy::too_many_arguments)]
 fn validate_and_deduct_normal_tx<Tx, J, E>(
     journal: &mut J,
     tx: &Tx,
