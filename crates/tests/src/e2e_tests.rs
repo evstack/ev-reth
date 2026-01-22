@@ -66,8 +66,8 @@ const ADMIN_PROXY_INITCODE: [u8; 54] = alloy_primitives::hex!(
 /// Test recipient address used in mint/burn tests.
 const TEST_MINT_RECIPIENT: Address = address!("0x0101010101010101010101010101010101010101");
 const REVERT_INITCODE: [u8; 17] = [
-    0x60, 0x05, 0x60, 0x0c, 0x60, 0x00, 0x39, 0x60, 0x05, 0x60, 0x00, 0xf3, 0x60, 0x00,
-    0x60, 0x00, 0xfd,
+    0x60, 0x05, 0x60, 0x0c, 0x60, 0x00, 0x39, 0x60, 0x05, 0x60, 0x00, 0xf3, 0x60, 0x00, 0x60, 0x00,
+    0xfd,
 ];
 
 /// Computes the contract address that will be created by a deployer at a given nonce.
@@ -806,7 +806,7 @@ async fn test_e2e_empty_calls_skipped() -> Result<()> {
 ///
 /// # Test Flow
 /// 1. Creates executor and sponsor accounts
-/// 2. Builds a sponsored `EvNode` transaction where max_fee_per_gas * gas_limit exceeds sponsor balance
+/// 2. Builds a sponsored `EvNode` transaction where `max_fee_per_gas` * `gas_limit` exceeds sponsor balance
 /// 3. Attempts to build a payload via the Engine API
 ///
 /// # Success Criteria
@@ -866,17 +866,14 @@ async fn test_e2e_sponsor_insufficient_max_fee_skipped() -> Result<()> {
     };
 
     let tx_gas_limit = 100_000u64;
-    let max_fee_per_gas_u256 =
-        sponsor_balance / U256::from(tx_gas_limit) + U256::from(1u64);
-    let mut max_fee_per_gas =
-        u128::try_from(max_fee_per_gas_u256).unwrap_or(u128::MAX);
+    let max_fee_per_gas_u256 = sponsor_balance / U256::from(tx_gas_limit) + U256::from(1u64);
+    let mut max_fee_per_gas = u128::try_from(max_fee_per_gas_u256).unwrap_or(u128::MAX);
     let max_priority_fee_per_gas = 1_000_000_000u128;
     if max_fee_per_gas < max_priority_fee_per_gas {
         max_fee_per_gas = max_priority_fee_per_gas;
     }
 
-    let max_gas_cost =
-        U256::from(max_fee_per_gas).saturating_mul(U256::from(tx_gas_limit));
+    let max_gas_cost = U256::from(max_fee_per_gas).saturating_mul(U256::from(tx_gas_limit));
     assert!(
         max_gas_cost > sponsor_balance,
         "max fee must exceed sponsor balance"
@@ -949,7 +946,7 @@ async fn test_e2e_sponsor_insufficient_max_fee_skipped() -> Result<()> {
 ///
 /// # Test Flow
 /// 1. Deploy a contract that always reverts
-/// 2. Send a batched EvNode tx: first call CREATE, second call to revert contract
+/// 2. Send a batched `EvNode` tx: first call CREATE, second call to revert contract
 /// 3. Build a payload and ensure the transaction is rejected
 ///
 /// # Success Criteria
@@ -1107,10 +1104,7 @@ async fn test_e2e_nonce_bumped_on_create_batch_failure() -> Result<()> {
     >::transaction_receipt(&env.node_clients[0].rpc, tx_hash)
     .await?
     .expect("receipt should be available");
-    assert!(
-        !receipt.inner().status(),
-        "batch should revert"
-    );
+    assert!(!receipt.inner().status(), "batch should revert");
 
     let executor_nonce_after =
         EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::transaction_count(
@@ -1119,8 +1113,7 @@ async fn test_e2e_nonce_bumped_on_create_batch_failure() -> Result<()> {
             Some(BlockId::latest()),
         )
         .await?;
-    let executor_nonce_after =
-        u64::try_from(executor_nonce_after).expect("nonce fits into u64");
+    let executor_nonce_after = u64::try_from(executor_nonce_after).expect("nonce fits into u64");
     assert_eq!(
         executor_nonce_after,
         executor_nonce + 1,

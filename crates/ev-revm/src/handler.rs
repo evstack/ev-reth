@@ -197,8 +197,8 @@ where
 
             let sponsor_account = journal.load_account_code(sponsor)?.data;
             let sponsor_balance = sponsor_account.info.balance;
-            let max_gas_cost = U256::from(tx.gas_limit())
-                .saturating_mul(U256::from(tx.max_fee_per_gas()));
+            let max_gas_cost =
+                U256::from(tx.gas_limit()).saturating_mul(U256::from(tx.max_fee_per_gas()));
             if !is_balance_check_disabled && sponsor_balance < max_gas_cost {
                 return Err(reth_revm::revm::context_interface::result::InvalidTransaction::LackOfFundForMaxFee {
                     fee: Box::new(max_gas_cost),
@@ -283,7 +283,11 @@ where
 
             if !instruction_result.is_ok() {
                 evm.ctx_mut().journal_mut().checkpoint_revert(checkpoint);
-                if calls.first().map(|call| call.to.is_create()).unwrap_or(false) {
+                if calls
+                    .first()
+                    .map(|call| call.to.is_create())
+                    .unwrap_or(false)
+                {
                     let caller = base_tx.caller();
                     let journal = evm.ctx_mut().journal_mut();
                     if let Ok(caller_account) = journal.load_account_code(caller) {
