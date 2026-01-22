@@ -153,7 +153,9 @@ where
 
         let ctx = evm.ctx_mut();
         let tx = ctx.tx();
-        let sponsor_invalid = tx.sponsor_signature_invalid();
+        if tx.sponsor_signature_invalid() {
+            return Err(Self::Error::from_string("invalid sponsor signature".into()));
+        }
         let sponsor = tx.sponsor();
         let caller_address = tx.caller();
         let total_value = tx.batch_total_value();
@@ -164,78 +166,32 @@ where
         let is_eip3607_disabled = ctx.cfg().is_eip3607_disabled();
         let is_nonce_check_disabled = ctx.cfg().is_nonce_check_disabled();
 
-        if sponsor_invalid {
-            return Err(Self::Error::from_string("invalid sponsor signature".into()));
-        }
-
         let (tx, journal) = ctx.tx_journal_mut();
         if let Some(sponsor) = sponsor {
-            {
-                let caller = journal.load_account_code(caller_address)?.data;
-                validate_account_nonce_and_code(
-                    &caller.info,
-                    tx,
-                    is_eip3607_disabled,
-                    is_nonce_check_disabled,
-                )?;
-
-                // Only validate that caller has enough balance for the value transfer.
-                // Do NOT pre-deduct the value - it will be transferred during execution.
-                // This matches the mainnet behavior where only gas is pre-deducted.
-                if !is_balance_check_disabled && caller.info.balance < total_value {
-                    return Err(reth_revm::revm::context_interface::result::InvalidTransaction::LackOfFundForMaxFee {
-                        fee: Box::new(total_value),
-                        balance: Box::new(caller.info.balance),
-                    }
-                    .into());
-                }
-
-                if is_call {
-                    caller.info.set_nonce(caller.info.nonce.saturating_add(1));
-                }
-            }
-
-            let sponsor_account = journal.load_account_code(sponsor)?.data;
-            let sponsor_balance = sponsor_account.info.balance;
-            let max_gas_cost =
-                U256::from(tx.gas_limit()).saturating_mul(U256::from(tx.max_fee_per_gas()));
-            if !is_balance_check_disabled && sponsor_balance < max_gas_cost {
-                return Err(reth_revm::revm::context_interface::result::InvalidTransaction::LackOfFundForMaxFee {
-                    fee: Box::new(max_gas_cost),
-                    balance: Box::new(sponsor_balance),
-                }
-                .into());
-            }
-
-            let effective_gas_price = tx.effective_gas_price(basefee);
-            let gas_cost =
-                U256::from(tx.gas_limit()).saturating_mul(U256::from(effective_gas_price));
-            let mut new_sponsor_balance = sponsor_balance.saturating_sub(gas_cost);
-            if is_balance_check_disabled {
-                new_sponsor_balance = new_sponsor_balance.max(gas_cost);
-            }
-            sponsor_account.info.set_balance(new_sponsor_balance);
-            // Mark the sponsor account as touched so state changes are included in the final state
-            journal.touch_account(sponsor);
-        } else {
-            let caller = journal.load_account_code(caller_address)?.data;
-            validate_account_nonce_and_code(
-                &caller.info,
+            validate_and_deduct_sponsored_tx::<_, _, Self::Error>(
+                journal,
                 tx,
+                caller_address,
+                sponsor,
+                total_value,
+                is_call,
+                basefee,
+                is_balance_check_disabled,
                 is_eip3607_disabled,
                 is_nonce_check_disabled,
             )?;
-            let new_caller_balance = calculate_caller_fee(
-                caller.info.balance,
+        } else {
+            validate_and_deduct_normal_tx::<_, _, Self::Error>(
+                journal,
                 tx,
+                caller_address,
+                is_call,
                 basefee,
                 blob_price,
                 is_balance_check_disabled,
+                is_eip3607_disabled,
+                is_nonce_check_disabled,
             )?;
-            caller.info.set_balance(new_caller_balance);
-            if is_call {
-                caller.info.set_nonce(caller.info.nonce.saturating_add(1));
-            }
         }
 
         Ok(())
@@ -579,6 +535,123 @@ fn finalize_batch_gas(
         gas.record_refund(refund);
     }
     *frame_result.gas_mut() = gas;
+}
+
+/// Validates and deducts fees for a sponsored transaction.
+/// The sponsor pays the gas fees while the caller pays the value transfer.
+fn validate_and_deduct_sponsored_tx<Tx, J, E>(
+    journal: &mut J,
+    tx: &Tx,
+    caller_address: alloy_primitives::Address,
+    sponsor: alloy_primitives::Address,
+    total_value: U256,
+    is_call: bool,
+    basefee: u128,
+    is_balance_check_disabled: bool,
+    is_eip3607_disabled: bool,
+    is_nonce_check_disabled: bool,
+) -> Result<(), E>
+where
+    Tx: Transaction,
+    J: JournalTr<State = EvmState>,
+    E: From<reth_revm::revm::context_interface::result::InvalidTransaction>
+        + From<<J::Database as reth_revm::Database>::Error>,
+{
+    // Validate caller's nonce/code and balance for value transfer
+    {
+        let caller = journal.load_account_code(caller_address)?.data;
+        validate_account_nonce_and_code(
+            &caller.info,
+            tx,
+            is_eip3607_disabled,
+            is_nonce_check_disabled,
+        )?;
+
+        // Only validate that caller has enough balance for the value transfer.
+        // Do NOT pre-deduct the value - it will be transferred during execution.
+        // This matches the mainnet behavior where only gas is pre-deducted.
+        if !is_balance_check_disabled && caller.info.balance < total_value {
+            return Err(
+                reth_revm::revm::context_interface::result::InvalidTransaction::LackOfFundForMaxFee {
+                    fee: Box::new(total_value),
+                    balance: Box::new(caller.info.balance),
+                }
+                .into(),
+            );
+        }
+
+        if is_call {
+            caller.info.set_nonce(caller.info.nonce.saturating_add(1));
+        }
+    }
+
+    // Validate and deduct gas from sponsor
+    let sponsor_account = journal.load_account_code(sponsor)?.data;
+    let sponsor_balance = sponsor_account.info.balance;
+    let max_gas_cost =
+        U256::from(tx.gas_limit()).saturating_mul(U256::from(tx.max_fee_per_gas()));
+    if !is_balance_check_disabled && sponsor_balance < max_gas_cost {
+        return Err(
+            reth_revm::revm::context_interface::result::InvalidTransaction::LackOfFundForMaxFee {
+                fee: Box::new(max_gas_cost),
+                balance: Box::new(sponsor_balance),
+            }
+            .into(),
+        );
+    }
+
+    let effective_gas_price = tx.effective_gas_price(basefee);
+    let gas_cost = U256::from(tx.gas_limit()).saturating_mul(U256::from(effective_gas_price));
+    let mut new_sponsor_balance = sponsor_balance.saturating_sub(gas_cost);
+    if is_balance_check_disabled {
+        new_sponsor_balance = new_sponsor_balance.max(gas_cost);
+    }
+    sponsor_account.info.set_balance(new_sponsor_balance);
+    // Mark the sponsor account as touched so state changes are included in the final state
+    journal.touch_account(sponsor);
+
+    Ok(())
+}
+
+/// Validates and deducts fees for a normal (non-sponsored) transaction.
+/// The caller pays both gas fees and value transfer.
+fn validate_and_deduct_normal_tx<Tx, J, E>(
+    journal: &mut J,
+    tx: &Tx,
+    caller_address: alloy_primitives::Address,
+    is_call: bool,
+    basefee: u128,
+    blob_price: u128,
+    is_balance_check_disabled: bool,
+    is_eip3607_disabled: bool,
+    is_nonce_check_disabled: bool,
+) -> Result<(), E>
+where
+    Tx: Transaction,
+    J: JournalTr<State = EvmState>,
+    E: From<reth_revm::revm::context_interface::result::InvalidTransaction>
+        + From<<J::Database as reth_revm::Database>::Error>,
+{
+    let caller = journal.load_account_code(caller_address)?.data;
+    validate_account_nonce_and_code(
+        &caller.info,
+        tx,
+        is_eip3607_disabled,
+        is_nonce_check_disabled,
+    )?;
+    let new_caller_balance = calculate_caller_fee(
+        caller.info.balance,
+        tx,
+        basefee,
+        blob_price,
+        is_balance_check_disabled,
+    )?;
+    caller.info.set_balance(new_caller_balance);
+    if is_call {
+        caller.info.set_nonce(caller.info.nonce.saturating_add(1));
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

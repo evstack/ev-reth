@@ -15,11 +15,31 @@ use reth_revm::revm::{
     primitives::{Address as RevmAddress, Bytes as RevmBytes, TxKind, B256},
 };
 
-/// Transaction environment wrapper that supports `EvTxEnvelope` conversions.
+/// Transaction environment wrapper that supports both standard Ethereum and EvNode transactions.
+///
+/// # Design Trade-off
+///
+/// This type uses a single struct with an `is_evnode` flag rather than separate types
+/// (e.g., `EvStandardTxEnv` and `EvBatchTxEnv`). This is a deliberate trade-off:
+///
+/// **Why not separate types?**
+/// - An enum wrapper would still be needed for the Handler's generic `Tx` parameter
+/// - The `BatchCallsTx` trait would still need to return `None` for standard transactions
+/// - Every trait method (~20+) would require match arms, adding significant boilerplate
+///
+/// **Current approach:**
+/// - Single type with conditional behavior based on `is_evnode`
+/// - Simpler integration with Reth's generic EVM infrastructure
+/// - Less boilerplate at the cost of runtime flag checking
+///
+/// The `BatchCallsTx::batch_calls()` method returns `None` for standard transactions,
+/// which is functionally equivalent to what a separate type approach would require.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct EvTxEnv {
     inner: TxEnv,
     sponsor: Option<Address>,
+    /// Stored because trait methods don't return `Result`, so validation errors
+    /// must be deferred until the handler can process them.
     sponsor_signature_invalid: bool,
     calls: Vec<Call>,
     batch_value: U256,
@@ -74,45 +94,6 @@ impl EvTxEnv {
         self.inner.kind = call.to;
         self.inner.value = call.value;
         self.inner.data = call.input.clone();
-    }
-}
-
-#[cfg(test)]
-impl EvTxEnv {
-    /// Test helper to build an `EvTxEnv` with batch calls pre-populated.
-    pub fn with_calls(mut inner: TxEnv, calls: Vec<Call>) -> Self {
-        let batch_value = calls
-            .iter()
-            .fold(U256::ZERO, |acc, call| acc.saturating_add(call.value));
-        if let Some(first) = calls.first() {
-            inner.kind = first.to;
-            inner.data = first.input.clone();
-        }
-        inner.value = batch_value;
-        let mut env = Self::new(inner);
-        env.calls = calls;
-        env.batch_value = batch_value;
-        env.is_evnode = true;
-        env
-    }
-
-    /// Test helper to build an `EvTxEnv` with batch calls and a sponsor.
-    pub fn with_calls_and_sponsor(mut inner: TxEnv, calls: Vec<Call>, sponsor: Address) -> Self {
-        let batch_value = calls
-            .iter()
-            .fold(U256::ZERO, |acc, call| acc.saturating_add(call.value));
-        if let Some(first) = calls.first() {
-            inner.kind = first.to;
-            inner.data = first.input.clone();
-        }
-        inner.value = batch_value;
-        let mut env = Self::new(inner);
-        env.calls = calls;
-        env.batch_value = batch_value;
-        env.sponsor = Some(sponsor);
-        env.sponsor_signature_invalid = false;
-        env.is_evnode = true;
-        env
     }
 }
 
@@ -387,6 +368,45 @@ mod tests {
     use alloy_evm::FromRecoveredTx;
     use alloy_primitives::{Address, Bytes, Signature, TxKind, U256};
     use ev_primitives::{Call, EvNodeSignedTx, EvNodeTransaction, EvTxEnvelope};
+    use reth_revm::revm::context::TxEnv;
+
+    impl EvTxEnv {
+        /// Test helper to build an `EvTxEnv` with batch calls pre-populated.
+        pub fn with_calls(mut inner: TxEnv, calls: Vec<Call>) -> Self {
+            let batch_value = calls
+                .iter()
+                .fold(U256::ZERO, |acc, call| acc.saturating_add(call.value));
+            if let Some(first) = calls.first() {
+                inner.kind = first.to;
+                inner.data = first.input.clone();
+            }
+            inner.value = batch_value;
+            let mut env = Self::new(inner);
+            env.calls = calls;
+            env.batch_value = batch_value;
+            env.is_evnode = true;
+            env
+        }
+
+        /// Test helper to build an `EvTxEnv` with batch calls and a sponsor.
+        pub fn with_calls_and_sponsor(mut inner: TxEnv, calls: Vec<Call>, sponsor: Address) -> Self {
+            let batch_value = calls
+                .iter()
+                .fold(U256::ZERO, |acc, call| acc.saturating_add(call.value));
+            if let Some(first) = calls.first() {
+                inner.kind = first.to;
+                inner.data = first.input.clone();
+            }
+            inner.value = batch_value;
+            let mut env = Self::new(inner);
+            env.calls = calls;
+            env.batch_value = batch_value;
+            env.sponsor = Some(sponsor);
+            env.sponsor_signature_invalid = false;
+            env.is_evnode = true;
+            env
+        }
+    }
 
     fn sample_evnode_tx() -> EvNodeTransaction {
         EvNodeTransaction {

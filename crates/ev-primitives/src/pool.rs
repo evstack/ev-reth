@@ -1,4 +1,14 @@
 //! Pooled transaction envelope for ev-reth.
+//!
+//! This module defines [`EvPooledTxEnvelope`], the transaction type used by Reth's transaction
+//! pool. It wraps both standard Ethereum pooled transactions (which may include blob sidecars)
+//! and EvNode transactions.
+//!
+//! The traits implemented here are required by Reth's transaction pool infrastructure:
+//! - [`InMemorySize`]: Memory accounting for pool size limits
+//! - [`SignerRecoverable`]: Sender address recovery for validation
+//! - [`TxHashRef`]: Transaction hash access for deduplication
+//! - [`SignedTransaction`]: Marker trait for signed transaction types
 
 use alloy_consensus::{
     error::ValueError,

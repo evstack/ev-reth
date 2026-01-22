@@ -185,6 +185,7 @@ impl Transaction for EvNodeTransaction {
         self.gas_limit
     }
 
+    /// Returns `None` because EvNode uses EIP-1559 fee market (not legacy gas price).
     fn gas_price(&self) -> Option<u128> {
         None
     }
@@ -197,6 +198,7 @@ impl Transaction for EvNodeTransaction {
         Some(self.max_priority_fee_per_gas)
     }
 
+    /// Returns `None` because EvNode does not support EIP-4844 blob transactions.
     fn max_fee_per_blob_gas(&self) -> Option<u128> {
         None
     }
@@ -248,10 +250,12 @@ impl Transaction for EvNodeTransaction {
         Some(&self.access_list)
     }
 
+    /// Returns `None` because EvNode does not support EIP-4844 blob transactions.
     fn blob_versioned_hashes(&self) -> Option<&[B256]> {
         None
     }
 
+    /// Returns `None` because EvNode does not support EIP-7702 account abstraction.
     fn authorization_list(&self) -> Option<&[alloy_eips::eip7702::SignedAuthorization]> {
         None
     }

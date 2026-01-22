@@ -377,6 +377,12 @@ where
     }
 }
 
+/// Implementation of [`AlloyEvm`] for the EV-specific EVM context.
+///
+/// Generic parameters:
+/// - `DB`: State database for reading/writing accounts and storage
+/// - `INSP`: Inspector for tracing and debugging EVM execution
+/// - `PRECOMP`: Provider for precompiled contracts (e.g., ecrecover, sha256)
 impl<DB, INSP, PRECOMP> AlloyEvm
     for EvEvm<Context<BlockEnv, EvTxEnv, CfgEnv<SpecId>, DB>, INSP, PRECOMP>
 where
