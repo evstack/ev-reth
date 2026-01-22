@@ -195,6 +195,20 @@ mod tests {
     }
 
     #[test]
+    fn test_no_overrides_preserves_defaults() {
+        let mut genesis = Genesis::default();
+        genesis.config.chain_id = 1;
+        genesis.config.london_block = Some(0);
+        // No evolve config at all
+
+        let chain_spec = apply_overrides(&genesis).unwrap();
+        let params = chain_spec.base_fee_params_at_timestamp(chain_spec.genesis.timestamp);
+        // Should be Ethereum mainnet defaults
+        assert_eq!(params.max_change_denominator, 8);
+        assert_eq!(params.elasticity_multiplier, 2);
+    }
+
+    #[test]
     fn test_base_fee_denominator_must_be_positive() {
         let mut genesis = Genesis::default();
         genesis.config.chain_id = 1;
