@@ -345,10 +345,17 @@ impl Compact for EvNodeTransaction {
         out.to_compact(buf)
     }
 
+    /// Decodes `EvNodeTransaction` from compact format.
+    ///
+    /// # Panics
+    /// Panics if the RLP data is invalid. This is intentional - if data from the database
+    /// is corrupted, the node should not continue operating with invalid state.
     fn from_compact(buf: &[u8], len: usize) -> (Self, &[u8]) {
         let (bytes, buf) = Vec::<u8>::from_compact(buf, len);
         let mut slice = bytes.as_slice();
-        let decoded = Self::decode(&mut slice).expect("valid evnode tx rlp");
+        let decoded = Self::decode(&mut slice).unwrap_or_else(|err| {
+            panic!("failed to decode EvNodeTransaction from database: {err}")
+        });
         (decoded, buf)
     }
 }
@@ -425,13 +432,20 @@ impl Compact for EvTxType {
         }
     }
 
+    /// Decodes `EvTxType` from compact format.
+    ///
+    /// # Panics
+    /// Panics if an unknown transaction type identifier is encountered. This indicates
+    /// database corruption or a version mismatch - the node should not continue.
     fn from_compact(mut buf: &[u8], identifier: usize) -> (Self, &[u8]) {
         match identifier {
             COMPACT_EXTENDED_IDENTIFIER_FLAG => {
                 let extended_identifier = buf.get_u8();
                 match extended_identifier {
                     EVNODE_TX_TYPE_ID => (Self::EvNode, buf),
-                    _ => panic!("Unsupported EvTxType identifier: {extended_identifier}"),
+                    _ => panic!(
+                        "failed to decode EvTxType from database: unknown identifier {extended_identifier:#x}"
+                    ),
                 }
             }
             v => {
