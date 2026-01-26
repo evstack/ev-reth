@@ -24,8 +24,8 @@ static ALLOC: reth_cli_util::allocator::Allocator = reth_cli_util::allocator::ne
 /// Builds OTLP config from environment variables.
 /// Returns None if OTLP is disabled or endpoint is not configured.
 fn otlp_config_from_env() -> Option<OtlpConfig> {
-    // disabled if OTEL_SDK_DISABLED is set to anything other than "false"
-    if std::env::var("OTEL_SDK_DISABLED").is_ok_and(|v| v != "false") {
+    // disabled if OTEL_SDK_DISABLED is set to "true" (case-insensitive) per OpenTelemetry spec
+    if std::env::var("OTEL_SDK_DISABLED").is_ok_and(|v| v.eq_ignore_ascii_case("true")) {
         return None;
     }
 
@@ -70,10 +70,8 @@ fn main() {
         std::env::set_var("RUST_BACKTRACE", "1");
     }
 
-    // Initialize OTLP tracing
-    if std::env::var("OTEL_SDK_DISABLED").as_deref() == Ok("false") {
-        init_tracing();
-    }
+    // initialize tracing (with optional OTLP support based on env vars)
+    init_tracing();
 
     if let Err(err) =
         Cli::<EvolveChainSpecParser, EvolveArgs>::parse().run(|builder, _evolve_args| async move {

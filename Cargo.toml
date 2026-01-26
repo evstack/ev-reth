@@ -20,7 +20,7 @@ repository = "https://github.com/evstack/ev-reth"
 authors = ["Evolve Stack Contributors"]
 
 [workspace.dependencies]
-# Reth dependencies - Using v1.8.4 stable
+# Reth dependencies - Using v1.10.1 stable
 reth-chainspec = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.10.1" }
 reth-cli = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.10.1" }
 reth-cli-util = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.10.1" }
