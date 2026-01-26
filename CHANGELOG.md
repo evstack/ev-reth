@@ -7,9 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-- Add missing payload attribute extraction in `EvolvePayloadBuilder` to properly handle transactions submitted via Engine API ([#33](https://github.com/evstack/ev-reth/pull/33))
-- Remove unused configuration parameters to clean up codebase ([#32](https://github.com/evstack/ev-reth/pull/32))
+### Added
 
-### Changed
-- Use `best_transactions` instead of `pending_transactions` queue for improved transaction selection logic ([#29](https://github.com/evstack/ev-reth/pull/29))
+- Permissioned EVM support allowing configurable address-based access control ([#100](https://github.com/evstack/ev-reth/pull/100))
+- EIP-1559 settings to chain configuration for customizing base fee parameters ([#99](https://github.com/evstack/ev-reth/pull/99))
+- AdminProxy contract for administrative operations ([#97](https://github.com/evstack/ev-reth/pull/97))
+- ADR 003: typed sponsorship transactions and batch execution documentation ([#96](https://github.com/evstack/ev-reth/pull/96))
+- Fee system guide documentation ([#101](https://github.com/evstack/ev-reth/pull/101))
