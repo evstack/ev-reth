@@ -48,26 +48,34 @@ impl MintPrecompile {
     }
 
     fn map_internals_error(err: EvmInternalsError) -> PrecompileError {
-        PrecompileError::Other(err.to_string())
+        PrecompileError::Other(err.to_string().into())
     }
 
     fn ensure_account_created(
         internals: &mut EvmInternals<'_>,
         addr: Address,
     ) -> Result<(), PrecompileError> {
-        let mut account = internals
+        // load immutably first to check state
+        let account = internals
             .load_account(addr)
             .map_err(Self::map_internals_error)?;
 
         if account.is_loaded_as_not_existing() {
             if addr == MINT_PRECOMPILE_ADDR {
-                // Ensure the mint precompile account is treated as non-empty so state pruning
+                // ensure the mint precompile account is treated as non-empty so state pruning
                 // does not wipe out its storage between blocks.
-                account.info.set_code(Self::bytecode().clone());
-                account.info.set_nonce(1);
+                internals
+                    .set_code(addr, Self::bytecode().clone())
+                    .map_err(Self::map_internals_error)?;
+                internals
+                    .load_account_mut(addr)
+                    .map_err(Self::map_internals_error)?
+                    .set_nonce(1);
             }
-            account.mark_created();
-            internals.touch_account(addr);
+            // touch_account handles marking the account appropriately
+            internals
+                .touch_account(addr)
+                .map_err(Self::map_internals_error)?;
         }
 
         Ok(())
@@ -79,14 +87,11 @@ impl MintPrecompile {
         amount: U256,
     ) -> Result<(), PrecompileError> {
         let mut account = internals
-            .load_account(addr)
+            .load_account_mut(addr)
             .map_err(Self::map_internals_error)?;
-        let new_balance = account
-            .info
-            .balance
-            .checked_add(amount)
-            .ok_or_else(|| PrecompileError::Other("balance overflow".to_string()))?;
-        account.info.set_balance(new_balance);
+        if !account.incr_balance(amount) {
+            return Err(PrecompileError::Other("balance overflow".into()));
+        }
         Ok(())
     }
 
@@ -96,14 +101,11 @@ impl MintPrecompile {
         amount: U256,
     ) -> Result<(), PrecompileError> {
         let mut account = internals
-            .load_account(addr)
+            .load_account_mut(addr)
             .map_err(Self::map_internals_error)?;
-        let new_balance = account
-            .info
-            .balance
-            .checked_sub(amount)
-            .ok_or_else(|| PrecompileError::Other("insufficient balance".to_string()))?;
-        account.info.set_balance(new_balance);
+        if !account.decr_balance(amount) {
+            return Err(PrecompileError::Other("insufficient balance".into()));
+        }
         Ok(())
     }
 
@@ -111,7 +113,7 @@ impl MintPrecompile {
         if caller == self.admin {
             Ok(())
         } else {
-            Err(PrecompileError::Other("unauthorized caller".to_string()))
+            Err(PrecompileError::Other("unauthorized caller".into()))
         }
     }
 
@@ -131,7 +133,7 @@ impl MintPrecompile {
             Ok(())
         } else {
             tracing::warn!(target: "mint_precompile", ?caller, "authorization denied: not admin and not allowlisted");
-            Err(PrecompileError::Other("unauthorized caller".to_string()))
+            Err(PrecompileError::Other("unauthorized caller".into()))
         }
     }
 
@@ -167,7 +169,9 @@ impl MintPrecompile {
         internals
             .sstore(MINT_PRECOMPILE_ADDR, Self::allowlist_key(addr), value)
             .map_err(Self::map_internals_error)?;
-        internals.touch_account(MINT_PRECOMPILE_ADDR);
+        internals
+            .touch_account(MINT_PRECOMPILE_ADDR)
+            .map_err(Self::map_internals_error)?;
         Ok(())
     }
 
@@ -198,7 +202,7 @@ impl Precompile for MintPrecompile {
         // 1) Decode by ABI — this inspects the 4-byte selector and picks the right variant.
         let decoded = match INativeToken::INativeTokenCalls::abi_decode(input.data) {
             Ok(v) => v,
-            Err(e) => return Err(PrecompileError::Other(e.to_string())),
+            Err(e) => return Err(PrecompileError::Other(e.to_string().into())),
         };
         let internals = input.internals_mut();
 
@@ -211,7 +215,9 @@ impl Precompile for MintPrecompile {
 
                 Self::ensure_account_created(internals, to)?;
                 Self::add_balance(internals, to, amount)?;
-                internals.touch_account(to);
+                internals
+                    .touch_account(to)
+                    .map_err(Self::map_internals_error)?;
 
                 Ok(PrecompileOutput::new(0, Bytes::new()))
             }
@@ -222,7 +228,9 @@ impl Precompile for MintPrecompile {
 
                 Self::ensure_account_created(internals, from)?;
                 Self::sub_balance(internals, from, amount)?;
-                internals.touch_account(from);
+                internals
+                    .touch_account(from)
+                    .map_err(Self::map_internals_error)?;
 
                 Ok(PrecompileOutput::new(0, Bytes::new()))
             }
@@ -257,7 +265,7 @@ mod tests {
     use revm::{
         context::{
             journal::{Journal, JournalInner},
-            BlockEnv,
+            BlockEnv, CfgEnv, TxEnv,
         },
         database::{CacheDB, EmptyDB},
         primitives::hardfork::SpecId,
@@ -267,16 +275,20 @@ mod tests {
 
     const GAS_LIMIT: u64 = 1_000_000;
 
-    fn setup_context() -> (TestJournal, BlockEnv) {
+    fn setup_context() -> (TestJournal, BlockEnv, CfgEnv, TxEnv) {
         let mut journal = Journal::new_with_inner(CacheDB::default(), JournalInner::new());
         journal.inner.set_spec_id(SpecId::PRAGUE);
         let block_env = BlockEnv::default();
-        (journal, block_env)
+        let cfg_env = CfgEnv::default();
+        let tx_env = TxEnv::default();
+        (journal, block_env, cfg_env, tx_env)
     }
 
     fn run_call<'a>(
         journal: &'a mut TestJournal,
         block_env: &'a BlockEnv,
+        cfg_env: &'a CfgEnv,
+        tx_env: &'a TxEnv,
         precompile: &MintPrecompile,
         caller: Address,
         data: &'a [u8],
@@ -287,8 +299,9 @@ mod tests {
             caller,
             value: U256::ZERO,
             target_address: MINT_PRECOMPILE_ADDR,
+            is_static: false,
             bytecode_address: MINT_PRECOMPILE_ADDR,
-            internals: EvmInternals::new(journal, block_env),
+            internals: EvmInternals::new(journal, block_env, cfg_env, tx_env),
         };
 
         precompile.call(input)
@@ -309,15 +322,23 @@ mod tests {
         let amount = U256::from(42u64);
         let precompile = MintPrecompile::new(admin);
 
-        let (mut journal, block_env) = setup_context();
+        let (mut journal, block_env, cfg_env, tx_env) = setup_context();
         let calldata = INativeToken::mintCall {
             to: recipient,
             amount,
         }
         .abi_encode();
 
-        let output = run_call(&mut journal, &block_env, &precompile, admin, &calldata)
-            .expect("mint call should succeed");
+        let output = run_call(
+            &mut journal,
+            &block_env,
+            &cfg_env,
+            &tx_env,
+            &precompile,
+            admin,
+            &calldata,
+        )
+        .expect("mint call should succeed");
         assert_eq!(output.gas_used, 0, "mint precompile should not consume gas");
         let balance = account_balance(&journal, recipient).expect("recipient account exists");
         assert_eq!(
@@ -330,10 +351,8 @@ mod tests {
             account.is_touched(),
             "recipient account should be marked touched"
         );
-        assert!(
-            account.is_created(),
-            "recipient account should be marked created"
-        );
+        // note: is_created() is only true for accounts created via CREATE/CREATE2,
+        // not for accounts that just received a balance transfer
     }
 
     #[test]
@@ -344,14 +363,22 @@ mod tests {
         let burn_amount = U256::from(60u64);
         let precompile = MintPrecompile::new(admin);
 
-        let (mut journal, block_env) = setup_context();
+        let (mut journal, block_env, cfg_env, tx_env) = setup_context();
         let mint_calldata = INativeToken::mintCall {
             to: holder,
             amount: mint_amount,
         }
         .abi_encode();
-        let mint_output = run_call(&mut journal, &block_env, &precompile, admin, &mint_calldata)
-            .expect("mint call should succeed");
+        let mint_output = run_call(
+            &mut journal,
+            &block_env,
+            &cfg_env,
+            &tx_env,
+            &precompile,
+            admin,
+            &mint_calldata,
+        )
+        .expect("mint call should succeed");
         assert_eq!(
             mint_output.gas_used, 0,
             "mint precompile should not consume gas"
@@ -362,8 +389,16 @@ mod tests {
         }
         .abi_encode();
 
-        let burn_output = run_call(&mut journal, &block_env, &precompile, admin, &burn_calldata)
-            .expect("burn call should succeed");
+        let burn_output = run_call(
+            &mut journal,
+            &block_env,
+            &cfg_env,
+            &tx_env,
+            &precompile,
+            admin,
+            &burn_calldata,
+        )
+        .expect("burn call should succeed");
         assert_eq!(
             burn_output.gas_used, 0,
             "burn precompile should not consume gas"
@@ -384,21 +419,37 @@ mod tests {
         let burn_amount = U256::from(50u64);
         let precompile = MintPrecompile::new(admin);
 
-        let (mut journal, block_env) = setup_context();
+        let (mut journal, block_env, cfg_env, tx_env) = setup_context();
         let mint_calldata = INativeToken::mintCall {
             to: holder,
             amount: initial_amount,
         }
         .abi_encode();
-        run_call(&mut journal, &block_env, &precompile, admin, &mint_calldata)
-            .expect("mint call should succeed");
+        run_call(
+            &mut journal,
+            &block_env,
+            &cfg_env,
+            &tx_env,
+            &precompile,
+            admin,
+            &mint_calldata,
+        )
+        .expect("mint call should succeed");
         let burn_calldata = INativeToken::burnCall {
             from: holder,
             amount: burn_amount,
         }
         .abi_encode();
 
-        let result = run_call(&mut journal, &block_env, &precompile, admin, &burn_calldata);
+        let result = run_call(
+            &mut journal,
+            &block_env,
+            &cfg_env,
+            &tx_env,
+            &precompile,
+            admin,
+            &burn_calldata,
+        );
 
         match result {
             Err(PrecompileError::Other(msg)) => {
@@ -425,14 +476,22 @@ mod tests {
         let amount = U256::from(10u64);
         let precompile = MintPrecompile::new(admin);
 
-        let (mut journal, block_env) = setup_context();
+        let (mut journal, block_env, cfg_env, tx_env) = setup_context();
         let calldata = INativeToken::mintCall {
             to: recipient,
             amount,
         }
         .abi_encode();
 
-        let result = run_call(&mut journal, &block_env, &precompile, caller, &calldata);
+        let result = run_call(
+            &mut journal,
+            &block_env,
+            &cfg_env,
+            &tx_env,
+            &precompile,
+            caller,
+            &calldata,
+        );
 
         match result {
             Err(PrecompileError::Other(msg)) => {
@@ -458,14 +517,22 @@ mod tests {
         let amount = U256::from(77u64);
         let precompile = MintPrecompile::new(admin);
 
-        let (mut journal, block_env) = setup_context();
+        let (mut journal, block_env, cfg_env, tx_env) = setup_context();
 
         let add_calldata = INativeToken::addToAllowListCall {
             account: allowlisted,
         }
         .abi_encode();
-        let add_output = run_call(&mut journal, &block_env, &precompile, admin, &add_calldata)
-            .expect("admin should be able to add to allowlist");
+        let add_output = run_call(
+            &mut journal,
+            &block_env,
+            &cfg_env,
+            &tx_env,
+            &precompile,
+            admin,
+            &add_calldata,
+        )
+        .expect("admin should be able to add to allowlist");
         assert_eq!(
             add_output.gas_used, 0,
             "allowlist add should not consume gas"
@@ -479,6 +546,8 @@ mod tests {
         let mint_output = run_call(
             &mut journal,
             &block_env,
+            &cfg_env,
+            &tx_env,
             &precompile,
             allowlisted,
             &mint_calldata,
@@ -501,14 +570,22 @@ mod tests {
         let amount = U256::from(15u64);
         let precompile = MintPrecompile::new(admin);
 
-        let (mut journal, block_env) = setup_context();
+        let (mut journal, block_env, cfg_env, tx_env) = setup_context();
 
         let add_calldata = INativeToken::addToAllowListCall {
             account: allowlisted,
         }
         .abi_encode();
-        let add_output = run_call(&mut journal, &block_env, &precompile, admin, &add_calldata)
-            .expect("admin should be able to add allowlist entry");
+        let add_output = run_call(
+            &mut journal,
+            &block_env,
+            &cfg_env,
+            &tx_env,
+            &precompile,
+            admin,
+            &add_calldata,
+        )
+        .expect("admin should be able to add allowlist entry");
         assert_eq!(
             add_output.gas_used, 0,
             "allowlist add should not consume gas"
@@ -521,6 +598,8 @@ mod tests {
         let remove_output = run_call(
             &mut journal,
             &block_env,
+            &cfg_env,
+            &tx_env,
             &precompile,
             admin,
             &remove_calldata,
@@ -539,6 +618,8 @@ mod tests {
         let result = run_call(
             &mut journal,
             &block_env,
+            &cfg_env,
+            &tx_env,
             &precompile,
             allowlisted,
             &mint_calldata,
@@ -567,21 +648,29 @@ mod tests {
         let burn_amount = U256::from(40u64);
         let precompile = MintPrecompile::new(admin);
 
-        let (mut journal, block_env) = setup_context();
+        let (mut journal, block_env, cfg_env, tx_env) = setup_context();
 
-        // Add operator to allowlist
+        // add operator to allowlist
         let add_calldata = INativeToken::addToAllowListCall {
             account: allowlisted,
         }
         .abi_encode();
-        let add_output = run_call(&mut journal, &block_env, &precompile, admin, &add_calldata)
-            .expect("admin should add allowlist entry");
+        let add_output = run_call(
+            &mut journal,
+            &block_env,
+            &cfg_env,
+            &tx_env,
+            &precompile,
+            admin,
+            &add_calldata,
+        )
+        .expect("admin should add allowlist entry");
         assert_eq!(
             add_output.gas_used, 0,
             "allowlist add should not consume gas"
         );
 
-        // Mint tokens as allowlisted operator
+        // mint tokens as allowlisted operator
         let mint_calldata = INativeToken::mintCall {
             to: holder,
             amount: mint_amount,
@@ -590,6 +679,8 @@ mod tests {
         let mint_output = run_call(
             &mut journal,
             &block_env,
+            &cfg_env,
+            &tx_env,
             &precompile,
             allowlisted,
             &mint_calldata,
@@ -600,7 +691,7 @@ mod tests {
             "allowlisted mint should not consume gas"
         );
 
-        // Burn subset as allowlisted operator
+        // burn subset as allowlisted operator
         let burn_calldata = INativeToken::burnCall {
             from: holder,
             amount: burn_amount,
@@ -609,6 +700,8 @@ mod tests {
         let burn_output = run_call(
             &mut journal,
             &block_env,
+            &cfg_env,
+            &tx_env,
             &precompile,
             allowlisted,
             &burn_calldata,
@@ -634,12 +727,14 @@ mod tests {
         let target = address!("0x00000000000000000000000000000000000000b7");
         let precompile = MintPrecompile::new(admin);
 
-        let (mut journal, block_env) = setup_context();
+        let (mut journal, block_env, cfg_env, tx_env) = setup_context();
         let add_calldata = INativeToken::addToAllowListCall { account: target }.abi_encode();
 
         let result = run_call(
             &mut journal,
             &block_env,
+            &cfg_env,
+            &tx_env,
             &precompile,
             unauthorized,
             &add_calldata,

@@ -204,6 +204,7 @@ async fn test_e2e_engine_api_fork_choice_with_transactions() -> Result<()> {
                 Block,
                 Receipt,
                 Header,
+                Bytes,
             >::transaction_receipt(
                 &env.node_clients[0].rpc, tx_hash
             )

@@ -15,7 +15,6 @@ use reth_ethereum::{
     },
 };
 use reth_ethereum_forks::Hardforks;
-use reth_node_builder::PayloadBuilderConfig;
 use tracing::info;
 
 use crate::{config::EvolvePayloadBuilderConfig, EvolveNode};
@@ -30,8 +29,7 @@ where
     ChainSpec: Hardforks + EthExecutorSpec + EthereumHardforks,
 {
     let chain_spec = ctx.chain_spec();
-    let base_config = EthEvmConfig::new(chain_spec.clone())
-        .with_extra_data(ctx.payload_builder_config().extra_data_bytes());
+    let base_config = EthEvmConfig::new(chain_spec.clone());
 
     let evolve_config = EvolvePayloadBuilderConfig::from_chain_spec(chain_spec.as_ref())?;
     evolve_config.validate()?;
