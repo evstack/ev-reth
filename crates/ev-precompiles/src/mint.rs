@@ -329,8 +329,16 @@ mod tests {
         }
         .abi_encode();
 
-        let output = run_call(&mut journal, &block_env, &cfg_env, &tx_env, &precompile, admin, &calldata)
-            .expect("mint call should succeed");
+        let output = run_call(
+            &mut journal,
+            &block_env,
+            &cfg_env,
+            &tx_env,
+            &precompile,
+            admin,
+            &calldata,
+        )
+        .expect("mint call should succeed");
         assert_eq!(output.gas_used, 0, "mint precompile should not consume gas");
         let balance = account_balance(&journal, recipient).expect("recipient account exists");
         assert_eq!(
@@ -361,8 +369,16 @@ mod tests {
             amount: mint_amount,
         }
         .abi_encode();
-        let mint_output = run_call(&mut journal, &block_env, &cfg_env, &tx_env, &precompile, admin, &mint_calldata)
-            .expect("mint call should succeed");
+        let mint_output = run_call(
+            &mut journal,
+            &block_env,
+            &cfg_env,
+            &tx_env,
+            &precompile,
+            admin,
+            &mint_calldata,
+        )
+        .expect("mint call should succeed");
         assert_eq!(
             mint_output.gas_used, 0,
             "mint precompile should not consume gas"
@@ -373,8 +389,16 @@ mod tests {
         }
         .abi_encode();
 
-        let burn_output = run_call(&mut journal, &block_env, &cfg_env, &tx_env, &precompile, admin, &burn_calldata)
-            .expect("burn call should succeed");
+        let burn_output = run_call(
+            &mut journal,
+            &block_env,
+            &cfg_env,
+            &tx_env,
+            &precompile,
+            admin,
+            &burn_calldata,
+        )
+        .expect("burn call should succeed");
         assert_eq!(
             burn_output.gas_used, 0,
             "burn precompile should not consume gas"
@@ -401,15 +425,31 @@ mod tests {
             amount: initial_amount,
         }
         .abi_encode();
-        run_call(&mut journal, &block_env, &cfg_env, &tx_env, &precompile, admin, &mint_calldata)
-            .expect("mint call should succeed");
+        run_call(
+            &mut journal,
+            &block_env,
+            &cfg_env,
+            &tx_env,
+            &precompile,
+            admin,
+            &mint_calldata,
+        )
+        .expect("mint call should succeed");
         let burn_calldata = INativeToken::burnCall {
             from: holder,
             amount: burn_amount,
         }
         .abi_encode();
 
-        let result = run_call(&mut journal, &block_env, &cfg_env, &tx_env, &precompile, admin, &burn_calldata);
+        let result = run_call(
+            &mut journal,
+            &block_env,
+            &cfg_env,
+            &tx_env,
+            &precompile,
+            admin,
+            &burn_calldata,
+        );
 
         match result {
             Err(PrecompileError::Other(msg)) => {
@@ -443,7 +483,15 @@ mod tests {
         }
         .abi_encode();
 
-        let result = run_call(&mut journal, &block_env, &cfg_env, &tx_env, &precompile, caller, &calldata);
+        let result = run_call(
+            &mut journal,
+            &block_env,
+            &cfg_env,
+            &tx_env,
+            &precompile,
+            caller,
+            &calldata,
+        );
 
         match result {
             Err(PrecompileError::Other(msg)) => {
@@ -475,8 +523,16 @@ mod tests {
             account: allowlisted,
         }
         .abi_encode();
-        let add_output = run_call(&mut journal, &block_env, &cfg_env, &tx_env, &precompile, admin, &add_calldata)
-            .expect("admin should be able to add to allowlist");
+        let add_output = run_call(
+            &mut journal,
+            &block_env,
+            &cfg_env,
+            &tx_env,
+            &precompile,
+            admin,
+            &add_calldata,
+        )
+        .expect("admin should be able to add to allowlist");
         assert_eq!(
             add_output.gas_used, 0,
             "allowlist add should not consume gas"
@@ -520,8 +576,16 @@ mod tests {
             account: allowlisted,
         }
         .abi_encode();
-        let add_output = run_call(&mut journal, &block_env, &cfg_env, &tx_env, &precompile, admin, &add_calldata)
-            .expect("admin should be able to add allowlist entry");
+        let add_output = run_call(
+            &mut journal,
+            &block_env,
+            &cfg_env,
+            &tx_env,
+            &precompile,
+            admin,
+            &add_calldata,
+        )
+        .expect("admin should be able to add allowlist entry");
         assert_eq!(
             add_output.gas_used, 0,
             "allowlist add should not consume gas"
@@ -591,8 +655,16 @@ mod tests {
             account: allowlisted,
         }
         .abi_encode();
-        let add_output = run_call(&mut journal, &block_env, &cfg_env, &tx_env, &precompile, admin, &add_calldata)
-            .expect("admin should add allowlist entry");
+        let add_output = run_call(
+            &mut journal,
+            &block_env,
+            &cfg_env,
+            &tx_env,
+            &precompile,
+            admin,
+            &add_calldata,
+        )
+        .expect("admin should add allowlist entry");
         assert_eq!(
             add_output.gas_used, 0,
             "allowlist add should not consume gas"
