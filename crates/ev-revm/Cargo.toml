@@ -19,6 +19,7 @@ revm-inspector.workspace = true
 revm-context-interface.workspace = true
 thiserror.workspace = true
 ev-precompiles = { path = "../ev-precompiles" }
+ev-primitives = { path = "../ev-primitives" }
 
 [dev-dependencies]
 alloy-sol-types.workspace = true
