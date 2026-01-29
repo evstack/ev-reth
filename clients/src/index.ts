@@ -79,16 +79,9 @@ export interface EvnodeSendArgs {
   accessList?: AccessList;
 }
 
-export interface EvnodeIntentArgs {
-  calls: Call[];
-  executor?: HashSigner;
-  chainId?: bigint;
-  nonce?: bigint;
-  maxFeePerGas?: bigint;
-  maxPriorityFeePerGas?: bigint;
-  gasLimit?: bigint;
-  accessList?: AccessList;
-}
+type EvnodeSendArgsWithExecutor = Omit<EvnodeSendArgs, 'executor'> & {
+  executor: HashSigner;
+};
 
 export interface EvnodeSponsorArgs {
   intent: SponsorableIntent;
@@ -231,16 +224,7 @@ export function validateEvNodeTx(tx: EvNodeTransaction): void {
 
 export function evnodeActions(client: Client) {
   return {
-    async sendEvNodeTransaction(args: {
-      calls: Call[];
-      executor: HashSigner;
-      chainId?: bigint;
-      nonce?: bigint;
-      maxFeePerGas?: bigint;
-      maxPriorityFeePerGas?: bigint;
-      gasLimit?: bigint;
-      accessList?: AccessList;
-    }): Promise<Hex> {
+    async sendEvNodeTransaction(args: EvnodeSendArgsWithExecutor): Promise<Hex> {
       const base = await resolveBaseFields(client, args.executor.address, {
         chainId: args.chainId,
         nonce: args.nonce,
@@ -271,16 +255,7 @@ export function evnodeActions(client: Client) {
       }) as Promise<Hex>;
     },
 
-    async createSponsorableIntent(args: {
-      calls: Call[];
-      executor: HashSigner;
-      chainId?: bigint;
-      nonce?: bigint;
-      maxFeePerGas?: bigint;
-      maxPriorityFeePerGas?: bigint;
-      gasLimit?: bigint;
-      accessList?: AccessList;
-    }): Promise<SponsorableIntent> {
+    async createSponsorableIntent(args: EvnodeSendArgsWithExecutor): Promise<SponsorableIntent> {
       const base = await resolveBaseFields(client, args.executor.address, {
         chainId: args.chainId,
         nonce: args.nonce,
@@ -368,7 +343,7 @@ export function createEvnodeClient(options: EvnodeClientOptions) {
         executor: requireExecutor(args.executor),
       });
     },
-    createIntent(args: EvnodeIntentArgs): Promise<SponsorableIntent> {
+    createIntent(args: EvnodeSendArgs): Promise<SponsorableIntent> {
       return actions.createSponsorableIntent({
         ...args,
         executor: requireExecutor(args.executor),
