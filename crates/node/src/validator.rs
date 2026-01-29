@@ -67,11 +67,12 @@ impl PayloadValidator<EvolveEngineTypes> for EvolveEngineValidator {
                 // Log the error for debugging.
                 tracing::debug!("Evolve payload validation error: {:?}", err);
 
-                // Check if this is an error we can bypass for evolve (block hash mismatch or
+                // Check if this is an error we can bypass for evolve (block hash mismatch,
                 // unknown tx type for EvNode transactions).
                 let should_bypass =
                     matches!(err, alloy_rpc_types::engine::PayloadError::BlockHash { .. })
                         || err.to_string().contains("unexpected tx type");
+                        // || err.to_string().contains("missing requests");
 
                 if should_bypass {
                     info!(
@@ -150,7 +151,7 @@ fn parse_evolve_payload(
         blob_gas_used: payload.blob_gas_used(),
         excess_blob_gas: payload.excess_blob_gas(),
         parent_beacon_block_root: sidecar.parent_beacon_block_root(),
-        requests_hash: None,
+        requests_hash: sidecar.requests_hash(),
     };
 
     // Build block body.
