@@ -1,0 +1,16 @@
+{
+  "name": "@evstack/evnode-viem-client",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Local tooling and tests for the EvNode Viem client",
+  "scripts": {
+    "test:basic": "tsx test/evnode-basic.ts",
+    "test:flows": "tsx test/evnode-flows.ts",
+    "test:sponsored": "tsx test/evnode-sponsored.ts"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "viem": "^2.45.0"
+  }
+}

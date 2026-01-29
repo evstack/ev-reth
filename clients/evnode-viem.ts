@@ -101,9 +101,9 @@ export function encodeSignedTransaction(signedTx: EvNodeSignedTransaction): Hex 
   const execSig = normalizeSignature(signedTx.executorSignature);
   const envelope = toRlp([
     ...fields,
-    execSig.v,
-    hexToBigInt(execSig.r),
-    hexToBigInt(execSig.s),
+    rlpHexFromBigInt(BigInt(execSig.v)),
+    rlpHexFromBigInt(hexToBigInt(execSig.r)),
+    rlpHexFromBigInt(hexToBigInt(execSig.s)),
   ]);
   return concat([TX_TYPE_HEX, envelope]);
 }
@@ -161,7 +161,8 @@ export function computeSponsorSigningHash(
   tx: EvNodeTransaction,
   executorAddress: Address,
 ): Hex {
-  const payload = toRlp(buildPayloadFields(tx, false));
+  const payload = encodePayloadFieldsNoList(tx, false);
+  // Sponsor hash preimage: 0x78 || executor_address (20 bytes) || RLP(field encodings without list header).
   return keccak256(concat([SPONSOR_DOMAIN_HEX, executorAddress, payload]));
 }
 
@@ -424,23 +425,32 @@ export function hashSignerFromRpcClient(
 
 function buildPayloadFields(tx: EvNodeTransaction, includeSponsorSig: boolean): RlpValue[] {
   return [
-    tx.chainId,
-    tx.nonce,
-    tx.maxPriorityFeePerGas,
-    tx.maxFeePerGas,
-    tx.gasLimit,
+    rlpHexFromBigInt(tx.chainId),
+    rlpHexFromBigInt(tx.nonce),
+    rlpHexFromBigInt(tx.maxPriorityFeePerGas),
+    rlpHexFromBigInt(tx.maxFeePerGas),
+    rlpHexFromBigInt(tx.gasLimit),
     encodeCalls(tx.calls),
     encodeAccessList(tx.accessList),
     includeSponsorSig && tx.feePayerSignature
-      ? encodeSignatureList(tx.feePayerSignature)
+      ? encodeSponsorSignature(tx.feePayerSignature)
       : EMPTY_BYTES,
   ];
+}
+
+function encodePayloadFieldsNoList(
+  tx: EvNodeTransaction,
+  includeSponsorSig: boolean,
+): Hex {
+  const fields = buildPayloadFields(tx, includeSponsorSig);
+  const encodedFields = fields.map((field) => toRlp(field));
+  return concat(encodedFields);
 }
 
 function encodeCalls(calls: Call[]): RlpValue[] {
   return calls.map((call) => [
     call.to ?? EMPTY_BYTES,
-    call.value,
+    rlpHexFromBigInt(call.value),
     call.data,
   ]);
 }
@@ -497,24 +507,44 @@ function decodeAccessList(value: RlpValue): AccessList {
   });
 }
 
-function encodeSignatureList(signature: Signature): RlpValue[] {
+function encodeSponsorSignature(signature: Signature): RlpValue {
+  // Encode sponsor signature as 65-byte signature bytes (r || s || v).
+  // This matches the common Signature encoding used by alloy primitives.
+  if (typeof signature === 'string') {
+    return signature;
+  }
   const normalized = normalizeSignature(signature);
-  return [
-    normalized.v,
-    hexToBigInt(normalized.r),
-    hexToBigInt(normalized.s),
-  ];
+  const vByte = toHex(BigInt(normalized.v), { size: 1 });
+  return concat([normalized.r, normalized.s, vByte]);
 }
 
 function decodeSignature(value: RlpValue): Signature | undefined {
   if (value === EMPTY_BYTES) return undefined;
 
   if (!Array.isArray(value) || value.length !== 3) {
+    if (isHex(value)) {
+      return signatureFromBytes(value);
+    }
     throw new Error('Invalid sponsor signature encoding');
   }
 
   const [v, r, s] = value;
   return signatureFromParts(v, r, s);
+}
+
+function signatureFromBytes(value: Hex): Signature {
+  const bytes = hexToBytes(value);
+  if (bytes.length !== 65) {
+    throw new Error('Invalid sponsor signature length');
+  }
+  const r = bytesToHex(bytes.slice(0, 32));
+  const s = bytesToHex(bytes.slice(32, 64));
+  const vRaw = bytes[64];
+  const v = vRaw === 27 || vRaw === 28 ? vRaw - 27 : vRaw;
+  if (v !== 0 && v !== 1) {
+    throw new Error('Invalid signature v value');
+  }
+  return { v, r: padTo32Bytes(r), s: padTo32Bytes(s) };
 }
 
 function signatureFromParts(v: RlpValue, r: RlpValue, s: RlpValue): Signature {
@@ -552,6 +582,10 @@ function normalizeSignature(signature: Signature): { v: number; r: Hex; s: Hex }
 
 function padTo32Bytes(value: Hex): Hex {
   return toHex(hexToBigIntSafe(value), { size: 32 });
+}
+
+function rlpHexFromBigInt(value: bigint): Hex {
+  return value === 0n ? EMPTY_BYTES : toHex(value);
 }
 
 function hexToBigIntSafe(value: RlpValue): bigint {
