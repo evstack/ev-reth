@@ -86,6 +86,11 @@ reth-tasks = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.8.4", 
 revm = { version = "29.0.1", default-features = false }
 revm-context-interface = { version = "10.2.0", default-features = false }
 
+# vergen 9.1.0 requires vergen-lib 9.1.0, but reth v1.8.4 uses vergen-git2 1.0.7
+# which depends on vergen-lib 0.1.6. This causes trait incompatibility errors.
+# TODO: Remove this pin when upgrading to reth >= v1.10.0 (uses vergen-git2 9.1.0)
+vergen = "=9.0.6"
+
 # Alloy dependencies
 alloy = { version = "1.0.37", features = [
   "contract",
