@@ -1,7 +1,7 @@
 import { createClient, hexToBigInt, http, type Hex, toHex, formatEther } from 'viem';
 import { privateKeyToAccount, sign } from 'viem/accounts';
 import { randomBytes } from 'crypto';
-import { createEvnodeClient, type Call } from '../evnode-viem.ts';
+import { createEvnodeClient, type Call } from '../src/index.ts';
 
 const RPC_URL = process.env.RPC_URL ?? 'http://localhost:8545';
 const EXECUTOR_KEY = normalizeKey(

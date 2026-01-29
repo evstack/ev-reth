@@ -6,7 +6,6 @@ import {
   type Signature,
   bytesToHex,
   concat,
-  defineTransaction,
   fromRlp,
   hexToBigInt,
   hexToBytes,
@@ -98,7 +97,7 @@ export interface EvnodeSponsorArgs {
 
 export function encodeSignedTransaction(signedTx: EvNodeSignedTransaction): Hex {
   const fields = buildPayloadFields(signedTx.transaction, true);
-  const execSig = normalizeSignature(signedTx.executorSignature);
+  const execSig = normalizeSignatureForRlp(signedTx.executorSignature);
   const envelope = toRlp([
     ...fields,
     rlpHexFromBigInt(BigInt(execSig.v)),
@@ -397,13 +396,6 @@ export function createEvnodeClient(options: EvnodeClientOptions) {
   };
 }
 
-export const evnodeSerializer = defineTransaction({
-  type: 'evnode',
-  typeId: EVNODE_TX_TYPE,
-  serialize: (tx) => encodeSignedTransaction(tx as EvNodeSignedTransaction),
-  deserialize: (bytes) => decodeEvNodeTransaction(bytes as Hex),
-});
-
 export function hashSignerFromRpcClient(
   client: Client,
   address: Address,
@@ -419,7 +411,7 @@ export function hashSignerFromRpcClient(
       if (!isHex(signature)) {
         throw new Error('eth_sign returned non-hex signature');
       }
-      return signature;
+      return hexToSignature(signature);
     },
   };
 }
@@ -480,7 +472,7 @@ function decodeCalls(value: RlpValue): Call[] {
 }
 
 function encodeAccessList(accessList: AccessList): RlpValue[] {
-  return accessList.map((item) => [item.address, item.storageKeys]);
+  return accessList.map((item) => [item.address, [...item.storageKeys]]);
 }
 
 function decodeAccessList(value: RlpValue): AccessList {
@@ -514,8 +506,8 @@ function encodeSponsorSignature(signature: Signature): RlpValue {
   if (typeof signature === 'string') {
     return signature;
   }
-  const normalized = normalizeSignature(signature);
-  const vByte = toHex(BigInt(normalized.v), { size: 1 });
+  const normalized = normalizeSignatureForRlp(signature);
+  const vByte = toHex(normalized.v, { size: 1 });
   return concat([normalized.r, normalized.s, vByte]);
 }
 
@@ -545,7 +537,7 @@ function signatureFromBytes(value: Hex): Signature {
   if (v !== 0 && v !== 1) {
     throw new Error('Invalid signature v value');
   }
-  return { v, r: padTo32Bytes(r), s: padTo32Bytes(s) };
+  return { yParity: v, v: BigInt(v), r: padTo32Bytes(r), s: padTo32Bytes(s) };
 }
 
 function signatureFromParts(v: RlpValue, r: RlpValue, s: RlpValue): Signature {
@@ -559,25 +551,35 @@ function signatureFromParts(v: RlpValue, r: RlpValue, s: RlpValue): Signature {
   }
 
   return {
-    v: vNumber,
+    yParity: vNumber,
+    v: BigInt(vNumber),
     r: padTo32Bytes(r),
     s: padTo32Bytes(s),
   };
 }
 
-function normalizeSignature(signature: Signature): { v: number; r: Hex; s: Hex } {
+function normalizeSignature(signature: Signature): { yParity: number; r: Hex; s: Hex; v?: bigint } {
   const parsed = typeof signature === 'string' ? hexToSignature(signature) : signature;
 
-  const v = Number(parsed.v);
+  const v = Number(parsed.v ?? parsed.yParity);
   const normalizedV = v === 27 || v === 28 ? v - 27 : v;
   if (normalizedV !== 0 && normalizedV !== 1) {
     throw new Error('Invalid signature v value');
   }
 
   return {
-    v: normalizedV,
+    yParity: normalizedV,
     r: padTo32Bytes(parsed.r),
     s: padTo32Bytes(parsed.s),
+  };
+}
+
+function normalizeSignatureForRlp(signature: Signature): { v: number; r: Hex; s: Hex } {
+  const normalized = normalizeSignature(signature);
+  return {
+    v: normalized.yParity,
+    r: normalized.r,
+    s: normalized.s,
   };
 }
 
