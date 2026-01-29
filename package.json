@@ -1,0 +1,19 @@
+{
+  "name": "sun-valley",
+  "version": "1.0.0",
+  "description": "EV-reth is a specialized integration layer that enables [Reth](https://github.com/paradigmxyz/reth) to work seamlessly with Evolve, providing a custom payload builder that supports transaction submission via the Engine API.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "viem": "^2.45.0"
+  }
+}
