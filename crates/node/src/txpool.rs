@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use alloy_consensus::{
+    constants::EIP1559_TX_TYPE_ID,
     transaction::{Recovered, TxHashRef},
     BlobTransactionValidationError, Signed, Typed2718,
 };
@@ -121,7 +122,11 @@ impl PoolTransaction for EvPooledTransaction {
 
 impl Typed2718 for EvPooledTransaction {
     fn ty(&self) -> u8 {
-        self.inner.ty()
+        match self.transaction().inner() {
+            // Treat EvNode txs as EIP-1559 for pool validation compatibility.
+            EvTxEnvelope::EvNode(_) => EIP1559_TX_TYPE_ID,
+            _ => self.inner.ty(),
+        }
     }
 }
 
