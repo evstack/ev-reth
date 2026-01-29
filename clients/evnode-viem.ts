@@ -204,10 +204,11 @@ export async function signAsSponsor(
 }
 
 export function estimateIntrinsicGas(calls: Call[]): bigint {
-  let gas = 21000n;
+  let gas = 21000n; // base transaction cost
 
   for (const call of calls) {
-    if (call.to === null) gas += 32000n;
+    gas += 21000n; // each call costs at least 21000 gas
+    if (call.to === null) gas += 32000n; // CREATE costs extra
 
     for (const byte of hexToBytes(call.data)) {
       gas += byte === 0 ? 4n : 16n;

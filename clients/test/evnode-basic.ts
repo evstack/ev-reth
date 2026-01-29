@@ -2,25 +2,30 @@ import { createClient, http } from 'viem';
 import { privateKeyToAccount, sign } from 'viem/accounts';
 import { createEvnodeClient } from '../evnode-viem.ts';
 
-const RPC_URL = 'http://localhost:8545';
-const PRIVATE_KEY =
-  (process.env.PRIVATE_KEY?.startsWith('0x')
-    ? process.env.PRIVATE_KEY
-    : process.env.PRIVATE_KEY
-      ? `0x${process.env.PRIVATE_KEY}`
-      : undefined) ??
-  '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
+const RPC_URL = process.env.RPC_URL ?? 'http://localhost:8545';
+const EXECUTOR_KEY = normalizeKey(
+  process.env.EXECUTOR_PRIVATE_KEY ?? process.env.PRIVATE_KEY,
+);
 const TO_ADDRESS = process.env.TO_ADDRESS as `0x${string}` | undefined;
+
+if (!EXECUTOR_KEY) {
+  throw new Error('Missing EXECUTOR_PRIVATE_KEY or PRIVATE_KEY');
+}
+
+function normalizeKey(key?: string): `0x${string}` | undefined {
+  if (!key) return undefined;
+  return key.startsWith('0x') ? (key as `0x${string}`) : (`0x${key}` as `0x${string}`);
+}
 
 const client = createClient({
   transport: http(RPC_URL),
 });
 
-const account = privateKeyToAccount(PRIVATE_KEY);
+const executorAccount = privateKeyToAccount(EXECUTOR_KEY);
 
 const executor = {
-  address: account.address,
-  signHash: async (hash: `0x${string}`) => sign({ hash, privateKey: PRIVATE_KEY }),
+  address: executorAccount.address,
+  signHash: async (hash: `0x${string}`) => sign({ hash, privateKey: EXECUTOR_KEY }),
 };
 
 const evnode = createEvnodeClient({
@@ -29,7 +34,7 @@ const evnode = createEvnodeClient({
 });
 
 async function main() {
-  const to = TO_ADDRESS ?? account.address;
+  const to = TO_ADDRESS ?? executorAccount.address;
   const hash = await evnode.send({
     calls: [
       {
