@@ -72,7 +72,6 @@ impl PayloadValidator<EvolveEngineTypes> for EvolveEngineValidator {
                 let should_bypass =
                     matches!(err, alloy_rpc_types::engine::PayloadError::BlockHash { .. })
                         || err.to_string().contains("unexpected tx type");
-                        // || err.to_string().contains("missing requests");
 
                 if should_bypass {
                     info!(
