@@ -67,11 +67,18 @@ impl PayloadValidator<EvolveEngineTypes> for EvolveEngineValidator {
                 // Log the error for debugging.
                 tracing::debug!("Evolve payload validation error: {:?}", err);
 
-                // Check if this is an error we can bypass for evolve (block hash mismatch,
-                // unknown tx type for EvNode transactions).
+                // Check if this is an error we can bypass for evolve:
+                // 1. BlockHash mismatch - ev-reth computes different hash due to custom tx types
+                // 2. Unknown tx type (0x76) - standard decoder doesn't recognize EvNode transactions
+                //
+                // Note: The tx type error comes as PayloadError::Decode(alloy_rlp::Error::Custom(...))
+                // Since it's a Custom error with a string, we must use string matching for the
+                // specific message. This is fragile - if alloy changes the error message, this
+                // bypass will silently break. The test `decode_error_contains_expected_message`
+                // in this module helps catch such regressions.
                 let should_bypass =
                     matches!(err, alloy_rpc_types::engine::PayloadError::BlockHash { .. })
-                        || err.to_string().contains("unexpected tx type");
+                        || is_unknown_tx_type_error(&err);
 
                 if should_bypass {
                     info!(
@@ -217,5 +224,83 @@ where
 
     async fn build(self, ctx: &AddOnsContext<'_, N>) -> eyre::Result<Self::Validator> {
         Ok(EvolveEngineValidator::new(ctx.config.chain.clone()))
+    }
+}
+
+/// The error message fragment used by alloy when encountering an unknown transaction type.
+/// This is used for string matching since the error is a generic `Custom` error.
+const UNKNOWN_TX_TYPE_ERROR_MSG: &str = "unexpected tx type";
+
+/// Checks if a PayloadError indicates an unknown transaction type (e.g., EvNode's 0x76).
+///
+/// This uses string matching because alloy returns `alloy_rlp::Error::Custom("unexpected tx type")`
+/// which doesn't have a dedicated error variant. The constant `UNKNOWN_TX_TYPE_ERROR_MSG` is
+/// tested in `decode_error_contains_expected_message` to catch upstream changes.
+fn is_unknown_tx_type_error(err: &alloy_rpc_types::engine::PayloadError) -> bool {
+    matches!(err, alloy_rpc_types::engine::PayloadError::Decode(_))
+        && err.to_string().contains(UNKNOWN_TX_TYPE_ERROR_MSG)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloy_eips::eip2718::Decodable2718;
+    use alloy_rlp::Error as RlpError;
+
+    /// Verifies that the error message for unknown tx types matches our expected string.
+    /// This test will fail if alloy changes the error message, alerting us to update
+    /// `UNKNOWN_TX_TYPE_ERROR_MSG` and the bypass logic.
+    #[test]
+    fn decode_error_contains_expected_message() {
+        // Try to decode an EvNode transaction (type 0x76) using the standard Ethereum decoder
+        // which doesn't recognize this type.
+        let evnode_tx_type: u8 = 0x76;
+        let fake_tx = vec![evnode_tx_type, 0xc0]; // Type byte + minimal RLP
+
+        let result =
+            reth_ethereum_primitives::TransactionSigned::decode_2718(&mut fake_tx.as_slice());
+
+        assert!(result.is_err(), "Decoding unknown tx type should fail");
+
+        let err = result.unwrap_err();
+        let err_string = err.to_string();
+
+        assert!(
+            err_string.contains(UNKNOWN_TX_TYPE_ERROR_MSG),
+            "Error message should contain '{}', but got: '{}'",
+            UNKNOWN_TX_TYPE_ERROR_MSG,
+            err_string
+        );
+    }
+
+    /// Verifies that `is_unknown_tx_type_error` correctly identifies decode errors
+    /// with the expected message.
+    #[test]
+    fn is_unknown_tx_type_error_matches_decode_errors() {
+        use alloy_rpc_types::engine::PayloadError;
+
+        // Create a Decode error with the expected message
+        let decode_err = PayloadError::Decode(RlpError::Custom(UNKNOWN_TX_TYPE_ERROR_MSG));
+        assert!(
+            is_unknown_tx_type_error(&decode_err),
+            "Should match Decode error with expected message"
+        );
+
+        // Create a Decode error with a different message
+        let other_decode_err = PayloadError::Decode(RlpError::Custom("some other error"));
+        assert!(
+            !is_unknown_tx_type_error(&other_decode_err),
+            "Should not match Decode error with different message"
+        );
+
+        // BlockHash error should not match
+        let block_hash_err = PayloadError::BlockHash {
+            execution: alloy_primitives::B256::ZERO,
+            consensus: alloy_primitives::B256::ZERO,
+        };
+        assert!(
+            !is_unknown_tx_type_error(&block_hash_err),
+            "Should not match BlockHash error"
+        );
     }
 }

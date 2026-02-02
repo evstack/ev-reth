@@ -227,6 +227,10 @@ where
         let mut total_refunded: i64 = 0;
         let mut last_result: Option<FrameResult> = None;
 
+        // Execute each call in the batch sequentially.
+        // set_batch_call only modifies (kind, value, data) - the nonce is intentionally
+        // shared since a batch is a single atomic transaction with one nonce.
+        // Note: only the first call may be CREATE (enforced in validate_initial_tx_gas).
         for call in &calls {
             let mut call_tx = base_tx.clone();
             call_tx.set_batch_call(call);
@@ -239,6 +243,10 @@ where
 
             if !instruction_result.is_ok() {
                 evm.ctx_mut().journal_mut().checkpoint_revert(checkpoint);
+                // For CREATE batches: the checkpoint revert undoes the nonce increment that
+                // happened during CREATE execution. We must manually re-increment it here
+                // to match Ethereum's behavior where nonce always increments even on failure.
+                // For CALL batches: nonce was incremented before checkpoint, so revert preserves it.
                 if calls
                     .first()
                     .map(|call| call.to.is_create())
@@ -581,6 +589,10 @@ where
             );
         }
 
+        // Nonce handling for batches:
+        // - CALL batches: increment nonce here (standard pre-execution behavior)
+        // - CREATE batches: nonce is incremented during CREATE frame execution,
+        //   which also uses it for contract address derivation
         if is_call {
             caller.info.set_nonce(caller.info.nonce.saturating_add(1));
         }
@@ -600,6 +612,10 @@ where
         );
     }
 
+    // Note: We deduct effective_gas_price (not max_fee_per_gas) upfront.
+    // This is safe because effective_gas_price <= max_fee_per_gas by construction,
+    // and the check above ensures sponsor can cover the worst case (max_gas_cost).
+    // This approach is more gas-efficient than deducting max upfront and reimbursing.
     let effective_gas_price = tx.effective_gas_price(basefee);
     let gas_cost = U256::from(tx.gas_limit()).saturating_mul(U256::from(effective_gas_price));
     let mut new_sponsor_balance = sponsor_balance.saturating_sub(gas_cost);
@@ -1193,6 +1209,83 @@ mod tests {
                 EVMError::Transaction(InvalidTransaction::LackOfFundForMaxFee { .. })
             ),
             "unexpected error: {err:?}"
+        );
+    }
+
+    /// Tests that sponsored transactions with max_fee_per_gas < base_fee are rejected.
+    ///
+    /// This validation happens in revm's `validate_env` (delegated via inner handler)
+    /// BEFORE our custom `validate_and_deduct_sponsored_tx` runs. This test serves
+    /// as a regression test to ensure EIP-1559 fee validation is not bypassed.
+    #[test]
+    fn sponsored_tx_rejects_when_max_fee_below_basefee() {
+        let caller = address!("0x0000000000000000000000000000000000000aaa");
+        let sponsor = address!("0x0000000000000000000000000000000000000bbb");
+
+        let mut state = State::builder()
+            .with_database(CacheDB::<EmptyDB>::default())
+            .with_bundle_update()
+            .build();
+
+        state.insert_account(
+            caller,
+            AccountInfo {
+                balance: U256::from(10_000_000_000u64),
+                nonce: 0,
+                code_hash: KECCAK_EMPTY,
+                code: None,
+            },
+        );
+
+        // Sponsor has plenty of balance - the rejection should be due to fee, not balance
+        state.insert_account(
+            sponsor,
+            AccountInfo {
+                balance: U256::from(100_000_000u64),
+                nonce: 0,
+                code_hash: KECCAK_EMPTY,
+                code: None,
+            },
+        );
+
+        let mut evm_env: EvmEnv<SpecId> = EvmEnv::default();
+        evm_env.cfg_env.chain_id = 1;
+        evm_env.cfg_env.spec = SpecId::CANCUN;
+        evm_env.block_env.basefee = 100; // basefee = 100
+        evm_env.block_env.gas_limit = 30_000_000;
+        evm_env.block_env.number = U256::from(1);
+
+        let mut evm = EvTxEvmFactory::default().create_evm(state, evm_env);
+
+        let calls = vec![Call {
+            to: TxKind::Call(address!("0x0000000000000000000000000000000000000ccc")),
+            value: U256::ZERO,
+            input: Bytes::new(),
+        }];
+
+        // max_fee_per_gas (50) < basefee (100)
+        let tx_env = TxEnv {
+            caller,
+            gas_limit: 100_000,
+            gas_price: 50,
+            gas_priority_fee: Some(1),
+            chain_id: Some(1),
+            tx_type: TransactionType::Eip1559.into(),
+            ..Default::default()
+        };
+
+        let tx = EvTxEnv::with_calls_and_sponsor(tx_env, calls, sponsor);
+        let result = evm.transact_raw(tx);
+
+        assert!(
+            result.is_err(),
+            "Transaction with max_fee < basefee should be rejected"
+        );
+
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, EVMError::Transaction(InvalidTransaction::GasPriceLessThanBasefee)),
+            "Expected GasPriceLessThanBasefee error, got: {err:?}"
         );
     }
 

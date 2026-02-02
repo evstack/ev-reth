@@ -398,6 +398,7 @@ impl<Client> EvTransactionValidator<Client> {
         self.validate_evnode_calls(tx)?;
 
         if let Some(signature) = tx.fee_payer_signature.as_ref() {
+            // Sponsored transaction: validate sponsor balance
             let executor = pooled.transaction().signer();
             let sponsor = tx.recover_sponsor(executor, signature).map_err(|_| {
                 InvalidPoolTransactionError::other(EvTxPoolError::InvalidSponsorSignature)
@@ -405,6 +406,14 @@ impl<Client> EvTransactionValidator<Client> {
 
             let gas_cost = U256::from(tx.max_fee_per_gas).saturating_mul(U256::from(tx.gas_limit));
             self.validate_sponsor_balance(state, sponsor, gas_cost)?;
+        } else {
+            // Non-sponsored EvNode transaction: executor pays gas, validate their balance
+            if sender_balance < *pooled.cost() {
+                return Err(InvalidPoolTransactionError::Overdraft {
+                    cost: *pooled.cost(),
+                    balance: sender_balance,
+                });
+            }
         }
 
         Ok(())
@@ -502,6 +511,10 @@ where
             .set_tx_fee_cap(ctx.config().rpc.rpc_tx_fee_cap)
             .with_max_tx_gas_limit(ctx.config().txpool.max_tx_gas_limit)
             .with_minimum_priority_fee(ctx.config().txpool.minimum_priority_fee)
+            // Disable the standard caller balance check - we handle balance validation
+            // in EvTransactionValidator::validate_evnode which checks:
+            // - Sponsor balance for sponsored EvNode transactions
+            // - Sender balance for non-sponsored EvNode and standard Ethereum transactions
             .disable_balance_check()
             .with_additional_tasks(ctx.config().txpool.additional_validation_tasks)
             .build_with_tasks::<EvPooledTransaction, _, _>(
@@ -526,5 +539,126 @@ where
         debug!(target: "reth::cli", "Spawned txpool maintenance task");
 
         Ok(transaction_pool)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloy_consensus::Signed;
+    use alloy_eips::eip2930::AccessList;
+    use alloy_primitives::{Bytes, Signature, TxKind};
+    use ev_primitives::{Call, EvNodeSignedTx, EvNodeTransaction};
+    use reth_provider::test_utils::MockEthProvider;
+
+    fn sample_signature() -> Signature {
+        let mut bytes = [0u8; 65];
+        bytes[64] = 27;
+        Signature::from_raw_array(&bytes).expect("valid test signature")
+    }
+
+    /// Creates a non-sponsored EvNode transaction (fee_payer_signature = None)
+    fn create_non_sponsored_evnode_tx(gas_limit: u64, max_fee_per_gas: u128) -> EvNodeSignedTx {
+        let tx = EvNodeTransaction {
+            chain_id: 1,
+            nonce: 0,
+            max_priority_fee_per_gas: 1,
+            max_fee_per_gas,
+            gas_limit,
+            calls: vec![Call {
+                to: TxKind::Call(Address::ZERO),
+                value: U256::ZERO,
+                input: Bytes::new(),
+            }],
+            access_list: AccessList::default(),
+            fee_payer_signature: None, // Non-sponsored
+        };
+        Signed::new_unhashed(tx, sample_signature())
+    }
+
+    fn create_pooled_tx(signed_tx: EvNodeSignedTx, signer: Address) -> EvPooledTransaction {
+        let envelope = EvTxEnvelope::EvNode(signed_tx);
+        let recovered = alloy_consensus::transaction::Recovered::new_unchecked(envelope, signer);
+        let encoded_length = 200; // Approximate length for test
+        EvPooledTransaction::new(recovered, encoded_length)
+    }
+
+    fn create_test_validator() -> EvTransactionValidator<MockEthProvider> {
+        use reth_transaction_pool::{
+            blobstore::InMemoryBlobStore, validate::EthTransactionValidatorBuilder,
+        };
+
+        let provider = MockEthProvider::default();
+        let blob_store = InMemoryBlobStore::default();
+        let inner = EthTransactionValidatorBuilder::new(provider)
+            .no_shanghai()
+            .no_cancun()
+            .build(blob_store);
+        EvTransactionValidator::new(inner)
+    }
+
+    /// Tests that non-sponsored EvNode transactions with insufficient sender balance
+    /// are rejected with an Overdraft error.
+    ///
+    /// BUG: Currently this test FAILS because validate_evnode does not check
+    /// sender balance for non-sponsored EvNode transactions.
+    #[test]
+    fn non_sponsored_evnode_rejects_insufficient_balance() {
+        let validator = create_test_validator();
+
+        // Create a non-sponsored EvNode transaction
+        let gas_limit = 21_000u64;
+        let max_fee_per_gas = 1_000_000_000u128; // 1 gwei
+        let signed_tx = create_non_sponsored_evnode_tx(gas_limit, max_fee_per_gas);
+
+        let signer = Address::random();
+        let pooled = create_pooled_tx(signed_tx, signer);
+
+        // Sender has ZERO balance - clearly insufficient
+        let sender_balance = U256::ZERO;
+        let mut state: Option<Box<dyn AccountInfoReader>> = None;
+
+        // Call validate_evnode - should return Overdraft error
+        let result = validator.validate_evnode(&pooled, sender_balance, &mut state);
+
+        assert!(
+            result.is_err(),
+            "Non-sponsored EvNode with zero balance should be rejected, but got Ok(())"
+        );
+
+        if let Err(err) = result {
+            assert!(
+                matches!(err, InvalidPoolTransactionError::Overdraft { .. }),
+                "Expected Overdraft error, got: {:?}",
+                err
+            );
+        }
+    }
+
+    /// Tests that non-sponsored EvNode transactions with sufficient balance are accepted.
+    #[test]
+    fn non_sponsored_evnode_accepts_sufficient_balance() {
+        let validator = create_test_validator();
+
+        let gas_limit = 21_000u64;
+        let max_fee_per_gas = 1_000_000_000u128;
+        let signed_tx = create_non_sponsored_evnode_tx(gas_limit, max_fee_per_gas);
+
+        let signer = Address::random();
+        let pooled = create_pooled_tx(signed_tx, signer);
+
+        let tx_cost = *pooled.cost();
+
+        // Sender has MORE than enough balance
+        let sender_balance = tx_cost + U256::from(1);
+        let mut state: Option<Box<dyn AccountInfoReader>> = None;
+
+        let result = validator.validate_evnode(&pooled, sender_balance, &mut state);
+
+        assert!(
+            result.is_ok(),
+            "Non-sponsored EvNode with sufficient balance should be accepted, got: {:?}",
+            result
+        );
     }
 }
