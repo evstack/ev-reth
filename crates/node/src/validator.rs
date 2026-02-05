@@ -231,7 +231,7 @@ where
 /// This is used for string matching since the error is a generic `Custom` error.
 const UNKNOWN_TX_TYPE_ERROR_MSG: &str = "unexpected tx type";
 
-/// Checks if a PayloadError indicates an unknown transaction type (e.g., EvNode's 0x76).
+/// Checks if a `PayloadError` indicates an unknown transaction type (e.g., `EvNode`'s 0x76).
 ///
 /// This uses string matching because alloy returns `alloy_rlp::Error::Custom("unexpected tx type")`
 /// which doesn't have a dedicated error variant. The constant `UNKNOWN_TX_TYPE_ERROR_MSG` is

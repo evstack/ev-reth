@@ -1212,7 +1212,7 @@ mod tests {
         );
     }
 
-    /// Tests that sponsored transactions with max_fee_per_gas < base_fee are rejected.
+    /// Tests that sponsored transactions with `max_fee_per_gas` < `base_fee` are rejected.
     ///
     /// This validation happens in revm's `validate_env` (delegated via inner handler)
     /// BEFORE our custom `validate_and_deduct_sponsored_tx` runs. This test serves

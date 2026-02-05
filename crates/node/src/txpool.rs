@@ -557,7 +557,7 @@ mod tests {
         Signature::from_raw_array(&bytes).expect("valid test signature")
     }
 
-    /// Creates a non-sponsored EvNode transaction (fee_payer_signature = None)
+    /// Creates a non-sponsored `EvNode` transaction (`fee_payer_signature` = None)
     fn create_non_sponsored_evnode_tx(gas_limit: u64, max_fee_per_gas: u128) -> EvNodeSignedTx {
         let tx = EvNodeTransaction {
             chain_id: 1,
@@ -597,11 +597,11 @@ mod tests {
         EvTransactionValidator::new(inner)
     }
 
-    /// Tests that non-sponsored EvNode transactions with insufficient sender balance
+    /// Tests that non-sponsored `EvNode` transactions with insufficient sender balance
     /// are rejected with an Overdraft error.
     ///
-    /// BUG: Currently this test FAILS because validate_evnode does not check
-    /// sender balance for non-sponsored EvNode transactions.
+    /// BUG: Currently this test FAILS because `validate_evnode` does not check
+    /// sender balance for non-sponsored `EvNode` transactions.
     #[test]
     fn non_sponsored_evnode_rejects_insufficient_balance() {
         let validator = create_test_validator();
@@ -635,7 +635,7 @@ mod tests {
         }
     }
 
-    /// Tests that non-sponsored EvNode transactions with sufficient balance are accepted.
+    /// Tests that non-sponsored `EvNode` transactions with sufficient balance are accepted.
     #[test]
     fn non_sponsored_evnode_accepts_sufficient_balance() {
         let validator = create_test_validator();
