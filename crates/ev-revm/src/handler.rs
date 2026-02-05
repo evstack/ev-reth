@@ -1284,7 +1284,10 @@ mod tests {
 
         let err = result.unwrap_err();
         assert!(
-            matches!(err, EVMError::Transaction(InvalidTransaction::GasPriceLessThanBasefee)),
+            matches!(
+                err,
+                EVMError::Transaction(InvalidTransaction::GasPriceLessThanBasefee)
+            ),
             "Expected GasPriceLessThanBasefee error, got: {err:?}"
         );
     }
