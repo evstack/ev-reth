@@ -97,9 +97,9 @@ checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 
 [[package]]
 name = "alloy"
-version = "1.1.0"
+version = "1.0.37"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e01db470290bb814e0485fa79aba6e36bb5d221c2e3cfeba5fba05a8a2ca8dad"
+checksum = "7f6cfe35f100bc496007c9a00f90b88bdf565f1421d4c707c9f07e0717e2aaad"
 dependencies = [
  "alloy-consensus",
  "alloy-contract",
@@ -108,7 +108,6 @@ dependencies = [
  "alloy-network",
  "alloy-provider",
  "alloy-rpc-client",
- "alloy-signer",
  "alloy-transport",
  "alloy-transport-http",
 ]
@@ -8147,7 +8146,6 @@ version = "1.8.4"
 source = "git+https://github.com/paradigmxyz/reth.git?tag=v1.8.4#bde6574bcac266f9858c1a78f8d0da9fd1e5d262"
 dependencies = [
  "alloy-consensus",
- "c-kzg",
  "once_cell",
  "reth-ethereum-forks",
  "reth-ethereum-primitives",
