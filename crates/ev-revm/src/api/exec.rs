@@ -1,7 +1,11 @@
 //! Execution traits for [`EvEvm`], mirroring the Reth mainnet implementations
 //! while inserting the EV-specific handler that redirects the base fee.
 
-use crate::{evm::EvEvm, handler::EvHandler};
+use crate::{
+    evm::EvEvm,
+    handler::EvHandler,
+    tx_env::{BatchCallsTx, SponsorPayerTx},
+};
 use alloy_primitives::{Address, Bytes};
 use reth_revm::revm::{
     context::{result::ExecResultAndState, ContextSetters},
@@ -26,7 +30,9 @@ pub type EvExecutionResult = ExecutionResult<HaltReason>;
 
 impl<CTX, INSP, PRECOMP> ExecuteEvm for EvEvm<CTX, INSP, PRECOMP>
 where
-    CTX: ContextTr<Journal: JournalTr<State = EvmState>> + ContextSetters,
+    CTX: ContextTr<Journal: JournalTr<State = EvmState>, Tx: SponsorPayerTx + BatchCallsTx>
+        + ContextSetters,
+    <CTX as ContextTr>::Tx: Clone,
     <CTX as ContextTr>::Db: Database,
     <CTX as ContextTr>::Journal:
         JournalTr<State = EvmState> + JournalTr<Database = <CTX as ContextTr>::Db>,
@@ -73,7 +79,12 @@ where
 
 impl<CTX, INSP, PRECOMP> ExecuteCommitEvm for EvEvm<CTX, INSP, PRECOMP>
 where
-    CTX: ContextTr<Db: DatabaseCommit, Journal: JournalTr<State = EvmState>> + ContextSetters,
+    CTX: ContextTr<
+            Db: DatabaseCommit,
+            Journal: JournalTr<State = EvmState>,
+            Tx: SponsorPayerTx + BatchCallsTx,
+        > + ContextSetters,
+    <CTX as ContextTr>::Tx: Clone,
     PRECOMP: PrecompileProvider<CTX, Output = InterpreterResult>,
 {
     fn commit(&mut self, state: Self::State) {
@@ -83,7 +94,11 @@ where
 
 impl<CTX, INSP, PRECOMP> InspectEvm for EvEvm<CTX, INSP, PRECOMP>
 where
-    CTX: ContextTr<Journal: JournalTr<State = EvmState> + JournalExt> + ContextSetters,
+    CTX: ContextTr<
+            Journal: JournalTr<State = EvmState> + JournalExt,
+            Tx: SponsorPayerTx + BatchCallsTx,
+        > + ContextSetters,
+    <CTX as ContextTr>::Tx: Clone,
     INSP: Inspector<CTX, EthInterpreter>,
     PRECOMP: PrecompileProvider<CTX, Output = InterpreterResult>,
 {
@@ -106,8 +121,12 @@ where
 
 impl<CTX, INSP, PRECOMP> InspectCommitEvm for EvEvm<CTX, INSP, PRECOMP>
 where
-    CTX: ContextTr<Journal: JournalTr<State = EvmState> + JournalExt, Db: DatabaseCommit>
-        + ContextSetters,
+    CTX: ContextTr<
+            Journal: JournalTr<State = EvmState> + JournalExt,
+            Db: DatabaseCommit,
+            Tx: SponsorPayerTx + BatchCallsTx,
+        > + ContextSetters,
+    <CTX as ContextTr>::Tx: Clone,
     INSP: Inspector<CTX, EthInterpreter>,
     PRECOMP: PrecompileProvider<CTX, Output = InterpreterResult>,
 {
@@ -115,7 +134,11 @@ where
 
 impl<CTX, INSP, PRECOMP> SystemCallEvm for EvEvm<CTX, INSP, PRECOMP>
 where
-    CTX: ContextTr<Journal: JournalTr<State = EvmState>, Tx: SystemCallTx> + ContextSetters,
+    CTX: ContextTr<
+            Journal: JournalTr<State = EvmState>,
+            Tx: SystemCallTx + SponsorPayerTx + BatchCallsTx,
+        > + ContextSetters,
+    <CTX as ContextTr>::Tx: Clone,
     PRECOMP: PrecompileProvider<CTX, Output = InterpreterResult>,
 {
     fn system_call_one_with_caller(
@@ -142,8 +165,11 @@ where
 
 impl<CTX, INSP, PRECOMP> InspectSystemCallEvm for EvEvm<CTX, INSP, PRECOMP>
 where
-    CTX: ContextTr<Journal: JournalTr<State = EvmState> + JournalExt, Tx: SystemCallTx>
-        + ContextSetters,
+    CTX: ContextTr<
+            Journal: JournalTr<State = EvmState> + JournalExt,
+            Tx: SystemCallTx + SponsorPayerTx + BatchCallsTx,
+        > + ContextSetters,
+    <CTX as ContextTr>::Tx: Clone,
     INSP: Inspector<CTX, EthInterpreter>,
     PRECOMP: PrecompileProvider<CTX, Output = InterpreterResult>,
 {

@@ -4,6 +4,7 @@ use alloy_rpc_types::engine::{
     ExecutionData, ExecutionPayloadEnvelopeV2, ExecutionPayloadEnvelopeV3,
     ExecutionPayloadEnvelopeV4, ExecutionPayloadEnvelopeV5, ExecutionPayloadV1,
 };
+use ev_primitives::EvPrimitives;
 use reth_ethereum::{
     chainspec::ChainSpec,
     node::{
@@ -13,12 +14,10 @@ use reth_ethereum::{
             rpc::RpcAddOns,
             Node, NodeAdapter,
         },
-        node::{EthereumNetworkBuilder, EthereumPoolBuilder},
-        EthereumEthApiBuilder,
+        node::EthereumNetworkBuilder,
     },
-    primitives::SealedBlock,
 };
-use reth_payload_builder::EthBuiltPayload;
+use reth_primitives_traits::SealedBlock;
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
@@ -26,6 +25,9 @@ use crate::{
     attributes::{EvolveEnginePayloadAttributes, EvolveEnginePayloadBuilderAttributes},
     executor::EvolveExecutorBuilder,
     payload_service::EvolvePayloadBuilderBuilder,
+    payload_types::EvBuiltPayload,
+    rpc::EvEthApiBuilder,
+    txpool::EvolvePoolBuilder,
     validator::EvolveEngineValidatorBuilder,
 };
 
@@ -36,7 +38,7 @@ pub struct EvolveEngineTypes;
 
 impl PayloadTypes for EvolveEngineTypes {
     type ExecutionData = ExecutionData;
-    type BuiltPayload = EthBuiltPayload;
+    type BuiltPayload = EvBuiltPayload;
     type PayloadAttributes = EvolveEnginePayloadAttributes;
     type PayloadBuilderAttributes = EvolveEnginePayloadBuilderAttributes;
 
@@ -75,14 +77,14 @@ impl EvolveNode {
 }
 
 impl NodeTypes for EvolveNode {
-    type Primitives = reth_ethereum::EthPrimitives;
+    type Primitives = EvPrimitives;
     type ChainSpec = ChainSpec;
-    type Storage = reth_ethereum::provider::EthStorage;
+    type Storage = reth_ethereum::provider::EthStorage<ev_primitives::TransactionSigned>;
     type Payload = EvolveEngineTypes;
 }
 
 /// Evolve node addons configuring RPC types with custom engine validator.
-pub type EvolveNodeAddOns<N> = RpcAddOns<N, EthereumEthApiBuilder, EvolveEngineValidatorBuilder>;
+pub type EvolveNodeAddOns<N> = RpcAddOns<N, EvEthApiBuilder, EvolveEngineValidatorBuilder>;
 
 impl<N> Node<N> for EvolveNode
 where
@@ -90,7 +92,7 @@ where
 {
     type ComponentsBuilder = ComponentsBuilder<
         N,
-        EthereumPoolBuilder,
+        EvolvePoolBuilder,
         BasicPayloadServiceBuilder<EvolvePayloadBuilderBuilder>,
         EthereumNetworkBuilder,
         EvolveExecutorBuilder,
@@ -101,7 +103,7 @@ where
     fn components_builder(&self) -> Self::ComponentsBuilder {
         ComponentsBuilder::default()
             .node_types::<N>()
-            .pool(EthereumPoolBuilder::default())
+            .pool(EvolvePoolBuilder::default())
             .executor(EvolveExecutorBuilder::default())
             .payload(BasicPayloadServiceBuilder::new(
                 EvolvePayloadBuilderBuilder::new(),
