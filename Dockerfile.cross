@@ -9,10 +9,10 @@ ARG BUILDPLATFORM
 # Copy the pre-built binary based on the target platform
 COPY dist/bin/${TARGETPLATFORM}/ev-reth /usr/local/bin/ev-reth
 
-RUN apt-get update && apt-get install -y --no-install-recommends curl jq && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends curl jq tini && rm -rf /var/lib/apt/lists/*
 
 # Expose default ports
 EXPOSE 8545 8546 30303 6060 9001
 
 # Set the entrypoint
-ENTRYPOINT ["/usr/local/bin/ev-reth"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/ev-reth"]
