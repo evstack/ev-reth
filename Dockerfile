@@ -54,7 +54,7 @@ RUN cp /app/target/$BUILD_PROFILE/ev-reth /ev-reth
 FROM ubuntu:24.04 AS runtime
 
 RUN apt-get update && \
-    apt-get install -y ca-certificates curl jq libssl-dev pkg-config strace tini && \
+    apt-get install -y ca-certificates curl jq tini && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -65,8 +65,10 @@ COPY LICENSE-* ./
 # Expose ports: P2P, Discovery, Metrics, JSON-RPC, WebSocket, GraphQL, Engine API
 EXPOSE 30303 30303/udp 9001 8545 8546 7545 8551
 
-# Add health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
-    CMD /usr/local/bin/ev-reth --version || exit 1
+HEALTHCHECK --interval=30s --timeout=3s --start-period=60s --retries=3 \
+    CMD curl -sf http://localhost:8545/ -X POST -H "Content-Type: application/json" \
+    -d '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' || exit 1
+
+STOPSIGNAL SIGTERM
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/ev-reth"]
