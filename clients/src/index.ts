@@ -204,7 +204,11 @@ export function estimateIntrinsicGas(calls: Call[]): bigint {
     if (call.to === null) gas += 32000n; // CREATE costs extra
 
     for (const byte of hexToBytes(call.data)) {
-      gas += byte === 0 ? 4n : 16n;
+      if (byte === 0) {
+        gas += 4n;
+      } else {
+        gas += 16n;
+      }
     }
   }
 
