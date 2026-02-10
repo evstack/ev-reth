@@ -11,6 +11,7 @@ This project provides a modified version of Reth that includes:
 - **Transaction Support**: Full support for including transactions in blocks via the Engine API `engine_forkchoiceUpdatedV3` method
 - **Custom Consensus**: Modified consensus layer that allows multiple blocks to have the same timestamp
 - **Txpool RPC Extension**: Custom `txpoolExt_getTxs` RPC method for efficient transaction retrieval with configurable size limits
+- **EvNode Transaction (Type 0x76)**: Custom transaction type supporting batch calls and gas sponsorship via a fee-payer mechanism
 
 ## Key Features
 
@@ -77,6 +78,48 @@ Ethereum enforces a 24KB contract size limit per [EIP-170](https://eips.ethereum
 - Activation height support for safe network upgrades
 - Standard EIP-170 limit applies before activation
 - See [Configuration](#custom-contract-size-limit) for setup details
+
+### 8. EvNode Transaction (Type 0x76)
+
+ev-reth introduces a custom EIP-2718 transaction type (`0x76`) that enables batch calls and sponsored (fee-payer) transactions.
+
+#### Batch Calls
+
+An EvNode transaction replaces the standard single `to`/`value`/`input` with a vector of `Call` structs:
+
+```
+Call { to: Option<Address>, value: U256, input: Bytes }
+```
+
+Multiple calls are executed atomically in a single transaction: if any call reverts, the entire batch is rolled back. Only the first call in a batch may be a contract creation (`to = null`).
+
+#### Sponsored Transactions (Fee Payer)
+
+An EvNode transaction supports an optional `fee_payer_signature` field that enables gas sponsorship:
+
+- **Without sponsor**: The executor (signer) pays both gas fees and value transfers, similar to a regular Ethereum transaction.
+- **With sponsor**: The sponsor pays gas fees (`max_fee_per_gas * gas_limit`), while the executor only needs balance for value transfers. Gas refunds go to the sponsor.
+
+How signatures work:
+
+1. **Executor** signs the transaction with domain `0x76` (the sponsor field is left empty).
+2. **Sponsor** signs a separate hash with domain `0x78`, which includes the executor's address. This binding prevents signature replay across different executors.
+
+#### RPC Representation
+
+EvNode transactions are exposed through the standard Ethereum JSON-RPC with an additional `feePayer` field:
+
+- `eth_getTransactionByHash`, `eth_getBlockByNumber`, etc. return an optional `"feePayer": "0x..."` for sponsored EvNode transactions.
+- Transaction receipts also include the `feePayer` field when applicable.
+
+#### Txpool Validation
+
+EvNode transactions go through additional validation in the transaction pool:
+
+- The `calls` vector must not be empty.
+- Only the first call can be a contract creation.
+- If sponsored, the sponsor signature must be valid and the sponsor must have sufficient balance for gas costs.
+- If not sponsored, the executor must have sufficient balance for both gas and value.
 
 ## Installation
 
@@ -182,7 +225,9 @@ Ev-reth follows a modular architecture similar to Odyssey, with clear separation
 
 - **`bin/ev-reth`**: The main executable binary
 - **`crates/common`**: Shared utilities and constants used across all crates
-- **`crates/node`**: Core node implementation including the payload builder
+- **`crates/ev-primitives`**: EvNode transaction primitives (type 0x76), pool types, and serialization
+- **`crates/ev-revm`**: Custom EVM handlers for batch calls, sponsorship, base fee redirect, and precompiles
+- **`crates/node`**: Core node implementation including payload builder, txpool, RPC, and executor
 - **`crates/evolve`**: Evolve-specific types, RPC extensions, and integration logic
 - **`crates/tests`**: Comprehensive test suite including unit and integration tests
 
@@ -226,12 +271,40 @@ This modular design allows for:
    - Efficient transaction retrieval with size-based limits
    - Returns RLP-encoded transaction bytes for Evolve consumption
 
+8. **EvNode Primitives** (`crates/ev-primitives/src/tx.rs`)
+   - Custom EIP-2718 transaction type (0x76) with batch calls and sponsor support
+   - Dual-signature scheme: executor (domain 0x76) and sponsor (domain 0x78)
+   - RLP encoding/decoding and Compact serialization for database storage
+
+9. **EvNode EVM Handlers** (`crates/ev-revm/src/handler.rs`)
+   - Batch call execution with atomic rollback
+   - Sponsored transaction validation and gas deduction from sponsor
+   - Gas refund routing to sponsor for sponsored transactions
+
+10. **EvNode Transaction Pool** (`crates/node/src/txpool.rs`)
+    - Custom pool validator for EvNode transactions
+    - Sponsor balance checks and signature verification
+    - Wraps standard Ethereum pool validation for regular transactions
+
+11. **EvNode RPC Extensions** (`crates/node/src/rpc.rs`)
+    - Extended transaction and receipt types with `feePayer` field
+    - Custom converters for EvNode transaction envelope handling
+
 ### Transaction Flow
+
+**Standard path (via Engine API):**
 
 1. Evolve submits transactions via Engine API payload attributes
 2. `EvolveEnginePayloadAttributes` decodes and validates transactions
 3. `EvolvePayloadBuilder` executes transactions and builds block
 4. Block is returned via standard Engine API response
+
+**EvNode transaction specifics:**
+
+1. EvNode transactions (type 0x76) enter the txpool via `eth_sendRawTransaction`
+2. Pool validator checks call structure, sponsor signature, and balance requirements
+3. When included in a block, the EVM handler executes batch calls atomically
+4. For sponsored transactions, gas is deducted from the sponsor and refunds go back to the sponsor
 
 ## Configuration
 
@@ -412,39 +485,57 @@ ev-reth/
 │   └── ev-reth/                  # Main binary
 │       ├── Cargo.toml
 │       └── src/
-│           └── main.rs         # Binary with Engine API integration
+│           └── main.rs           # Binary with Engine API integration
 ├── crates/
-│   ├── common/                 # Shared utilities and constants
+│   ├── common/                   # Shared utilities and constants
 │   │   ├── Cargo.toml
 │   │   └── src/
 │   │       ├── lib.rs
 │   │       └── constants.rs
-│   ├── node/                   # Core node implementation
+│   ├── ev-primitives/            # EvNode transaction primitives
+│   │   ├── Cargo.toml
+│   │   └── src/
+│   │       ├── lib.rs            # EvTxEnvelope, EvTxType
+│   │       ├── tx.rs             # EvNodeTransaction (type 0x76)
+│   │       └── pool.rs           # Pool transaction types
+│   ├── ev-revm/                  # Custom EVM handlers
+│   │   ├── Cargo.toml
+│   │   └── src/
+│   │       ├── handler.rs        # Batch calls, sponsorship, deploy allowlist
+│   │       ├── tx_env.rs         # EvTxEnv with sponsor/batch metadata
+│   │       ├── evm.rs            # Custom EVM configuration
+│   │       └── factory.rs        # EVM factory with Evolve policies
+│   ├── node/                     # Core node implementation
 │   │   ├── Cargo.toml
 │   │   └── src/
 │   │       ├── lib.rs
-│   │       ├── builder.rs     # Payload builder implementation
-│   │       └── config.rs      # Configuration types
-│   ├── evolve/                # Evolve-specific types
+│   │       ├── builder.rs        # Payload builder implementation
+│   │       ├── executor.rs       # Block executor for EvTxEnvelope
+│   │       ├── evm_executor.rs   # EVM executor and receipt builder
+│   │       ├── payload_types.rs  # EvBuiltPayload and conversions
+│   │       ├── rpc.rs            # RPC types with feePayer support
+│   │       ├── txpool.rs         # EvNode txpool validator
+│   │       └── config.rs         # Configuration types
+│   ├── evolve/                   # Evolve-specific types
 │   │   ├── Cargo.toml
 │   │   └── src/
 │   │       ├── lib.rs
-│   │       ├── config.rs      # Evolve configuration
-│   │       ├── consensus.rs   # Custom consensus implementation
-│   │       ├── types.rs       # Evolve payload attributes
+│   │       ├── config.rs         # Evolve configuration
+│   │       ├── consensus.rs      # Custom consensus implementation
+│   │       ├── types.rs          # Evolve payload attributes
 │   │       └── rpc/
 │   │           ├── mod.rs
-│   │           └── txpool.rs  # Txpool RPC implementation
-│   └── tests/                  # Comprehensive test suite
+│   │           └── txpool.rs     # Txpool RPC implementation
+│   └── tests/                    # Comprehensive test suite
 │       ├── Cargo.toml
 │       └── src/
 │           ├── lib.rs
-│           └── *.rs            # Test files
-├── etc/                        # Configuration files
+│           └── *.rs              # Test files
+├── etc/                          # Configuration files
 │   └── ev-reth-genesis.json      # Genesis configuration
-├── Cargo.toml                  # Workspace configuration
-├── Makefile                    # Build automation
-└── README.md                   # This file
+├── Cargo.toml                    # Workspace configuration
+├── Makefile                      # Build automation
+└── README.md                     # This file
 ```
 
 ### Running Tests
