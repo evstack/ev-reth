@@ -2878,15 +2878,21 @@ name = "ev-node"
 version = "0.1.0"
 dependencies = [
  "alloy-consensus",
+ "alloy-consensus-any",
  "alloy-eips",
  "alloy-evm",
  "alloy-genesis",
+ "alloy-network",
  "alloy-primitives",
+ "alloy-rlp",
  "alloy-rpc-types",
  "alloy-rpc-types-engine",
+ "alloy-rpc-types-eth",
  "async-trait",
+ "c-kzg",
  "clap",
  "ev-common",
+ "ev-primitives",
  "ev-revm",
  "evolve-ev-reth",
  "eyre",
@@ -2895,6 +2901,7 @@ dependencies = [
  "reth-basic-payload-builder",
  "reth-chainspec",
  "reth-cli",
+ "reth-codecs",
  "reth-consensus",
  "reth-db",
  "reth-engine-local",
@@ -2918,9 +2925,14 @@ dependencies = [
  "reth-primitives-traits",
  "reth-provider",
  "reth-revm",
+ "reth-rpc",
  "reth-rpc-api",
  "reth-rpc-builder",
+ "reth-rpc-convert",
  "reth-rpc-engine-api",
+ "reth-rpc-eth-api",
+ "reth-rpc-eth-types",
+ "reth-storage-api",
  "reth-tasks",
  "reth-testing-utils",
  "reth-tracing",
@@ -2949,6 +2961,23 @@ dependencies = [
  "revm",
  "thiserror 1.0.69",
  "tracing",
+]
+
+[[package]]
+name = "ev-primitives"
+version = "0.1.0"
+dependencies = [
+ "alloy-consensus",
+ "alloy-eips",
+ "alloy-primitives",
+ "alloy-rlp",
+ "alloy-serde",
+ "bytes",
+ "reth-codecs",
+ "reth-db-api",
+ "reth-ethereum-primitives",
+ "reth-primitives-traits",
+ "serde",
 ]
 
 [[package]]
@@ -3002,6 +3031,7 @@ dependencies = [
  "alloy-primitives",
  "alloy-sol-types",
  "ev-precompiles",
+ "ev-primitives",
  "reth-evm",
  "reth-evm-ethereum",
  "reth-primitives",
@@ -3030,6 +3060,7 @@ dependencies = [
  "ev-common",
  "ev-node",
  "ev-precompiles",
+ "ev-primitives",
  "ev-revm",
  "evolve-ev-reth",
  "eyre",
@@ -3080,6 +3111,7 @@ dependencies = [
  "alloy-rpc-types-engine",
  "alloy-rpc-types-txpool",
  "async-trait",
+ "ev-primitives",
  "eyre",
  "jsonrpsee",
  "jsonrpsee-core",

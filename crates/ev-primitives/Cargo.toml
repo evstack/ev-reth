@@ -1,0 +1,22 @@
+[package]
+name = "ev-primitives"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+alloy-consensus = { workspace = true }
+alloy-eips = { workspace = true, features = ["serde"] }
+alloy-primitives = { workspace = true, features = ["k256", "rlp", "serde"] }
+alloy-serde = { workspace = true }
+alloy-rlp = { workspace = true, features = ["derive"] }
+bytes = { workspace = true }
+reth-codecs = { workspace = true }
+reth-db-api = { workspace = true }
+reth-ethereum-primitives = { workspace = true }
+reth-primitives-traits = { workspace = true, features = ["serde-bincode-compat"] }
+serde = { workspace = true, features = ["derive"] }
+
+[features]
+serde-bincode-compat = ["reth-primitives-traits/serde-bincode-compat"]

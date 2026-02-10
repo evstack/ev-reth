@@ -8,20 +8,19 @@ use std::sync::Arc;
 use alloy_consensus::{transaction::SignerRecoverable, TxLegacy, TypedTransaction};
 use alloy_genesis::Genesis;
 use alloy_primitives::{Address, Bytes, ChainId, Signature, TxKind, B256, U256};
+use ev_primitives::{EvTxEnvelope, TransactionSigned};
 use ev_revm::{
-    with_ev_handler, BaseFeeRedirect, BaseFeeRedirectSettings, ContractSizeLimitSettings,
-    DeployAllowlistSettings, MintPrecompileSettings,
+    BaseFeeRedirect, BaseFeeRedirectSettings, ContractSizeLimitSettings, DeployAllowlistSettings,
+    EvTxEvmFactory, MintPrecompileSettings,
 };
 use eyre::Result;
 use reth_chainspec::{ChainSpec, ChainSpecBuilder};
-use reth_ethereum_primitives::TransactionSigned;
-use reth_evm_ethereum::EthEvmConfig;
 use reth_primitives::{Header, Transaction};
 use reth_provider::test_utils::{ExtendedAccount, MockEthProvider};
 use serde_json::json;
 use tempfile::TempDir;
 
-use ev_node::{EvolvePayloadBuilder, EvolvePayloadBuilderConfig};
+use ev_node::{EvolveEvmConfig, EvolvePayloadBuilder, EvolvePayloadBuilderConfig};
 use evolve_ev_reth::EvolvePayloadAttributes;
 
 // Test constants
@@ -40,6 +39,11 @@ pub const TEST_TIMESTAMP: u64 = 1710338135;
 pub const TEST_GAS_LIMIT: u64 = 30_000_000;
 /// Base fee used in mock headers to satisfy post-London/EIP-4844 requirements
 pub const TEST_BASE_FEE: u64 = 0;
+
+fn to_ev_envelope(transaction: Transaction, signature: Signature) -> TransactionSigned {
+    let signed = alloy_consensus::Signed::new_unhashed(transaction, signature);
+    EvTxEnvelope::Ethereum(reth_ethereum_primitives::TransactionSigned::from(signed))
+}
 
 /// Creates a reusable chain specification for tests.
 pub fn create_test_chain_spec() -> Arc<ChainSpec> {
@@ -139,7 +143,6 @@ impl EvolveTestFixture {
 
         // Create a test chain spec with our test chain ID
         let test_chainspec = create_test_chain_spec();
-        let evm_config = EthEvmConfig::new(test_chainspec.clone());
         let config = EvolvePayloadBuilderConfig::from_chain_spec(test_chainspec.as_ref()).unwrap();
         config.validate().unwrap();
 
@@ -157,13 +160,13 @@ impl EvolveTestFixture {
         let deploy_allowlist = config
             .deploy_allowlist_settings()
             .map(|(allowlist, activation)| DeployAllowlistSettings::new(allowlist, activation));
-        let wrapped_evm = with_ev_handler(
-            evm_config,
+        let evm_factory = EvTxEvmFactory::new(
             base_fee_redirect,
             mint_precompile,
             deploy_allowlist,
             contract_size_limit,
         );
+        let wrapped_evm = EvolveEvmConfig::new_with_evm_factory(test_chainspec, evm_factory);
 
         let builder = EvolvePayloadBuilder::new(Arc::new(provider.clone()), wrapped_evm, config);
 
@@ -187,7 +190,7 @@ impl EvolveTestFixture {
         );
 
         // Find which address the test signature resolves to
-        let test_signed = TransactionSigned::new_unhashed(
+        let test_signed = to_ev_envelope(
             Transaction::Legacy(TxLegacy {
                 chain_id: Some(ChainId::from(TEST_CHAIN_ID)),
                 nonce: 0,
@@ -263,7 +266,7 @@ pub fn create_test_transactions(count: usize, nonce_start: u64) -> Vec<Transacti
 
         let typed_tx = TypedTransaction::Legacy(legacy_tx);
         let transaction = Transaction::from(typed_tx);
-        let signed_tx = TransactionSigned::new_unhashed(transaction, Signature::test_signature());
+        let signed_tx = to_ev_envelope(transaction, Signature::test_signature());
         transactions.push(signed_tx);
     }
 

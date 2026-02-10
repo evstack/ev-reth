@@ -1,6 +1,6 @@
 {
   "config": {
-    "chainId": 1,
+    "chainId": 1234,
     "homesteadBlock": 0,
     "daoForkSupport": true,
     "eip150Block": 0,

@@ -1,0 +1,664 @@
+use std::sync::Arc;
+
+use alloy_consensus::{
+    constants::EIP1559_TX_TYPE_ID,
+    transaction::{Recovered, TxHashRef},
+    BlobTransactionValidationError, Signed, Typed2718,
+};
+use alloy_eips::{
+    eip2718::{Encodable2718, WithEncoded},
+    eip7594::BlobTransactionSidecarVariant,
+    eip7840::BlobParams,
+    merge::EPOCH_SLOTS,
+};
+use alloy_primitives::{Address, U256};
+use c_kzg::KzgSettings;
+use ev_primitives::{EvNodeTransaction, EvPooledTxEnvelope, EvTxEnvelope, TransactionSigned};
+use reth_chainspec::{ChainSpecProvider, EthChainSpec, EthereumHardforks};
+use reth_node_api::{FullNodeTypes, NodeTypes};
+use reth_node_builder::{
+    components::{create_blob_store_with_cache, PoolBuilder, TxPoolBuilder},
+    BuilderContext,
+};
+use reth_primitives_traits::NodePrimitives;
+use reth_storage_api::{AccountInfoReader, StateProviderFactory};
+use reth_transaction_pool::{
+    blobstore::DiskFileBlobStore,
+    error::{InvalidPoolTransactionError, PoolTransactionError},
+    CoinbaseTipOrdering, EthBlobTransactionSidecar, EthPoolTransaction, EthPooledTransaction,
+    EthTransactionValidator, PoolTransaction, TransactionOrigin, TransactionValidationOutcome,
+    TransactionValidationTaskExecutor, TransactionValidator,
+};
+use tracing::{debug, info};
+
+/// Pool transaction wrapper for `EvTxEnvelope`.
+#[derive(Debug, Clone)]
+pub struct EvPooledTransaction {
+    inner: EthPooledTransaction<EvTxEnvelope>,
+}
+
+impl EvPooledTransaction {
+    /// Creates a new pooled transaction from a recovered envelope and encoded length.
+    pub fn new(transaction: Recovered<EvTxEnvelope>, encoded_length: usize) -> Self {
+        Self {
+            inner: EthPooledTransaction::new(transaction, encoded_length),
+        }
+    }
+
+    /// Returns the recovered transaction.
+    pub const fn transaction(&self) -> &Recovered<EvTxEnvelope> {
+        self.inner.transaction()
+    }
+}
+
+impl PoolTransaction for EvPooledTransaction {
+    type TryFromConsensusError =
+        alloy_consensus::error::ValueError<reth_ethereum_primitives::TransactionSigned>;
+    type Consensus = EvTxEnvelope;
+    type Pooled = EvPooledTxEnvelope;
+
+    fn clone_into_consensus(&self) -> Recovered<Self::Consensus> {
+        self.inner.transaction().clone()
+    }
+
+    fn into_consensus(self) -> Recovered<Self::Consensus> {
+        self.inner.transaction
+    }
+
+    fn into_consensus_with2718(self) -> WithEncoded<Recovered<Self::Consensus>> {
+        self.inner.transaction.into_encoded()
+    }
+
+    fn from_pooled(tx: Recovered<Self::Pooled>) -> Self {
+        let encoded_length = tx.encode_2718_len();
+        let (tx, signer) = tx.into_parts();
+        match tx {
+            EvPooledTxEnvelope::Ethereum(tx) => match tx {
+                reth_ethereum_primitives::PooledTransactionVariant::Eip4844(tx) => {
+                    let (tx, sig, hash) = tx.into_parts();
+                    let (tx, blob) = tx.into_parts();
+                    let tx = Signed::new_unchecked(tx, sig, hash);
+                    let tx = reth_ethereum_primitives::TransactionSigned::from(tx);
+                    let tx = EvTxEnvelope::Ethereum(tx);
+                    let tx = Recovered::new_unchecked(tx, signer);
+                    let mut pooled = Self::new(tx, encoded_length);
+                    pooled.inner.blob_sidecar = EthBlobTransactionSidecar::Present(blob);
+                    pooled
+                }
+                tx => {
+                    let tx = EvTxEnvelope::Ethereum(tx.into());
+                    let tx = Recovered::new_unchecked(tx, signer);
+                    Self::new(tx, encoded_length)
+                }
+            },
+            EvPooledTxEnvelope::EvNode(tx) => {
+                let tx = EvTxEnvelope::EvNode(tx);
+                let tx = Recovered::new_unchecked(tx, signer);
+                Self::new(tx, encoded_length)
+            }
+        }
+    }
+
+    fn hash(&self) -> &alloy_primitives::TxHash {
+        self.inner.transaction.tx_hash()
+    }
+
+    fn sender(&self) -> Address {
+        self.inner.transaction.signer()
+    }
+
+    fn sender_ref(&self) -> &Address {
+        self.inner.transaction.signer_ref()
+    }
+
+    fn cost(&self) -> &U256 {
+        &self.inner.cost
+    }
+
+    fn encoded_length(&self) -> usize {
+        self.inner.encoded_length
+    }
+}
+
+impl Typed2718 for EvPooledTransaction {
+    fn ty(&self) -> u8 {
+        match self.transaction().inner() {
+            // Treat EvNode txs as EIP-1559 for pool validation compatibility.
+            EvTxEnvelope::EvNode(_) => EIP1559_TX_TYPE_ID,
+            _ => self.inner.ty(),
+        }
+    }
+}
+
+impl reth_primitives_traits::InMemorySize for EvPooledTransaction {
+    fn size(&self) -> usize {
+        self.inner.size()
+    }
+}
+
+impl alloy_consensus::Transaction for EvPooledTransaction {
+    fn chain_id(&self) -> Option<alloy_primitives::ChainId> {
+        self.inner.chain_id()
+    }
+
+    fn nonce(&self) -> u64 {
+        self.inner.nonce()
+    }
+
+    fn gas_limit(&self) -> u64 {
+        self.inner.gas_limit()
+    }
+
+    fn gas_price(&self) -> Option<u128> {
+        self.inner.gas_price()
+    }
+
+    fn max_fee_per_gas(&self) -> u128 {
+        self.inner.max_fee_per_gas()
+    }
+
+    fn max_priority_fee_per_gas(&self) -> Option<u128> {
+        self.inner.max_priority_fee_per_gas()
+    }
+
+    fn max_fee_per_blob_gas(&self) -> Option<u128> {
+        self.inner.max_fee_per_blob_gas()
+    }
+
+    fn priority_fee_or_price(&self) -> u128 {
+        self.inner.priority_fee_or_price()
+    }
+
+    fn effective_gas_price(&self, base_fee: Option<u64>) -> u128 {
+        self.inner.effective_gas_price(base_fee)
+    }
+
+    fn is_dynamic_fee(&self) -> bool {
+        self.inner.is_dynamic_fee()
+    }
+
+    fn kind(&self) -> alloy_primitives::TxKind {
+        self.inner.kind()
+    }
+
+    fn is_create(&self) -> bool {
+        self.inner.is_create()
+    }
+
+    fn value(&self) -> U256 {
+        self.inner.value()
+    }
+
+    fn input(&self) -> &alloy_primitives::Bytes {
+        self.inner.input()
+    }
+
+    fn access_list(&self) -> Option<&alloy_eips::eip2930::AccessList> {
+        self.inner.access_list()
+    }
+
+    fn blob_versioned_hashes(&self) -> Option<&[alloy_primitives::B256]> {
+        self.inner.blob_versioned_hashes()
+    }
+
+    fn authorization_list(&self) -> Option<&[alloy_eips::eip7702::SignedAuthorization]> {
+        self.inner.authorization_list()
+    }
+}
+
+impl EthPoolTransaction for EvPooledTransaction {
+    fn take_blob(&mut self) -> EthBlobTransactionSidecar {
+        if self.is_eip4844() {
+            std::mem::replace(
+                &mut self.inner.blob_sidecar,
+                EthBlobTransactionSidecar::Missing,
+            )
+        } else {
+            EthBlobTransactionSidecar::None
+        }
+    }
+
+    fn try_into_pooled_eip4844(
+        self,
+        sidecar: std::sync::Arc<BlobTransactionSidecarVariant>,
+    ) -> Option<Recovered<Self::Pooled>> {
+        let (signed_transaction, signer) = self.into_consensus().into_parts();
+        match signed_transaction {
+            EvTxEnvelope::Ethereum(tx) => {
+                let pooled_transaction = tx
+                    .try_into_pooled_eip4844(std::sync::Arc::unwrap_or_clone(sidecar))
+                    .ok()?;
+                Some(Recovered::new_unchecked(
+                    EvPooledTxEnvelope::Ethereum(pooled_transaction),
+                    signer,
+                ))
+            }
+            EvTxEnvelope::EvNode(_) => None,
+        }
+    }
+
+    fn try_from_eip4844(
+        tx: Recovered<Self::Consensus>,
+        sidecar: BlobTransactionSidecarVariant,
+    ) -> Option<Self> {
+        let (tx, signer) = tx.into_parts();
+        match tx {
+            EvTxEnvelope::Ethereum(tx) => tx
+                .try_into_pooled_eip4844(sidecar)
+                .ok()
+                .map(|tx| Recovered::new_unchecked(EvPooledTxEnvelope::Ethereum(tx), signer))
+                .map(Self::from_pooled),
+            EvTxEnvelope::EvNode(_) => None,
+        }
+    }
+
+    fn validate_blob(
+        &self,
+        sidecar: &BlobTransactionSidecarVariant,
+        settings: &KzgSettings,
+    ) -> Result<(), BlobTransactionValidationError> {
+        match self.inner.transaction.inner() {
+            EvTxEnvelope::Ethereum(tx) => match tx.as_eip4844() {
+                Some(tx) => tx.tx().validate_blob(sidecar, settings),
+                None => Err(BlobTransactionValidationError::NotBlobTransaction(
+                    self.ty(),
+                )),
+            },
+            EvTxEnvelope::EvNode(_) => Err(BlobTransactionValidationError::NotBlobTransaction(
+                self.ty(),
+            )),
+        }
+    }
+}
+
+/// Errors returned by EV-specific transaction pool validation.
+#[derive(Debug, thiserror::Error)]
+pub enum EvTxPoolError {
+    /// `EvNode` transaction must include at least one call.
+    #[error("evnode transaction must include at least one call")]
+    EmptyCalls,
+    /// Only the first call may be a CREATE.
+    #[error("only the first call may be CREATE")]
+    InvalidCreatePosition,
+    /// Sponsor signature failed verification.
+    #[error("invalid sponsor signature")]
+    InvalidSponsorSignature,
+    /// Error while querying account info from the state provider.
+    #[error("state provider error: {0}")]
+    StateProvider(String),
+}
+
+impl PoolTransactionError for EvTxPoolError {
+    fn is_bad_transaction(&self) -> bool {
+        matches!(
+            self,
+            Self::EmptyCalls | Self::InvalidCreatePosition | Self::InvalidSponsorSignature
+        )
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+/// Transaction validator that adds EV-specific checks on top of the base validator.
+#[derive(Debug, Clone)]
+pub struct EvTransactionValidator<Client> {
+    inner: Arc<EthTransactionValidator<Client, EvPooledTransaction>>,
+}
+
+impl<Client> EvTransactionValidator<Client> {
+    /// Wraps the provided Ethereum validator with EV-specific validation logic.
+    pub fn new(inner: EthTransactionValidator<Client, EvPooledTransaction>) -> Self {
+        Self {
+            inner: Arc::new(inner),
+        }
+    }
+
+    fn validate_evnode_calls(
+        &self,
+        tx: &EvNodeTransaction,
+    ) -> Result<(), InvalidPoolTransactionError> {
+        if tx.calls.is_empty() {
+            return Err(InvalidPoolTransactionError::other(
+                EvTxPoolError::EmptyCalls,
+            ));
+        }
+        if tx.calls.iter().skip(1).any(|call| call.to.is_create()) {
+            return Err(InvalidPoolTransactionError::other(
+                EvTxPoolError::InvalidCreatePosition,
+            ));
+        }
+        Ok(())
+    }
+
+    fn ensure_state(
+        &self,
+        state: &mut Option<Box<dyn AccountInfoReader>>,
+    ) -> Result<(), InvalidPoolTransactionError>
+    where
+        Client: StateProviderFactory,
+    {
+        if state.is_none() {
+            let new_state = self.inner.client().latest().map_err(|err| {
+                InvalidPoolTransactionError::other(EvTxPoolError::StateProvider(err.to_string()))
+            })?;
+            *state = Some(Box::new(new_state));
+        }
+        Ok(())
+    }
+
+    fn validate_sponsor_balance(
+        &self,
+        state: &mut Option<Box<dyn AccountInfoReader>>,
+        sponsor: Address,
+        gas_cost: U256,
+    ) -> Result<(), InvalidPoolTransactionError>
+    where
+        Client: StateProviderFactory,
+    {
+        self.ensure_state(state)?;
+        let state = state.as_ref().expect("state provider is set");
+        let account = state
+            .basic_account(&sponsor)
+            .map_err(|err| {
+                InvalidPoolTransactionError::other(EvTxPoolError::StateProvider(err.to_string()))
+            })?
+            .unwrap_or_default();
+        if account.balance < gas_cost {
+            return Err(InvalidPoolTransactionError::Overdraft {
+                cost: gas_cost,
+                balance: account.balance,
+            });
+        }
+        Ok(())
+    }
+
+    fn validate_evnode(
+        &self,
+        pooled: &EvPooledTransaction,
+        sender_balance: U256,
+        state: &mut Option<Box<dyn AccountInfoReader>>,
+    ) -> Result<(), InvalidPoolTransactionError>
+    where
+        Client: StateProviderFactory,
+    {
+        let consensus = pooled.transaction().inner();
+        let EvTxEnvelope::EvNode(tx) = consensus else {
+            if sender_balance < *pooled.cost() {
+                return Err(InvalidPoolTransactionError::Overdraft {
+                    cost: *pooled.cost(),
+                    balance: sender_balance,
+                });
+            }
+            return Ok(());
+        };
+
+        let tx = tx.tx();
+        self.validate_evnode_calls(tx)?;
+
+        if let Some(signature) = tx.fee_payer_signature.as_ref() {
+            // Sponsored transaction: validate sponsor balance
+            let executor = pooled.transaction().signer();
+            let sponsor = tx.recover_sponsor(executor, signature).map_err(|_| {
+                InvalidPoolTransactionError::other(EvTxPoolError::InvalidSponsorSignature)
+            })?;
+
+            let gas_cost = U256::from(tx.max_fee_per_gas).saturating_mul(U256::from(tx.gas_limit));
+            self.validate_sponsor_balance(state, sponsor, gas_cost)?;
+        } else {
+            // Non-sponsored EvNode transaction: executor pays gas, validate their balance
+            if sender_balance < *pooled.cost() {
+                return Err(InvalidPoolTransactionError::Overdraft {
+                    cost: *pooled.cost(),
+                    balance: sender_balance,
+                });
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl<Client> TransactionValidator for EvTransactionValidator<Client>
+where
+    Client: ChainSpecProvider<ChainSpec: EthereumHardforks> + StateProviderFactory,
+{
+    type Transaction = EvPooledTransaction;
+
+    async fn validate_transaction(
+        &self,
+        origin: TransactionOrigin,
+        transaction: <Self as TransactionValidator>::Transaction,
+    ) -> TransactionValidationOutcome<Self::Transaction> {
+        let mut state = None;
+        let outcome = self
+            .inner
+            .validate_one_with_state(origin, transaction, &mut state);
+
+        match outcome {
+            TransactionValidationOutcome::Valid {
+                balance,
+                state_nonce,
+                bytecode_hash,
+                transaction,
+                propagate,
+                authorities,
+            } => match self.validate_evnode(transaction.transaction(), balance, &mut state) {
+                Ok(()) => TransactionValidationOutcome::Valid {
+                    balance,
+                    state_nonce,
+                    bytecode_hash,
+                    transaction,
+                    propagate,
+                    authorities,
+                },
+                Err(err) => {
+                    TransactionValidationOutcome::Invalid(transaction.into_transaction(), err)
+                }
+            },
+            other => other,
+        }
+    }
+}
+
+/// Pool builder that wires the custom `EvNode` transaction validator.
+#[derive(Debug, Default, Clone, Copy)]
+#[non_exhaustive]
+pub struct EvolvePoolBuilder;
+
+impl<Types, Node> PoolBuilder<Node> for EvolvePoolBuilder
+where
+    Types: NodeTypes<
+        ChainSpec: EthereumHardforks,
+        Primitives: NodePrimitives<SignedTx = TransactionSigned>,
+    >,
+    Node: FullNodeTypes<Types = Types>,
+{
+    type Pool = reth_transaction_pool::Pool<
+        TransactionValidationTaskExecutor<EvTransactionValidator<Node::Provider>>,
+        CoinbaseTipOrdering<EvPooledTransaction>,
+        DiskFileBlobStore,
+    >;
+
+    async fn build_pool(self, ctx: &BuilderContext<Node>) -> eyre::Result<Self::Pool> {
+        let pool_config = ctx.pool_config();
+
+        let blobs_disabled = ctx.config().txpool.blobpool_max_count == 0;
+
+        let blob_cache_size = if let Some(blob_cache_size) = pool_config.blob_cache_size {
+            Some(blob_cache_size)
+        } else {
+            let current_timestamp = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_secs();
+            let blob_params = ctx
+                .chain_spec()
+                .blob_params_at_timestamp(current_timestamp)
+                .unwrap_or_else(BlobParams::cancun);
+
+            Some((blob_params.target_blob_count * EPOCH_SLOTS * 2) as u32)
+        };
+
+        let blob_store = create_blob_store_with_cache(ctx, blob_cache_size)?;
+
+        let validator = TransactionValidationTaskExecutor::eth_builder(ctx.provider().clone())
+            .with_head_timestamp(ctx.head().timestamp)
+            .set_eip4844(!blobs_disabled)
+            .kzg_settings(ctx.kzg_settings()?)
+            .with_max_tx_input_bytes(ctx.config().txpool.max_tx_input_bytes)
+            .with_local_transactions_config(pool_config.local_transactions_config.clone())
+            .set_tx_fee_cap(ctx.config().rpc.rpc_tx_fee_cap)
+            .with_max_tx_gas_limit(ctx.config().txpool.max_tx_gas_limit)
+            .with_minimum_priority_fee(ctx.config().txpool.minimum_priority_fee)
+            // Disable the standard caller balance check - we handle balance validation
+            // in EvTransactionValidator::validate_evnode which checks:
+            // - Sponsor balance for sponsored EvNode transactions
+            // - Sender balance for non-sponsored EvNode and standard Ethereum transactions
+            .disable_balance_check()
+            .with_additional_tasks(ctx.config().txpool.additional_validation_tasks)
+            .build_with_tasks::<EvPooledTransaction, _, _>(
+                ctx.task_executor().clone(),
+                blob_store.clone(),
+            )
+            .map(EvTransactionValidator::new);
+
+        if validator.validator().inner.eip4844() {
+            let kzg_settings = validator.validator().inner.kzg_settings().clone();
+            ctx.task_executor().spawn_blocking(async move {
+                let _ = kzg_settings.get();
+                debug!(target: "reth::cli", "Initialized KZG settings");
+            });
+        }
+
+        let transaction_pool = TxPoolBuilder::new(ctx)
+            .with_validator(validator)
+            .build_and_spawn_maintenance_task(blob_store, pool_config)?;
+
+        info!(target: "reth::cli", "Transaction pool initialized");
+        debug!(target: "reth::cli", "Spawned txpool maintenance task");
+
+        Ok(transaction_pool)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloy_consensus::Signed;
+    use alloy_eips::eip2930::AccessList;
+    use alloy_primitives::{Bytes, Signature, TxKind};
+    use ev_primitives::{Call, EvNodeSignedTx, EvNodeTransaction};
+    use reth_provider::test_utils::MockEthProvider;
+
+    fn sample_signature() -> Signature {
+        let mut bytes = [0u8; 65];
+        bytes[64] = 27;
+        Signature::from_raw_array(&bytes).expect("valid test signature")
+    }
+
+    /// Creates a non-sponsored `EvNode` transaction (`fee_payer_signature` = None)
+    fn create_non_sponsored_evnode_tx(gas_limit: u64, max_fee_per_gas: u128) -> EvNodeSignedTx {
+        let tx = EvNodeTransaction {
+            chain_id: 1,
+            nonce: 0,
+            max_priority_fee_per_gas: 1,
+            max_fee_per_gas,
+            gas_limit,
+            calls: vec![Call {
+                to: TxKind::Call(Address::ZERO),
+                value: U256::ZERO,
+                input: Bytes::new(),
+            }],
+            access_list: AccessList::default(),
+            fee_payer_signature: None, // Non-sponsored
+        };
+        Signed::new_unhashed(tx, sample_signature())
+    }
+
+    fn create_pooled_tx(signed_tx: EvNodeSignedTx, signer: Address) -> EvPooledTransaction {
+        let envelope = EvTxEnvelope::EvNode(signed_tx);
+        let recovered = alloy_consensus::transaction::Recovered::new_unchecked(envelope, signer);
+        let encoded_length = 200; // Approximate length for test
+        EvPooledTransaction::new(recovered, encoded_length)
+    }
+
+    fn create_test_validator() -> EvTransactionValidator<MockEthProvider> {
+        use reth_transaction_pool::{
+            blobstore::InMemoryBlobStore, validate::EthTransactionValidatorBuilder,
+        };
+
+        let provider = MockEthProvider::default();
+        let blob_store = InMemoryBlobStore::default();
+        let inner = EthTransactionValidatorBuilder::new(provider)
+            .no_shanghai()
+            .no_cancun()
+            .build(blob_store);
+        EvTransactionValidator::new(inner)
+    }
+
+    /// Tests that non-sponsored `EvNode` transactions with insufficient sender balance
+    /// are rejected with an Overdraft error.
+    ///
+    /// BUG: Currently this test FAILS because `validate_evnode` does not check
+    /// sender balance for non-sponsored `EvNode` transactions.
+    #[test]
+    fn non_sponsored_evnode_rejects_insufficient_balance() {
+        let validator = create_test_validator();
+
+        // Create a non-sponsored EvNode transaction
+        let gas_limit = 21_000u64;
+        let max_fee_per_gas = 1_000_000_000u128; // 1 gwei
+        let signed_tx = create_non_sponsored_evnode_tx(gas_limit, max_fee_per_gas);
+
+        let signer = Address::random();
+        let pooled = create_pooled_tx(signed_tx, signer);
+
+        // Sender has ZERO balance - clearly insufficient
+        let sender_balance = U256::ZERO;
+        let mut state: Option<Box<dyn AccountInfoReader>> = None;
+
+        // Call validate_evnode - should return Overdraft error
+        let result = validator.validate_evnode(&pooled, sender_balance, &mut state);
+
+        assert!(
+            result.is_err(),
+            "Non-sponsored EvNode with zero balance should be rejected, but got Ok(())"
+        );
+
+        if let Err(err) = result {
+            assert!(
+                matches!(err, InvalidPoolTransactionError::Overdraft { .. }),
+                "Expected Overdraft error, got: {:?}",
+                err
+            );
+        }
+    }
+
+    /// Tests that non-sponsored `EvNode` transactions with sufficient balance are accepted.
+    #[test]
+    fn non_sponsored_evnode_accepts_sufficient_balance() {
+        let validator = create_test_validator();
+
+        let gas_limit = 21_000u64;
+        let max_fee_per_gas = 1_000_000_000u128;
+        let signed_tx = create_non_sponsored_evnode_tx(gas_limit, max_fee_per_gas);
+
+        let signer = Address::random();
+        let pooled = create_pooled_tx(signed_tx, signer);
+
+        let tx_cost = *pooled.cost();
+
+        // Sender has MORE than enough balance
+        let sender_balance = tx_cost + U256::from(1);
+        let mut state: Option<Box<dyn AccountInfoReader>> = None;
+
+        let result = validator.validate_evnode(&pooled, sender_balance, &mut state);
+
+        assert!(
+            result.is_ok(),
+            "Non-sponsored EvNode with sufficient balance should be accepted, got: {:?}",
+            result
+        );
+    }
+}
