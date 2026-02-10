@@ -54,7 +54,7 @@ RUN cp /app/target/$BUILD_PROFILE/ev-reth /ev-reth
 FROM ubuntu:24.04 AS runtime
 
 RUN apt-get update && \
-    apt-get install -y ca-certificates curl jq libssl-dev pkg-config strace && \
+    apt-get install -y ca-certificates curl jq libssl-dev pkg-config strace tini && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -69,4 +69,4 @@ EXPOSE 30303 30303/udp 9001 8545 8546 7545 8551
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
     CMD /usr/local/bin/ev-reth --version || exit 1
 
-ENTRYPOINT ["/usr/local/bin/ev-reth"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/ev-reth"]
