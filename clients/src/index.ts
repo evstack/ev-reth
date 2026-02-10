@@ -198,12 +198,16 @@ export async function signAsSponsor(
   return signer.signHash(hash);
 }
 
+function isCreateCall(call: Call): boolean {
+  return call.to === null;
+}
+
 export function estimateIntrinsicGas(calls: Call[]): bigint {
   let gas = BASE_TX_GAS; // base transaction cost
 
   for (const call of calls) {
     gas += BASE_TX_GAS; // each call costs at least 21000 gas
-    if (call.to === null) gas += CREATE_GAS; // CREATE costs extra
+    if (isCreateCall(call)) gas += CREATE_GAS;
 
     for (const byte of hexToBytes(call.data)) {
       if (byte === 0) {
@@ -223,7 +227,7 @@ export function validateEvNodeTx(tx: EvNodeTransaction): void {
   }
 
   for (let i = 1; i < tx.calls.length; i += 1) {
-    if (tx.calls[i].to === null) {
+    if (isCreateCall(tx.calls[i])) {
       throw new Error('Only the first call may be CREATE');
     }
   }
