@@ -18,10 +18,11 @@
     "build": "tsc -p tsconfig.build.json",
     "clean": "rm -rf dist",
     "prepublishOnly": "npm run clean && npm run build",
+    "test:unit": "tsx --test tests/unit.test.ts",
     "test:basic": "tsx tests/basic.test.ts",
     "test:flows": "tsx tests/flows.test.ts",
     "test:sponsored": "tsx tests/sponsored.test.ts",
-    "test": "npm run test:basic"
+    "test": "npm run test:unit"
   },
   "keywords": [
     "ethereum",
