@@ -24,6 +24,7 @@ export const EVNODE_SPONSOR_DOMAIN = 0x78;
 const BASE_TX_GAS = 21000n;
 // Extra gas charged when a call deploys a new contract (to === null)
 const CREATE_GAS = 32000n;
+const EVNODE_TX_FIELD_COUNT = 11;
 const EMPTY_BYTES = '0x' as const;
 const TX_TYPE_HEX = toHex(EVNODE_TX_TYPE, { size: 1 });
 const EXECUTOR_DOMAIN_HEX = toHex(EVNODE_EXECUTOR_DOMAIN, { size: 1 });
@@ -114,7 +115,7 @@ export function decodeEvNodeTransaction(encoded: Hex): EvNodeSignedTransaction {
     throw new Error('Invalid EvNode transaction payload');
   }
 
-  if (decoded.length !== 11) {
+  if (decoded.length !== EVNODE_TX_FIELD_COUNT) {
     throw new Error('Invalid EvNode transaction length');
   }
 
