@@ -42,3 +42,13 @@ jobs:
             --no-capture
         env:
           RUST_LOG: debug
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Run client E2E tests
+        run: |
+          cd clients
+          npm install
+          npm run test:e2e
