@@ -22,6 +22,8 @@ export const EVNODE_EXECUTOR_DOMAIN = 0x76;
 export const EVNODE_SPONSOR_DOMAIN = 0x78;
 
 const BASE_TX_GAS = 21000n;
+// Extra gas charged when a call deploys a new contract (to === null)
+const CREATE_GAS = 32000n;
 const EMPTY_BYTES = '0x' as const;
 const TX_TYPE_HEX = toHex(EVNODE_TX_TYPE, { size: 1 });
 const EXECUTOR_DOMAIN_HEX = toHex(EVNODE_EXECUTOR_DOMAIN, { size: 1 });
@@ -201,7 +203,7 @@ export function estimateIntrinsicGas(calls: Call[]): bigint {
 
   for (const call of calls) {
     gas += BASE_TX_GAS; // each call costs at least 21000 gas
-    if (call.to === null) gas += 32000n; // CREATE costs extra
+    if (call.to === null) gas += CREATE_GAS; // CREATE costs extra
 
     for (const byte of hexToBytes(call.data)) {
       if (byte === 0) {
