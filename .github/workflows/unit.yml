@@ -38,6 +38,22 @@ jobs:
             -E "(kind(lib) | kind(bin) | kind(proc-macro))" \
             --no-tests=warn
 
+  client-test:
+    name: client unit tests
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        working-directory: clients
+        run: npm ci
+      - name: Run unit tests
+        working-directory: clients
+        run: npm test
+
   doc:
     name: doc tests
     env:
@@ -57,7 +73,7 @@ jobs:
     name: unit success
     runs-on: ubuntu-latest
     if: always()
-    needs: [test]
+    needs: [test, client-test]
     timeout-minutes: 30
     steps:
       - name: Decide whether the needed jobs succeeded or failed

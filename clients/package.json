@@ -1,0 +1,43 @@
+{
+  "name": "@evstack/evnode-viem",
+  "version": "0.1.0",
+  "description": "Viem client extension for EvNode transactions",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run clean && npm run build",
+    "test:unit": "tsx --test tests/unit.test.ts",
+    "test:basic": "tsx tests/basic.test.ts",
+    "test:flows": "tsx tests/flows.test.ts",
+    "test:sponsored": "tsx tests/sponsored.test.ts",
+    "test": "npm run test:unit"
+  },
+  "keywords": [
+    "ethereum",
+    "viem",
+    "evnode",
+    "evm",
+    "rollup"
+  ],
+  "license": "MIT",
+  "peerDependencies": {
+    "viem": "^2.0.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.0",
+    "viem": "^2.45.0"
+  }
+}

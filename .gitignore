@@ -25,6 +25,9 @@ criterion/
 *.tmp
 *.log
 
+# Node dependencies
+node_modules/
+
 # Environment files
 .env
 .env.local
