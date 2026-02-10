@@ -21,6 +21,7 @@ export const EVNODE_TX_TYPE = 0x76;
 export const EVNODE_EXECUTOR_DOMAIN = 0x76;
 export const EVNODE_SPONSOR_DOMAIN = 0x78;
 
+const BASE_TX_GAS = 21000n;
 const EMPTY_BYTES = '0x' as const;
 const TX_TYPE_HEX = toHex(EVNODE_TX_TYPE, { size: 1 });
 const EXECUTOR_DOMAIN_HEX = toHex(EVNODE_EXECUTOR_DOMAIN, { size: 1 });
@@ -196,10 +197,10 @@ export async function signAsSponsor(
 }
 
 export function estimateIntrinsicGas(calls: Call[]): bigint {
-  let gas = 21000n; // base transaction cost
+  let gas = BASE_TX_GAS; // base transaction cost
 
   for (const call of calls) {
-    gas += 21000n; // each call costs at least 21000 gas
+    gas += BASE_TX_GAS; // each call costs at least 21000 gas
     if (call.to === null) gas += 32000n; // CREATE costs extra
 
     for (const byte of hexToBytes(call.data)) {
