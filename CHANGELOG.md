@@ -14,3 +14,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - AdminProxy contract for administrative operations ([#97](https://github.com/evstack/ev-reth/pull/97))
 - ADR 003: typed sponsorship transactions and batch execution documentation ([#96](https://github.com/evstack/ev-reth/pull/96))
 - Fee system guide documentation ([#101](https://github.com/evstack/ev-reth/pull/101))
+- ADR 003 implementation: EvNode transaction type (0x76) with batch calls and fee-payer sponsorship ([#103](https://github.com/evstack/ev-reth/pull/103))

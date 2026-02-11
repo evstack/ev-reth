@@ -15,9 +15,8 @@ use reth_ethereum::{
     },
     pool::{PoolTransaction, TransactionPool},
     primitives::Header,
-    TransactionSigned,
 };
-use reth_payload_builder::{EthBuiltPayload, PayloadBuilderError};
+use reth_payload_builder::PayloadBuilderError;
 use reth_provider::HeaderProvider;
 use reth_revm::cached::CachedReads;
 use tokio::runtime::Handle;
@@ -26,8 +25,10 @@ use tracing::info;
 use crate::{
     attributes::EvolveEnginePayloadBuilderAttributes, builder::EvolvePayloadBuilder,
     config::EvolvePayloadBuilderConfig, executor::EvolveEvmConfig, node::EvolveEngineTypes,
+    payload_types::EvBuiltPayload,
 };
 
+use ev_primitives::{EvPrimitives, TransactionSigned};
 use evolve_ev_reth::config::set_current_block_gas_limit;
 
 /// Evolve payload service builder that integrates with the evolve payload builder.
@@ -68,7 +69,7 @@ where
         Types: NodeTypes<
             Payload = EvolveEngineTypes,
             ChainSpec = ChainSpec,
-            Primitives = reth_ethereum::EthPrimitives,
+            Primitives = EvPrimitives,
         >,
     >,
     Pool: TransactionPool<Transaction: PoolTransaction<Consensus = TransactionSigned>>
@@ -128,7 +129,7 @@ where
         + 'static,
 {
     type Attributes = EvolveEnginePayloadBuilderAttributes;
-    type BuiltPayload = EthBuiltPayload;
+    type BuiltPayload = EvBuiltPayload;
 
     fn try_build(
         &self,
@@ -193,9 +194,9 @@ where
             sealed_block.gas_used
         );
 
-        // Convert to EthBuiltPayload.
+        // Convert to EvBuiltPayload.
         let gas_used = sealed_block.gas_used;
-        let built_payload = EthBuiltPayload::new(
+        let built_payload = EvBuiltPayload::new(
             attributes.payload_id(), // Use the proper payload ID from attributes.
             Arc::new(sealed_block),
             U256::from(gas_used), // Block gas used.
@@ -257,7 +258,7 @@ where
         .map_err(PayloadBuilderError::other)?;
 
         let gas_used = sealed_block.gas_used;
-        Ok(EthBuiltPayload::new(
+        Ok(EvBuiltPayload::new(
             attributes.payload_id(),
             Arc::new(sealed_block),
             U256::from(gas_used),
