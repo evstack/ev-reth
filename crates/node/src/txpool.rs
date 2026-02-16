@@ -739,7 +739,7 @@ mod tests {
         );
     }
 
-    /// Tests pool-level deploy allowlist rejection for EvNode CREATE when caller not allowlisted.
+    /// Tests pool-level deploy allowlist rejection for `EvNode` CREATE when caller not allowlisted.
     #[test]
     fn evnode_create_rejected_when_not_allowlisted() {
         // Configure deploy allowlist with a different address than the signer
