@@ -21,7 +21,7 @@ use reth_node_builder::{
     BuilderContext,
 };
 use reth_primitives_traits::NodePrimitives;
-use reth_storage_api::{AccountInfoReader, StateProviderFactory};
+use reth_storage_api::{AccountInfoReader, BlockNumReader, StateProviderFactory};
 use reth_transaction_pool::{
     blobstore::DiskFileBlobStore,
     error::{InvalidPoolTransactionError, PoolTransactionError},
@@ -305,15 +305,24 @@ impl PoolTransactionError for EvTxPoolError {
 }
 
 /// Transaction validator that adds EV-specific checks on top of the base validator.
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct EvTransactionValidator<Client> {
     inner: Arc<EthTransactionValidator<Client, EvPooledTransaction>>,
     deploy_allowlist: Option<ev_revm::deploy::DeployAllowlistSettings>,
 }
 
-impl<Client> EvTransactionValidator<Client> {
+impl<Client> EvTransactionValidator<Client>
+where
+    Client: BlockNumReader,
+{
     /// Wraps the provided Ethereum validator with EV-specific validation logic.
-    pub fn new(inner: EthTransactionValidator<Client, EvPooledTransaction>, deploy_allowlist: Option<ev_revm::deploy::DeployAllowlistSettings>) -> Self {
+    pub fn new(
+        inner: EthTransactionValidator<Client, EvPooledTransaction>,
+        deploy_allowlist: Option<ev_revm::deploy::DeployAllowlistSettings>,
+    ) -> Self
+    where
+        Client: BlockNumReader,
+    {
         Self {
             inner: Arc::new(inner),
             deploy_allowlist,
@@ -397,13 +406,19 @@ impl<Client> EvTransactionValidator<Client> {
                     tx.calls.first().map(|c| c.to.is_create()).unwrap_or(false)
                 }
             };
-            if is_top_level_create {
-                let caller = pooled.transaction().signer();
-                if !settings.is_allowed(caller) {
-                    return Err(InvalidPoolTransactionError::other(
-                        EvTxPoolError::DeployNotAllowed,
-                    ));
-                }
+            let caller = pooled.transaction().signer();
+            let block_number = self
+                .inner
+                .client()
+                .best_block_number()
+                .unwrap_or(0);
+            if let Err(_e) = ev_revm::deploy::check_deploy_allowed(
+                Some(settings),
+                caller,
+                is_top_level_create,
+                block_number,
+            ) {
+                return Err(InvalidPoolTransactionError::other(EvTxPoolError::DeployNotAllowed));
             }
         }
 
@@ -446,7 +461,9 @@ impl<Client> EvTransactionValidator<Client> {
 
 impl<Client> TransactionValidator for EvTransactionValidator<Client>
 where
-    Client: ChainSpecProvider<ChainSpec: EthereumHardforks> + StateProviderFactory,
+    Client: ChainSpecProvider<ChainSpec: EthereumHardforks>
+        + StateProviderFactory
+        + BlockNumReader,
 {
     type Transaction = EvPooledTransaction;
 
