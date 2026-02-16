@@ -305,7 +305,7 @@ impl PoolTransactionError for EvTxPoolError {
 }
 
 /// Transaction validator that adds EV-specific checks on top of the base validator.
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 pub struct EvTransactionValidator<Client> {
     inner: Arc<EthTransactionValidator<Client, EvPooledTransaction>>,
     deploy_allowlist: Option<ev_revm::deploy::DeployAllowlistSettings>,
@@ -571,8 +571,6 @@ where
                 let deploy_allowlist = evolve_config
                     .deploy_allowlist_settings()
                     .map(|(allowlist, activation)| {
-                        // Note: pool validation currently assumes allowlist is active once set.
-                        // Activation height is still enforced during execution.
                         ev_revm::deploy::DeployAllowlistSettings::new(allowlist, activation)
                     });
                 EvTransactionValidator::new(inner, deploy_allowlist)
@@ -739,8 +737,6 @@ mod tests {
     /// Tests pool-level deploy allowlist rejection for EvNode CREATE when caller not allowlisted.
     #[test]
     fn evnode_create_rejected_when_not_allowlisted() {
-
-
         // Configure deploy allowlist with a different address than the signer
         let allowed = Address::from([0x11u8; 20]);
         let settings = ev_revm::deploy::DeployAllowlistSettings::new(vec![allowed], 0);
