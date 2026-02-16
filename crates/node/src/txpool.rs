@@ -295,7 +295,10 @@ impl PoolTransactionError for EvTxPoolError {
     fn is_bad_transaction(&self) -> bool {
         matches!(
             self,
-            Self::EmptyCalls | Self::InvalidCreatePosition | Self::InvalidSponsorSignature | Self::DeployNotAllowed
+            Self::EmptyCalls
+                | Self::InvalidCreatePosition
+                | Self::InvalidSponsorSignature
+                | Self::DeployNotAllowed
         )
     }
 
@@ -407,18 +410,16 @@ where
                 }
             };
             let caller = pooled.transaction().signer();
-            let block_number = self
-                .inner
-                .client()
-                .best_block_number()
-                .unwrap_or(0);
+            let block_number = self.inner.client().best_block_number().unwrap_or(0);
             if let Err(_e) = ev_revm::deploy::check_deploy_allowed(
                 Some(settings),
                 caller,
                 is_top_level_create,
                 block_number,
             ) {
-                return Err(InvalidPoolTransactionError::other(EvTxPoolError::DeployNotAllowed));
+                return Err(InvalidPoolTransactionError::other(
+                    EvTxPoolError::DeployNotAllowed,
+                ));
             }
         }
 
@@ -461,9 +462,7 @@ where
 
 impl<Client> TransactionValidator for EvTransactionValidator<Client>
 where
-    Client: ChainSpecProvider<ChainSpec: EthereumHardforks>
-        + StateProviderFactory
-        + BlockNumReader,
+    Client: ChainSpecProvider<ChainSpec: EthereumHardforks> + StateProviderFactory + BlockNumReader,
 {
     type Transaction = EvPooledTransaction;
 
@@ -568,11 +567,12 @@ where
                     ctx.chain_spec().as_ref(),
                 )
                 .unwrap_or_default();
-                let deploy_allowlist = evolve_config
-                    .deploy_allowlist_settings()
-                    .map(|(allowlist, activation)| {
-                        ev_revm::deploy::DeployAllowlistSettings::new(allowlist, activation)
-                    });
+                let deploy_allowlist =
+                    evolve_config
+                        .deploy_allowlist_settings()
+                        .map(|(allowlist, activation)| {
+                            ev_revm::deploy::DeployAllowlistSettings::new(allowlist, activation)
+                        });
                 EvTransactionValidator::new(inner, deploy_allowlist)
             });
 
@@ -630,7 +630,10 @@ mod tests {
     }
 
     /// Creates a non-sponsored `EvNode` transaction with CREATE as the first call.
-    fn create_non_sponsored_evnode_create_tx(gas_limit: u64, max_fee_per_gas: u128) -> EvNodeSignedTx {
+    fn create_non_sponsored_evnode_create_tx(
+        gas_limit: u64,
+        max_fee_per_gas: u128,
+    ) -> EvNodeSignedTx {
         let tx = EvNodeTransaction {
             chain_id: 1,
             nonce: 0,
@@ -655,7 +658,9 @@ mod tests {
         EvPooledTransaction::new(recovered, encoded_length)
     }
 
-    fn create_test_validator(deploy_allowlist: Option<ev_revm::deploy::DeployAllowlistSettings>) -> EvTransactionValidator<MockEthProvider> {
+    fn create_test_validator(
+        deploy_allowlist: Option<ev_revm::deploy::DeployAllowlistSettings>,
+    ) -> EvTransactionValidator<MockEthProvider> {
         use reth_transaction_pool::{
             blobstore::InMemoryBlobStore, validate::EthTransactionValidatorBuilder,
         };

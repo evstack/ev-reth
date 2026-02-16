@@ -68,7 +68,9 @@ pub fn check_deploy_allowed(
     if !is_top_level_create {
         return Ok(());
     }
-    let Some(settings) = settings else { return Ok(()); };
+    let Some(settings) = settings else {
+        return Ok(());
+    };
     if !settings.is_active(block_number) {
         return Ok(());
     }
