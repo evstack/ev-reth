@@ -26,11 +26,17 @@ use reth_revm::{
     revm::{context_interface::result::ResultAndState, database::State, DatabaseCommit, Inspector},
 };
 
-// Local copy mirroring alloy_evm's EthTxResult for our custom executor
+/// Execution result wrapper used by the EV block executor.
+///
+/// This mirrors the public surface needed from alloy-evm's internal result type and
+/// implements `TxResult` so it integrates with the generic `BlockExecutor` trait.
 #[derive(Debug)]
 pub struct EvTxResult<H, T> {
+    /// Result of EVM execution alongside the resulting state changes.
     pub result: ResultAndState<H>,
+    /// Amount of blob gas used by the executed transaction (0 before Cancun).
     pub blob_gas_used: u64,
+    /// Consensus-layer transaction type used for receipt construction.
     pub tx_type: T,
 }
 

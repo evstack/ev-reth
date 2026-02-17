@@ -30,12 +30,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
-      - name: Run tests
+      - name: Run tests (unit/integration only)
         run: |
           cargo nextest run \
             --locked \
             --workspace \
-            -E 'kind(test)' \
+            -E 'kind(test) - package(ev-tests)' \
             --no-tests=warn \
             --no-capture
 

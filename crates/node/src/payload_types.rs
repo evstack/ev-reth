@@ -234,7 +234,7 @@ impl TryFrom<EvBuiltPayload> for ExecutionPayloadEnvelopeV6 {
             block_access_list: Bytes::new(),
         };
 
-        Ok(ExecutionPayloadEnvelopeV6 {
+        Ok(Self {
             execution_payload,
             block_value: fees,
             should_override_builder: false,

@@ -593,7 +593,7 @@ mod tests {
         let provider = MockEthProvider::default().with_genesis_block();
         let evm = crate::executor::EvolveEvmConfig::new(provider.chain_spec());
         let blob_store = InMemoryBlobStore::default();
-        let inner = EthTransactionValidatorBuilder::new(provider, evm.clone())
+        let inner = EthTransactionValidatorBuilder::new(provider, evm)
             .no_shanghai()
             .no_cancun()
             .build(blob_store);
