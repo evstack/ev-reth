@@ -29,7 +29,7 @@ use reth_transaction_pool::{
     EthTransactionValidator, PoolTransaction, TransactionOrigin, TransactionValidationOutcome,
     TransactionValidationTaskExecutor, TransactionValidator,
 };
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 /// Pool transaction wrapper for `EvTxEnvelope`.
 #[derive(Debug, Clone)]
@@ -410,7 +410,9 @@ where
                 }
             };
             let caller = pooled.transaction().signer();
-            let block_number = self.inner.client().best_block_number().unwrap_or(0);
+            let block_number = self.inner.client().best_block_number().map_err(|err| {
+                InvalidPoolTransactionError::other(EvTxPoolError::StateProvider(err.to_string()))
+            })?;
             if let Err(_e) = ev_revm::deploy::check_deploy_allowed(
                 Some(settings),
                 caller,
@@ -566,7 +568,13 @@ where
                 let evolve_config = crate::config::EvolvePayloadBuilderConfig::from_chain_spec(
                     ctx.chain_spec().as_ref(),
                 )
-                .unwrap_or_default();
+                .unwrap_or_else(|err| {
+                    warn!(
+                        target: "reth::cli",
+                        "Failed to parse evolve config from chainspec: {err}"
+                    );
+                    Default::default()
+                });
                 let deploy_allowlist =
                     evolve_config
                         .deploy_allowlist_settings()
