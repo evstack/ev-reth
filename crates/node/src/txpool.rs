@@ -303,13 +303,13 @@ impl PoolTransactionError for EvTxPoolError {
 
 /// Transaction validator that adds EV-specific checks on top of the base validator.
 #[derive(Debug, Clone)]
-pub struct EvTransactionValidator<Client> {
-    inner: Arc<EthTransactionValidator<Client, EvPooledTransaction>>,
+pub struct EvTransactionValidator<Client, Evm> {
+    inner: Arc<EthTransactionValidator<Client, EvPooledTransaction, Evm>>,
 }
 
-impl<Client> EvTransactionValidator<Client> {
+impl<Client, Evm> EvTransactionValidator<Client, Evm> {
     /// Wraps the provided Ethereum validator with EV-specific validation logic.
-    pub fn new(inner: EthTransactionValidator<Client, EvPooledTransaction>) -> Self {
+    pub fn new(inner: EthTransactionValidator<Client, EvPooledTransaction, Evm>) -> Self {
         Self {
             inner: Arc::new(inner),
         }
@@ -340,7 +340,7 @@ impl<Client> EvTransactionValidator<Client> {
         Client: StateProviderFactory,
     {
         if state.is_none() {
-            let new_state = self.inner.client().latest().map_err(|err| {
+            let new_state = self.inner.client().latest().map_err(|err: _| {
                 InvalidPoolTransactionError::other(EvTxPoolError::StateProvider(err.to_string()))
             })?;
             *state = Some(Box::new(new_state));
@@ -420,11 +420,13 @@ impl<Client> EvTransactionValidator<Client> {
     }
 }
 
-impl<Client> TransactionValidator for EvTransactionValidator<Client>
+impl<Client, Evm> TransactionValidator for EvTransactionValidator<Client, Evm>
 where
     Client: ChainSpecProvider<ChainSpec: EthereumHardforks> + StateProviderFactory,
+    Evm: reth_evm::ConfigureEvm + 'static,
 {
     type Transaction = EvPooledTransaction;
+    type Block = <Evm::Primitives as reth_primitives_traits::NodePrimitives>::Block;
 
     async fn validate_transaction(
         &self,
@@ -467,21 +469,22 @@ where
 #[non_exhaustive]
 pub struct EvolvePoolBuilder;
 
-impl<Types, Node> PoolBuilder<Node> for EvolvePoolBuilder
+impl<Types, Node, Evm> PoolBuilder<Node, Evm> for EvolvePoolBuilder
 where
     Types: NodeTypes<
         ChainSpec: EthereumHardforks,
         Primitives: NodePrimitives<SignedTx = TransactionSigned>,
     >,
     Node: FullNodeTypes<Types = Types>,
+    Evm: reth_evm::ConfigureEvm<Primitives = Types::Primitives> + 'static,
 {
     type Pool = reth_transaction_pool::Pool<
-        TransactionValidationTaskExecutor<EvTransactionValidator<Node::Provider>>,
+        TransactionValidationTaskExecutor<EvTransactionValidator<Node::Provider, Evm>>,
         CoinbaseTipOrdering<EvPooledTransaction>,
         DiskFileBlobStore,
     >;
 
-    async fn build_pool(self, ctx: &BuilderContext<Node>) -> eyre::Result<Self::Pool> {
+    async fn build_pool(self, ctx: &BuilderContext<Node>, evm: Evm) -> eyre::Result<Self::Pool> {
         let pool_config = ctx.pool_config();
 
         let blobs_disabled = ctx.config().txpool.blobpool_max_count == 0;
@@ -502,8 +505,7 @@ where
 
         let blob_store = create_blob_store_with_cache(ctx, blob_cache_size)?;
 
-        let validator = TransactionValidationTaskExecutor::eth_builder(ctx.provider().clone())
-            .with_head_timestamp(ctx.head().timestamp)
+        let validator = TransactionValidationTaskExecutor::eth_builder(ctx.provider().clone(), evm)
             .set_eip4844(!blobs_disabled)
             .kzg_settings(ctx.kzg_settings()?)
             .with_max_tx_input_bytes(ctx.config().txpool.max_tx_input_bytes)
@@ -525,7 +527,7 @@ where
 
         if validator.validator().inner.eip4844() {
             let kzg_settings = validator.validator().inner.kzg_settings().clone();
-            ctx.task_executor().spawn_blocking(async move {
+            ctx.task_executor().spawn_blocking(move || {
                 let _ = kzg_settings.get();
                 debug!(target: "reth::cli", "Initialized KZG settings");
             });
@@ -583,14 +585,15 @@ mod tests {
         EvPooledTransaction::new(recovered, encoded_length)
     }
 
-    fn create_test_validator() -> EvTransactionValidator<MockEthProvider> {
+    fn build_test_validator(
+    ) -> EvTransactionValidator<MockEthProvider, crate::executor::EvolveEvmConfig> {
         use reth_transaction_pool::{
             blobstore::InMemoryBlobStore, validate::EthTransactionValidatorBuilder,
         };
-
-        let provider = MockEthProvider::default();
+        let provider = MockEthProvider::default().with_genesis_block();
+        let evm = crate::executor::EvolveEvmConfig::new(provider.chain_spec());
         let blob_store = InMemoryBlobStore::default();
-        let inner = EthTransactionValidatorBuilder::new(provider)
+        let inner = EthTransactionValidatorBuilder::new(provider, evm.clone())
             .no_shanghai()
             .no_cancun()
             .build(blob_store);
@@ -604,7 +607,7 @@ mod tests {
     /// sender balance for non-sponsored `EvNode` transactions.
     #[test]
     fn non_sponsored_evnode_rejects_insufficient_balance() {
-        let validator = create_test_validator();
+        let validator = build_test_validator();
 
         // Create a non-sponsored EvNode transaction
         let gas_limit = 21_000u64;
@@ -638,7 +641,7 @@ mod tests {
     /// Tests that non-sponsored `EvNode` transactions with sufficient balance are accepted.
     #[test]
     fn non_sponsored_evnode_accepts_sufficient_balance() {
-        let validator = create_test_validator();
+        let validator = build_test_validator();
 
         let gas_limit = 21_000u64;
         let max_fee_per_gas = 1_000_000_000u128;

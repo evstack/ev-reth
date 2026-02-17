@@ -1,6 +1,6 @@
 use std::{borrow::Cow, boxed::Box, vec::Vec};
 
-use alloy_consensus::{Transaction, TxReceipt};
+use alloy_consensus::{Transaction, TransactionEnvelope, TxReceipt};
 use alloy_eips::{eip7685::Requests, Encodable2718};
 use alloy_evm::{
     block::{
@@ -15,17 +15,32 @@ use alloy_evm::{
         spec::{EthExecutorSpec, EthSpec},
         EthBlockExecutionCtx,
     },
-    Database, EthEvmFactory, Evm, EvmFactory, FromRecoveredTx, FromTxWithEncoded,
+    Database, EthEvmFactory, Evm, EvmFactory, FromRecoveredTx, FromTxWithEncoded, RecoveredTx,
 };
 use alloy_primitives::Log;
 use ev_primitives::{Receipt, TransactionSigned};
-use reth_codecs::alloy::transaction::Envelope;
 use reth_ethereum_forks::EthereumHardfork;
 use reth_revm::{
     context_interface::block::Block as BlockEnvTr,
     database_interface::DatabaseCommitExt,
     revm::{context_interface::result::ResultAndState, database::State, DatabaseCommit, Inspector},
 };
+
+// Local copy mirroring alloy_evm's EthTxResult for our custom executor
+#[derive(Debug)]
+pub struct EvTxResult<H, T> {
+    pub result: ResultAndState<H>,
+    pub blob_gas_used: u64,
+    pub tx_type: T,
+}
+
+impl<H, T> alloy_evm::block::TxResult for EvTxResult<H, T> {
+    type HaltReason = H;
+
+    fn result(&self) -> &ResultAndState<Self::HaltReason> {
+        &self.result
+    }
+}
 
 /// Receipt builder that works with Ev transaction envelopes.
 #[derive(Debug, Clone, Copy, Default)]
@@ -38,16 +53,16 @@ impl ReceiptBuilder for EvReceiptBuilder {
 
     fn build_receipt<E: Evm>(
         &self,
-        ctx: ReceiptBuilderCtx<'_, Self::Transaction, E>,
+        ctx: ReceiptBuilderCtx<'_, <Self::Transaction as TransactionEnvelope>::TxType, E>,
     ) -> Self::Receipt {
         let ReceiptBuilderCtx {
-            tx,
+            tx_type,
             result,
             cumulative_gas_used,
             ..
         } = ctx;
         Receipt {
-            tx_type: tx.tx_type(),
+            tx_type,
             success: result.is_success(),
             cumulative_gas_used,
             logs: result.into_logs(),
@@ -102,6 +117,8 @@ where
     type Transaction = R::Transaction;
     type Receipt = R::Receipt;
     type Evm = E;
+    type Result =
+        EvTxResult<<Self::Evm as Evm>::HaltReason, <R::Transaction as TransactionEnvelope>::TxType>;
 
     fn apply_pre_execution_changes(&mut self) -> Result<(), BlockExecutionError> {
         let state_clear_flag = self
@@ -120,7 +137,9 @@ where
     fn execute_transaction_without_commit(
         &mut self,
         tx: impl ExecutableTx<Self>,
-    ) -> Result<ResultAndState<<Self::Evm as Evm>::HaltReason>, BlockExecutionError> {
+    ) -> Result<Self::Result, BlockExecutionError> {
+        let (tx_env, tx) = tx.into_parts();
+
         let block_available_gas = self.evm.block().gas_limit() - self.gas_used;
 
         if tx.tx().gas_limit() > block_available_gas {
@@ -133,18 +152,24 @@ where
             );
         }
 
-        self.evm.transact(&tx).map_err(|err| {
+        let result = self.evm.transact(tx_env).map_err(|err| {
             let hash = tx.tx().trie_hash();
             BlockExecutionError::evm(err, hash)
+        })?;
+
+        Ok(EvTxResult {
+            result,
+            blob_gas_used: tx.tx().blob_gas_used().unwrap_or_default(),
+            tx_type: tx.tx().tx_type(),
         })
     }
 
-    fn commit_transaction(
-        &mut self,
-        output: ResultAndState<<Self::Evm as Evm>::HaltReason>,
-        tx: impl ExecutableTx<Self>,
-    ) -> Result<u64, BlockExecutionError> {
-        let ResultAndState { result, state } = output;
+    fn commit_transaction(&mut self, output: Self::Result) -> Result<u64, BlockExecutionError> {
+        let EvTxResult {
+            result: ResultAndState { result, state },
+            blob_gas_used,
+            tx_type,
+        } = output;
 
         self.system_caller
             .on_state(StateChangeSource::Transaction(self.receipts.len()), &state);
@@ -156,13 +181,12 @@ where
             .spec
             .is_cancun_active_at_timestamp(self.evm.block().timestamp().saturating_to())
         {
-            let tx_blob_gas_used = tx.tx().blob_gas_used().unwrap_or_default();
-            self.blob_gas_used = self.blob_gas_used.saturating_add(tx_blob_gas_used);
+            self.blob_gas_used = self.blob_gas_used.saturating_add(blob_gas_used);
         }
 
         self.receipts
             .push(self.receipt_builder.build_receipt(ReceiptBuilderCtx {
-                tx: tx.tx(),
+                tx_type,
                 evm: &self.evm,
                 result,
                 state: &state,
