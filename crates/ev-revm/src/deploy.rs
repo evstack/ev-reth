@@ -45,3 +45,38 @@ impl DeployAllowlistSettings {
         self.allowlist.binary_search(&caller).is_ok()
     }
 }
+
+/// Error returned by deploy allowlist checks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeployCheckError {
+    /// Caller is not allowed to perform top-level contract creation.
+    NotAllowed,
+}
+
+// Intentionally no envelope discriminator here to keep dependencies light.
+
+/// Enforces the deploy allowlist policy.
+///
+/// If `is_top_level_create` is false or settings are None or not active yet, this is a no-op.
+/// Otherwise returns `NotAllowed` if `caller` is not in the allowlist.
+pub fn check_deploy_allowed(
+    settings: Option<&DeployAllowlistSettings>,
+    caller: Address,
+    is_top_level_create: bool,
+    block_number: u64,
+) -> Result<(), DeployCheckError> {
+    if !is_top_level_create {
+        return Ok(());
+    }
+    let Some(settings) = settings else {
+        return Ok(());
+    };
+    if !settings.is_active(block_number) {
+        return Ok(());
+    }
+    if settings.is_allowed(caller) {
+        Ok(())
+    } else {
+        Err(DeployCheckError::NotAllowed)
+    }
+}
