@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
 use alloy_eips::eip7685::Requests;
-use alloy_primitives::Bytes;
-use alloy_primitives::U256;
+use alloy_primitives::{Bytes, U256};
 use alloy_rpc_types_engine::{
     BlobsBundleV1, BlobsBundleV2, ExecutionPayloadEnvelopeV2, ExecutionPayloadEnvelopeV3,
     ExecutionPayloadEnvelopeV4, ExecutionPayloadEnvelopeV5, ExecutionPayloadEnvelopeV6,
