@@ -79,11 +79,14 @@ impl<EVM, ERROR, FRAME> EvHandler<EVM, ERROR, FRAME> {
             .number()
             .try_into()
             .unwrap_or(u64::MAX);
-        let Some(settings) = self.deploy_allowlist_for_block(block_number) else {
-            return Ok(());
-        };
         let tx = evm.ctx_ref().tx();
-        if matches!(tx.kind(), TxKind::Create) && !settings.is_allowed(tx.caller()) {
+        let caller = tx.caller();
+        let is_create = matches!(tx.kind(), TxKind::Create);
+
+        let settings = self.deploy_allowlist_for_block(block_number);
+        if let Err(_e) =
+            crate::deploy::check_deploy_allowed(settings, caller, is_create, block_number)
+        {
             return Err(
                 <ERROR as reth_revm::revm::context::result::FromStringError>::from_string(
                     "contract deployment not allowed".to_string(),
