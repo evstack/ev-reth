@@ -354,9 +354,15 @@ where
         Client: StateProviderFactory,
     {
         if state.is_none() {
-            let new_state = self.inner.client().latest().map_err(|err: reth_provider::ProviderError| {
-                InvalidPoolTransactionError::other(EvTxPoolError::StateProvider(err.to_string()))
-            })?;
+            let new_state =
+                self.inner
+                    .client()
+                    .latest()
+                    .map_err(|err: reth_provider::ProviderError| {
+                        InvalidPoolTransactionError::other(EvTxPoolError::StateProvider(
+                            err.to_string(),
+                        ))
+                    })?;
             *state = Some(Box::new(new_state));
         }
         Ok(())
@@ -407,13 +413,13 @@ where
                 }
             };
             let caller = pooled.transaction().signer();
-            let block_number = self
-                .inner
-                .client()
-                .best_block_number()
-                .map_err(|err: reth_provider::ProviderError| {
-                InvalidPoolTransactionError::other(EvTxPoolError::StateProvider(err.to_string()))
-            })?;
+            let block_number = self.inner.client().best_block_number().map_err(
+                |err: reth_provider::ProviderError| {
+                    InvalidPoolTransactionError::other(EvTxPoolError::StateProvider(
+                        err.to_string(),
+                    ))
+                },
+            )?;
             if let Err(_e) = ev_revm::deploy::check_deploy_allowed(
                 Some(settings),
                 caller,
