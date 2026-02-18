@@ -1,6 +1,6 @@
 use std::{borrow::Cow, boxed::Box, vec::Vec};
 
-use alloy_consensus::{Transaction, TxReceipt};
+use alloy_consensus::{Transaction, TransactionEnvelope, TxReceipt};
 use alloy_eips::{eip7685::Requests, Encodable2718};
 use alloy_evm::{
     block::{
@@ -15,15 +15,38 @@ use alloy_evm::{
         spec::{EthExecutorSpec, EthSpec},
         EthBlockExecutionCtx,
     },
-    Database, EthEvmFactory, Evm, EvmFactory, FromRecoveredTx, FromTxWithEncoded,
+    Database, EthEvmFactory, Evm, EvmFactory, FromRecoveredTx, FromTxWithEncoded, RecoveredTx,
 };
 use alloy_primitives::Log;
 use ev_primitives::{Receipt, TransactionSigned};
-use reth_codecs::alloy::transaction::Envelope;
 use reth_ethereum_forks::EthereumHardfork;
-use reth_revm::revm::{
-    context_interface::result::ResultAndState, database::State, DatabaseCommit, Inspector,
+use reth_revm::{
+    context_interface::block::Block as BlockEnvTr,
+    database_interface::DatabaseCommitExt,
+    revm::{context_interface::result::ResultAndState, database::State, DatabaseCommit, Inspector},
 };
+
+/// Execution result wrapper used by the EV block executor.
+///
+/// This mirrors the public surface needed from alloy-evm's internal result type and
+/// implements `TxResult` so it integrates with the generic `BlockExecutor` trait.
+#[derive(Debug)]
+pub struct EvTxResult<H, T> {
+    /// Result of EVM execution alongside the resulting state changes.
+    pub result: ResultAndState<H>,
+    /// Amount of blob gas used by the executed transaction (0 before Cancun).
+    pub blob_gas_used: u64,
+    /// Consensus-layer transaction type used for receipt construction.
+    pub tx_type: T,
+}
+
+impl<H, T> alloy_evm::block::TxResult for EvTxResult<H, T> {
+    type HaltReason = H;
+
+    fn result(&self) -> &ResultAndState<Self::HaltReason> {
+        &self.result
+    }
+}
 
 /// Receipt builder that works with Ev transaction envelopes.
 #[derive(Debug, Clone, Copy, Default)]
@@ -36,16 +59,16 @@ impl ReceiptBuilder for EvReceiptBuilder {
 
     fn build_receipt<E: Evm>(
         &self,
-        ctx: ReceiptBuilderCtx<'_, Self::Transaction, E>,
+        ctx: ReceiptBuilderCtx<'_, <Self::Transaction as TransactionEnvelope>::TxType, E>,
     ) -> Self::Receipt {
         let ReceiptBuilderCtx {
-            tx,
+            tx_type,
             result,
             cumulative_gas_used,
             ..
         } = ctx;
         Receipt {
-            tx_type: tx.tx_type(),
+            tx_type,
             success: result.is_success(),
             cumulative_gas_used,
             logs: result.into_logs(),
@@ -64,6 +87,7 @@ pub struct EvBlockExecutor<'a, Evm, Spec, R: ReceiptBuilder> {
     receipt_builder: R,
     receipts: Vec<R::Receipt>,
     gas_used: u64,
+    blob_gas_used: u64,
 }
 
 impl<'a, Evm, Spec, R> EvBlockExecutor<'a, Evm, Spec, R>
@@ -78,6 +102,7 @@ where
             ctx,
             receipts: Vec::new(),
             gas_used: 0,
+            blob_gas_used: 0,
             system_caller: SystemCaller::new(spec.clone()),
             spec,
             receipt_builder,
@@ -98,11 +123,13 @@ where
     type Transaction = R::Transaction;
     type Receipt = R::Receipt;
     type Evm = E;
+    type Result =
+        EvTxResult<<Self::Evm as Evm>::HaltReason, <R::Transaction as TransactionEnvelope>::TxType>;
 
     fn apply_pre_execution_changes(&mut self) -> Result<(), BlockExecutionError> {
         let state_clear_flag = self
             .spec
-            .is_spurious_dragon_active_at_block(self.evm.block().number.saturating_to());
+            .is_spurious_dragon_active_at_block(self.evm.block().number().saturating_to());
         self.evm.db_mut().set_state_clear_flag(state_clear_flag);
 
         self.system_caller
@@ -116,8 +143,10 @@ where
     fn execute_transaction_without_commit(
         &mut self,
         tx: impl ExecutableTx<Self>,
-    ) -> Result<ResultAndState<<Self::Evm as Evm>::HaltReason>, BlockExecutionError> {
-        let block_available_gas = self.evm.block().gas_limit - self.gas_used;
+    ) -> Result<Self::Result, BlockExecutionError> {
+        let (tx_env, tx) = tx.into_parts();
+
+        let block_available_gas = self.evm.block().gas_limit() - self.gas_used;
 
         if tx.tx().gas_limit() > block_available_gas {
             return Err(
@@ -129,18 +158,24 @@ where
             );
         }
 
-        self.evm.transact(&tx).map_err(|err| {
+        let result = self.evm.transact(tx_env).map_err(|err| {
             let hash = tx.tx().trie_hash();
             BlockExecutionError::evm(err, hash)
+        })?;
+
+        Ok(EvTxResult {
+            result,
+            blob_gas_used: tx.tx().blob_gas_used().unwrap_or_default(),
+            tx_type: tx.tx().tx_type(),
         })
     }
 
-    fn commit_transaction(
-        &mut self,
-        output: ResultAndState<<Self::Evm as Evm>::HaltReason>,
-        tx: impl ExecutableTx<Self>,
-    ) -> Result<u64, BlockExecutionError> {
-        let ResultAndState { result, state } = output;
+    fn commit_transaction(&mut self, output: Self::Result) -> Result<u64, BlockExecutionError> {
+        let EvTxResult {
+            result: ResultAndState { result, state },
+            blob_gas_used,
+            tx_type,
+        } = output;
 
         self.system_caller
             .on_state(StateChangeSource::Transaction(self.receipts.len()), &state);
@@ -148,9 +183,16 @@ where
         let gas_used = result.gas_used();
         self.gas_used += gas_used;
 
+        if self
+            .spec
+            .is_cancun_active_at_timestamp(self.evm.block().timestamp().saturating_to())
+        {
+            self.blob_gas_used = self.blob_gas_used.saturating_add(blob_gas_used);
+        }
+
         self.receipts
             .push(self.receipt_builder.build_receipt(ReceiptBuilderCtx {
-                tx: tx.tx(),
+                tx_type,
                 evm: &self.evm,
                 result,
                 state: &state,
@@ -162,12 +204,16 @@ where
         Ok(gas_used)
     }
 
+    fn receipts(&self) -> &[Self::Receipt] {
+        &self.receipts
+    }
+
     fn finish(
         mut self,
     ) -> Result<(Self::Evm, BlockExecutionResult<R::Receipt>), BlockExecutionError> {
         let requests = if self
             .spec
-            .is_prague_active_at_timestamp(self.evm.block().timestamp.saturating_to())
+            .is_prague_active_at_timestamp(self.evm.block().timestamp().saturating_to())
         {
             let deposit_requests =
                 eip6110::parse_deposits_from_receipts(&self.spec, &self.receipts)?;
@@ -197,7 +243,7 @@ where
         if self
             .spec
             .ethereum_fork_activation(EthereumHardfork::Dao)
-            .transitions_at_block(self.evm.block().number.saturating_to())
+            .transitions_at_block(self.evm.block().number().saturating_to())
         {
             let drained_balance: u128 = self
                 .evm
@@ -232,6 +278,7 @@ where
                 receipts: self.receipts,
                 requests,
                 gas_used: self.gas_used,
+                blob_gas_used: self.blob_gas_used,
             },
         ))
     }

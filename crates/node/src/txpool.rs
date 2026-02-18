@@ -309,23 +309,20 @@ impl PoolTransactionError for EvTxPoolError {
 
 /// Transaction validator that adds EV-specific checks on top of the base validator.
 #[derive(Debug, Clone)]
-pub struct EvTransactionValidator<Client> {
-    inner: Arc<EthTransactionValidator<Client, EvPooledTransaction>>,
+pub struct EvTransactionValidator<Client, Evm> {
+    inner: Arc<EthTransactionValidator<Client, EvPooledTransaction, Evm>>,
     deploy_allowlist: Option<ev_revm::deploy::DeployAllowlistSettings>,
 }
 
-impl<Client> EvTransactionValidator<Client>
+impl<Client, Evm> EvTransactionValidator<Client, Evm>
 where
     Client: BlockNumReader,
 {
     /// Wraps the provided Ethereum validator with EV-specific validation logic.
     pub fn new(
-        inner: EthTransactionValidator<Client, EvPooledTransaction>,
+        inner: EthTransactionValidator<Client, EvPooledTransaction, Evm>,
         deploy_allowlist: Option<ev_revm::deploy::DeployAllowlistSettings>,
-    ) -> Self
-    where
-        Client: BlockNumReader,
-    {
+    ) -> Self {
         Self {
             inner: Arc::new(inner),
             deploy_allowlist,
@@ -351,15 +348,21 @@ where
 
     fn ensure_state(
         &self,
-        state: &mut Option<Box<dyn AccountInfoReader>>,
+        state: &mut Option<Box<dyn AccountInfoReader + Send>>,
     ) -> Result<(), InvalidPoolTransactionError>
     where
         Client: StateProviderFactory,
     {
         if state.is_none() {
-            let new_state = self.inner.client().latest().map_err(|err| {
-                InvalidPoolTransactionError::other(EvTxPoolError::StateProvider(err.to_string()))
-            })?;
+            let new_state =
+                self.inner
+                    .client()
+                    .latest()
+                    .map_err(|err: reth_provider::ProviderError| {
+                        InvalidPoolTransactionError::other(EvTxPoolError::StateProvider(
+                            err.to_string(),
+                        ))
+                    })?;
             *state = Some(Box::new(new_state));
         }
         Ok(())
@@ -367,7 +370,7 @@ where
 
     fn validate_sponsor_balance(
         &self,
-        state: &mut Option<Box<dyn AccountInfoReader>>,
+        state: &mut Option<Box<dyn AccountInfoReader + Send>>,
         sponsor: Address,
         gas_cost: U256,
     ) -> Result<(), InvalidPoolTransactionError>
@@ -395,7 +398,7 @@ where
         &self,
         pooled: &EvPooledTransaction,
         sender_balance: U256,
-        state: &mut Option<Box<dyn AccountInfoReader>>,
+        state: &mut Option<Box<dyn AccountInfoReader + Send>>,
     ) -> Result<(), InvalidPoolTransactionError>
     where
         Client: StateProviderFactory,
@@ -410,9 +413,13 @@ where
                 }
             };
             let caller = pooled.transaction().signer();
-            let block_number = self.inner.client().best_block_number().map_err(|err| {
-                InvalidPoolTransactionError::other(EvTxPoolError::StateProvider(err.to_string()))
-            })?;
+            let block_number = self.inner.client().best_block_number().map_err(
+                |err: reth_provider::ProviderError| {
+                    InvalidPoolTransactionError::other(EvTxPoolError::StateProvider(
+                        err.to_string(),
+                    ))
+                },
+            )?;
             if let Err(_e) = ev_revm::deploy::check_deploy_allowed(
                 Some(settings),
                 caller,
@@ -462,11 +469,13 @@ where
     }
 }
 
-impl<Client> TransactionValidator for EvTransactionValidator<Client>
+impl<Client, Evm> TransactionValidator for EvTransactionValidator<Client, Evm>
 where
     Client: ChainSpecProvider<ChainSpec: EthereumHardforks> + StateProviderFactory + BlockNumReader,
+    Evm: reth_evm::ConfigureEvm + 'static,
 {
     type Transaction = EvPooledTransaction;
+    type Block = <Evm::Primitives as reth_primitives_traits::NodePrimitives>::Block;
 
     async fn validate_transaction(
         &self,
@@ -509,21 +518,22 @@ where
 #[non_exhaustive]
 pub struct EvolvePoolBuilder;
 
-impl<Types, Node> PoolBuilder<Node> for EvolvePoolBuilder
+impl<Types, Node, Evm> PoolBuilder<Node, Evm> for EvolvePoolBuilder
 where
     Types: NodeTypes<
         ChainSpec = reth_chainspec::ChainSpec,
         Primitives: NodePrimitives<SignedTx = TransactionSigned>,
     >,
     Node: FullNodeTypes<Types = Types>,
+    Evm: reth_evm::ConfigureEvm<Primitives = Types::Primitives> + 'static,
 {
     type Pool = reth_transaction_pool::Pool<
-        TransactionValidationTaskExecutor<EvTransactionValidator<Node::Provider>>,
+        TransactionValidationTaskExecutor<EvTransactionValidator<Node::Provider, Evm>>,
         CoinbaseTipOrdering<EvPooledTransaction>,
         DiskFileBlobStore,
     >;
 
-    async fn build_pool(self, ctx: &BuilderContext<Node>) -> eyre::Result<Self::Pool> {
+    async fn build_pool(self, ctx: &BuilderContext<Node>, evm: Evm) -> eyre::Result<Self::Pool> {
         let pool_config = ctx.pool_config();
 
         let blobs_disabled = ctx.config().txpool.blobpool_max_count == 0;
@@ -544,8 +554,7 @@ where
 
         let blob_store = create_blob_store_with_cache(ctx, blob_cache_size)?;
 
-        let validator = TransactionValidationTaskExecutor::eth_builder(ctx.provider().clone())
-            .with_head_timestamp(ctx.head().timestamp)
+        let validator = TransactionValidationTaskExecutor::eth_builder(ctx.provider().clone(), evm)
             .set_eip4844(!blobs_disabled)
             .kzg_settings(ctx.kzg_settings()?)
             .with_max_tx_input_bytes(ctx.config().txpool.max_tx_input_bytes)
@@ -586,7 +595,7 @@ where
 
         if validator.validator().inner.eip4844() {
             let kzg_settings = validator.validator().inner.kzg_settings().clone();
-            ctx.task_executor().spawn_blocking(async move {
+            ctx.task_executor().spawn_blocking(move || {
                 let _ = kzg_settings.get();
                 debug!(target: "reth::cli", "Initialized KZG settings");
             });
@@ -668,14 +677,14 @@ mod tests {
 
     fn create_test_validator(
         deploy_allowlist: Option<ev_revm::deploy::DeployAllowlistSettings>,
-    ) -> EvTransactionValidator<MockEthProvider> {
+    ) -> EvTransactionValidator<MockEthProvider, crate::executor::EvolveEvmConfig> {
         use reth_transaction_pool::{
             blobstore::InMemoryBlobStore, validate::EthTransactionValidatorBuilder,
         };
-
-        let provider = MockEthProvider::default();
+        let provider = MockEthProvider::default().with_genesis_block();
+        let evm = crate::executor::EvolveEvmConfig::new(provider.chain_spec());
         let blob_store = InMemoryBlobStore::default();
-        let inner = EthTransactionValidatorBuilder::new(provider)
+        let inner = EthTransactionValidatorBuilder::new(provider, evm)
             .no_shanghai()
             .no_cancun()
             .build(blob_store);
@@ -701,7 +710,7 @@ mod tests {
 
         // Sender has ZERO balance - clearly insufficient
         let sender_balance = U256::ZERO;
-        let mut state: Option<Box<dyn AccountInfoReader>> = None;
+        let mut state: Option<Box<dyn AccountInfoReader + Send>> = None;
 
         // Call validate_evnode - should return Overdraft error
         let result = validator.validate_evnode(&pooled, sender_balance, &mut state);
@@ -736,7 +745,7 @@ mod tests {
 
         // Sender has MORE than enough balance
         let sender_balance = tx_cost + U256::from(1);
-        let mut state: Option<Box<dyn AccountInfoReader>> = None;
+        let mut state: Option<Box<dyn AccountInfoReader + Send>> = None;
 
         let result = validator.validate_evnode(&pooled, sender_balance, &mut state);
 
@@ -763,7 +772,7 @@ mod tests {
         let pooled = create_pooled_tx(signed_tx, signer);
 
         let sender_balance = *pooled.cost() + U256::from(1);
-        let mut state: Option<Box<dyn AccountInfoReader>> = None;
+        let mut state: Option<Box<dyn AccountInfoReader + Send>> = None;
 
         let result = validator.validate_evnode(&pooled, sender_balance, &mut state);
         assert!(result.is_err());

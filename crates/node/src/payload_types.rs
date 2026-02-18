@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use alloy_eips::eip7685::Requests;
-use alloy_primitives::U256;
+use alloy_primitives::{Bytes, U256};
 use alloy_rpc_types_engine::{
     BlobsBundleV1, BlobsBundleV2, ExecutionPayloadEnvelopeV2, ExecutionPayloadEnvelopeV3,
-    ExecutionPayloadEnvelopeV4, ExecutionPayloadEnvelopeV5, ExecutionPayloadFieldV2,
-    ExecutionPayloadV1, ExecutionPayloadV3, PayloadId,
+    ExecutionPayloadEnvelopeV4, ExecutionPayloadEnvelopeV5, ExecutionPayloadEnvelopeV6,
+    ExecutionPayloadFieldV2, ExecutionPayloadV1, ExecutionPayloadV3, ExecutionPayloadV4, PayloadId,
 };
 use ev_primitives::EvPrimitives;
 use reth_payload_builder::BlobSidecars;
@@ -203,5 +203,43 @@ impl TryFrom<EvBuiltPayload> for ExecutionPayloadEnvelopeV5 {
 
     fn try_from(value: EvBuiltPayload) -> Result<Self, Self::Error> {
         value.try_into_v5()
+    }
+}
+
+impl TryFrom<EvBuiltPayload> for ExecutionPayloadEnvelopeV6 {
+    type Error = EvBuiltPayloadConversionError;
+
+    fn try_from(value: EvBuiltPayload) -> Result<Self, Self::Error> {
+        let EvBuiltPayload {
+            block,
+            fees,
+            sidecars,
+            requests,
+            ..
+        } = value;
+
+        let blobs_bundle = match sidecars {
+            BlobSidecars::Empty => BlobsBundleV2::empty(),
+            BlobSidecars::Eip7594(sidecars) => BlobsBundleV2::from(sidecars),
+            BlobSidecars::Eip4844(_) => {
+                return Err(EvBuiltPayloadConversionError::UnexpectedEip4844Sidecars)
+            }
+        };
+
+        let execution_payload = ExecutionPayloadV4 {
+            payload_inner: ExecutionPayloadV3::from_block_unchecked(
+                block.hash(),
+                &Arc::unwrap_or_clone(block).into_block(),
+            ),
+            block_access_list: Bytes::new(),
+        };
+
+        Ok(Self {
+            execution_payload,
+            block_value: fees,
+            should_override_builder: false,
+            blobs_bundle,
+            execution_requests: requests.unwrap_or_default(),
+        })
     }
 }

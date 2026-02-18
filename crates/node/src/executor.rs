@@ -52,6 +52,8 @@ pub struct EvEvmConfig<C = ChainSpec, EvmFactory = EvTxEvmFactory> {
     pub executor_factory: EvBlockExecutorFactory<EvReceiptBuilder, std::sync::Arc<C>, EvmFactory>,
     /// Block assembler used for building block bodies and headers.
     pub block_assembler: EthBlockAssembler<C>,
+    /// Extra data to include in built blocks.
+    pub extra_data: alloy_primitives::Bytes,
 }
 
 impl<ChainSpec> EvEvmConfig<ChainSpec> {
@@ -74,6 +76,7 @@ impl<ChainSpec, EvmFactory> EvEvmConfig<ChainSpec, EvmFactory> {
                 chain_spec,
                 evm_factory,
             ),
+            extra_data: alloy_primitives::Bytes::default(),
         }
     }
 
@@ -84,7 +87,7 @@ impl<ChainSpec, EvmFactory> EvEvmConfig<ChainSpec, EvmFactory> {
 
     /// Sets the extra data to be included in built blocks.
     pub fn with_extra_data(mut self, extra_data: alloy_primitives::Bytes) -> Self {
-        self.block_assembler.extra_data = extra_data;
+        self.extra_data = extra_data;
         self
     }
 }
@@ -95,6 +98,7 @@ where
     EvmF: reth_evm::EvmFactory<
             Tx: TransactionEnv,
             Spec = SpecId,
+            BlockEnv = BlockEnv,
             Precompiles = reth_evm::precompiles::PrecompilesMap,
         > + Clone
         + std::fmt::Debug
@@ -119,13 +123,13 @@ where
         &self.block_assembler
     }
 
-    fn evm_env(&self, header: &Header) -> Result<EvmEnv, Self::Error> {
+    fn evm_env(&self, header: &Header) -> Result<EvmEnvFor<Self>, Self::Error> {
         let blob_params = self.chain_spec().blob_params_at_timestamp(header.timestamp);
         let spec = revm_spec(self.chain_spec(), header);
 
         let mut cfg_env = CfgEnv::new()
             .with_chain_id(self.chain_spec().chain().id())
-            .with_spec(spec);
+            .with_spec_and_mainnet_gas_params(spec);
 
         if let Some(blob_params) = &blob_params {
             cfg_env.set_max_blobs_per_tx(blob_params.max_blobs_per_tx);
@@ -176,7 +180,7 @@ where
         &self,
         parent: &Header,
         attributes: &NextBlockEnvAttributes,
-    ) -> Result<EvmEnv, Self::Error> {
+    ) -> Result<EvmEnvFor<Self>, Self::Error> {
         let chain_spec = self.chain_spec();
         let blob_params = chain_spec.blob_params_at_timestamp(attributes.timestamp);
         let spec_id = revm_spec_by_timestamp_and_block_number(
@@ -187,7 +191,7 @@ where
 
         let mut cfg = CfgEnv::new()
             .with_chain_id(self.chain_spec().chain().id())
-            .with_spec(spec_id);
+            .with_spec_and_mainnet_gas_params(spec_id);
 
         if let Some(blob_params) = &blob_params {
             cfg.set_max_blobs_per_tx(blob_params.max_blobs_per_tx);
@@ -256,6 +260,7 @@ where
         block: &'a SealedBlock<ev_primitives::Block>,
     ) -> Result<alloy_evm::eth::EthBlockExecutionCtx<'a>, Self::Error> {
         Ok(alloy_evm::eth::EthBlockExecutionCtx {
+            tx_count_hint: Some(block.body().transactions.len()),
             parent_hash: block.header().parent_hash,
             parent_beacon_block_root: block.header().parent_beacon_block_root,
             ommers: &block.body().ommers,
@@ -264,6 +269,7 @@ where
                 .withdrawals
                 .as_ref()
                 .map(std::borrow::Cow::Borrowed),
+            extra_data: block.header().extra_data.clone(),
         })
     }
 
@@ -273,10 +279,12 @@ where
         attributes: Self::NextBlockEnvCtx,
     ) -> Result<alloy_evm::eth::EthBlockExecutionCtx<'_>, Self::Error> {
         Ok(alloy_evm::eth::EthBlockExecutionCtx {
+            tx_count_hint: None,
             parent_hash: parent.hash(),
             parent_beacon_block_root: attributes.parent_beacon_block_root,
             ommers: &[],
             withdrawals: attributes.withdrawals.map(std::borrow::Cow::Owned),
+            extra_data: attributes.extra_data,
         })
     }
 }
@@ -287,6 +295,7 @@ where
     EvmF: reth_evm::EvmFactory<
             Tx: TransactionEnv + FromRecoveredTx<EvTxEnvelope> + FromTxWithEncoded<EvTxEnvelope>,
             Spec = SpecId,
+            BlockEnv = BlockEnv,
             Precompiles = reth_evm::precompiles::PrecompilesMap,
         > + Clone
         + std::fmt::Debug
@@ -295,7 +304,7 @@ where
         + Unpin
         + 'static,
 {
-    fn evm_env_for_payload(&self, payload: &ExecutionData) -> EvmEnvFor<Self> {
+    fn evm_env_for_payload(&self, payload: &ExecutionData) -> Result<EvmEnvFor<Self>, Self::Error> {
         let timestamp = payload.payload.timestamp();
         let block_number = payload.payload.block_number();
 
@@ -305,7 +314,7 @@ where
 
         let mut cfg_env = CfgEnv::new()
             .with_chain_id(self.chain_spec().chain().id())
-            .with_spec(spec);
+            .with_spec_and_mainnet_gas_params(spec);
 
         if let Some(blob_params) = &blob_params {
             cfg_env.set_max_blobs_per_tx(blob_params.max_blobs_per_tx);
@@ -343,11 +352,15 @@ where
             blob_excess_gas_and_price,
         };
 
-        EvmEnv { cfg_env, block_env }
+        Ok(EvmEnv { cfg_env, block_env })
     }
 
-    fn context_for_payload<'a>(&self, payload: &'a ExecutionData) -> ExecutionCtxFor<'a, Self> {
-        alloy_evm::eth::EthBlockExecutionCtx {
+    fn context_for_payload<'a>(
+        &self,
+        payload: &'a ExecutionData,
+    ) -> Result<ExecutionCtxFor<'a, Self>, Self::Error> {
+        Ok(alloy_evm::eth::EthBlockExecutionCtx {
+            tx_count_hint: Some(payload.payload.transactions().len()),
             parent_hash: payload.parent_hash(),
             parent_beacon_block_root: payload.sidecar.parent_beacon_block_root(),
             ommers: &[],
@@ -355,21 +368,22 @@ where
                 .payload
                 .withdrawals()
                 .map(|w| std::borrow::Cow::Owned(w.clone().into())),
-        }
+            extra_data: payload.payload.as_v1().extra_data.clone(),
+        })
     }
 
-    fn tx_iterator_for_payload(&self, payload: &ExecutionData) -> impl ExecutableTxIterator<Self> {
-        payload
-            .payload
-            .transactions()
-            .clone()
-            .into_iter()
-            .map(|tx| {
-                let tx = TxTy::<Self::Primitives>::decode_2718_exact(tx.as_ref())
-                    .map_err(RethError::other)?;
-                let signer = tx.try_recover().map_err(RethError::other)?;
-                Ok::<_, RethError>(tx.with_signer(signer))
-            })
+    fn tx_iterator_for_payload(
+        &self,
+        payload: &ExecutionData,
+    ) -> Result<impl ExecutableTxIterator<Self>, Self::Error> {
+        let txs = payload.payload.transactions().clone();
+        let convert = |tx: alloy_primitives::Bytes| {
+            let tx =
+                TxTy::<EvPrimitives>::decode_2718_exact(tx.as_ref()).map_err(RethError::other)?;
+            let signer = tx.try_recover().map_err(RethError::other)?;
+            Ok::<_, RethError>(tx.with_signer(signer))
+        };
+        Ok((txs, convert))
     }
 }
 

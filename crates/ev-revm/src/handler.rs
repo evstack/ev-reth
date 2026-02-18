@@ -11,6 +11,7 @@ use reth_revm::{
     revm::{
         context::{result::ExecutionResult, ContextSetters},
         context_interface::{
+            journaled_state::account::JournaledAccountTr,
             result::HaltReason,
             transaction::{AccessListItemTr, TransactionType},
             Block, Cfg, ContextTr, JournalTr, Transaction,
@@ -117,23 +118,33 @@ where
         self.inner.validate_env(evm)
     }
 
-    fn validate_initial_tx_gas(&self, evm: &Self::Evm) -> Result<InitialAndFloorGas, Self::Error> {
-        let ctx = evm.ctx_ref();
-        let tx = ctx.tx();
-        if let Some(calls) = tx.batch_calls() {
-            if calls.is_empty() {
-                return Err(Self::Error::from_string(
-                    "evnode transaction must include at least one call".into(),
-                ));
-            }
-            if calls.iter().skip(1).any(|call| call.to.is_create()) {
-                return Err(Self::Error::from_string(
-                    "only the first call may be CREATE".into(),
-                ));
-            }
-            if calls.len() > 1 {
-                return validate_batch_initial_tx_gas(tx, calls, ctx.cfg().spec().into(), false)
+    fn validate_initial_tx_gas(
+        &self,
+        evm: &mut Self::Evm,
+    ) -> Result<InitialAndFloorGas, Self::Error> {
+        {
+            let ctx = evm.ctx_ref();
+            let tx = ctx.tx();
+            if let Some(calls) = tx.batch_calls() {
+                if calls.is_empty() {
+                    return Err(Self::Error::from_string(
+                        "evnode transaction must include at least one call".into(),
+                    ));
+                }
+                if calls.iter().skip(1).any(|call| call.to.is_create()) {
+                    return Err(Self::Error::from_string(
+                        "only the first call may be CREATE".into(),
+                    ));
+                }
+                if calls.len() > 1 {
+                    return validate_batch_initial_tx_gas(
+                        tx,
+                        calls,
+                        ctx.cfg().spec().into(),
+                        false,
+                    )
                     .map_err(From::from);
+                }
             }
         }
 
@@ -257,12 +268,9 @@ where
                 {
                     let caller = base_tx.caller();
                     let journal = evm.ctx_mut().journal_mut();
-                    if let Ok(caller_account) = journal.load_account_code(caller) {
-                        caller_account
-                            .data
-                            .info
-                            .set_nonce(caller_account.data.info.nonce.saturating_add(1));
-                        journal.touch_account(caller);
+                    if let Ok(mut caller_account) = journal.load_account_with_code_mut(caller) {
+                        let nonce = caller_account.data.nonce();
+                        caller_account.data.set_nonce(nonce.saturating_add(1));
                     }
                 }
                 finalize_batch_gas(&mut frame_result, gas_limit, remaining_gas, 0);
@@ -331,11 +339,9 @@ where
                     .saturating_mul((gas.remaining() + gas.refunded() as u64) as u128),
             );
             let journal = evm.ctx_mut().journal_mut();
-            let sponsor_account = journal.load_account(sponsor)?.data;
-            let new_balance = sponsor_account.info.balance.saturating_add(reimbursement);
-            sponsor_account.info.set_balance(new_balance);
-            // Mark the sponsor account as touched so state changes are included in the final state
-            journal.touch_account(sponsor);
+            let mut sponsor_account = journal.load_account_mut(sponsor)?.data;
+            let new_balance = sponsor_account.balance().saturating_add(reimbursement);
+            sponsor_account.set_balance(new_balance);
             Ok(())
         } else {
             self.inner.reimburse_caller(evm, exec_result)
@@ -571,9 +577,9 @@ where
 {
     // Validate caller's nonce/code and balance for value transfer
     {
-        let caller = journal.load_account_code(caller_address)?.data;
+        let mut caller = journal.load_account_with_code_mut(caller_address)?.data;
         validate_account_nonce_and_code(
-            &caller.info,
+            &caller.account().info,
             tx,
             is_eip3607_disabled,
             is_nonce_check_disabled,
@@ -582,11 +588,12 @@ where
         // Only validate that caller has enough balance for the value transfer.
         // Do NOT pre-deduct the value - it will be transferred during execution.
         // This matches the mainnet behavior where only gas is pre-deducted.
-        if !is_balance_check_disabled && caller.info.balance < total_value {
+        let balance = *caller.balance();
+        if !is_balance_check_disabled && balance < total_value {
             return Err(
                 reth_revm::revm::context_interface::result::InvalidTransaction::LackOfFundForMaxFee {
                     fee: Box::new(total_value),
-                    balance: Box::new(caller.info.balance),
+                    balance: Box::new(balance),
                 }
                 .into(),
             );
@@ -597,13 +604,14 @@ where
         // - CREATE batches: nonce is incremented during CREATE frame execution,
         //   which also uses it for contract address derivation
         if is_call {
-            caller.info.set_nonce(caller.info.nonce.saturating_add(1));
+            let nonce = caller.nonce();
+            caller.set_nonce(nonce.saturating_add(1));
         }
     }
 
     // Validate and deduct gas from sponsor
-    let sponsor_account = journal.load_account_code(sponsor)?.data;
-    let sponsor_balance = sponsor_account.info.balance;
+    let mut sponsor_account = journal.load_account_with_code_mut(sponsor)?.data;
+    let sponsor_balance = *sponsor_account.balance();
     let max_gas_cost = U256::from(tx.gas_limit()).saturating_mul(U256::from(tx.max_fee_per_gas()));
     if !is_balance_check_disabled && sponsor_balance < max_gas_cost {
         return Err(
@@ -625,9 +633,7 @@ where
     if is_balance_check_disabled {
         new_sponsor_balance = new_sponsor_balance.max(gas_cost);
     }
-    sponsor_account.info.set_balance(new_sponsor_balance);
-    // Mark the sponsor account as touched so state changes are included in the final state
-    journal.touch_account(sponsor);
+    sponsor_account.set_balance(new_sponsor_balance);
 
     Ok(())
 }
@@ -652,23 +658,24 @@ where
     E: From<reth_revm::revm::context_interface::result::InvalidTransaction>
         + From<<J::Database as reth_revm::Database>::Error>,
 {
-    let caller = journal.load_account_code(caller_address)?.data;
+    let mut caller = journal.load_account_with_code_mut(caller_address)?.data;
     validate_account_nonce_and_code(
-        &caller.info,
+        &caller.account().info,
         tx,
         is_eip3607_disabled,
         is_nonce_check_disabled,
     )?;
     let new_caller_balance = calculate_caller_fee(
-        caller.info.balance,
+        *caller.balance(),
         tx,
         basefee,
         blob_price,
         is_balance_check_disabled,
     )?;
-    caller.info.set_balance(new_caller_balance);
+    caller.set_balance(new_caller_balance);
     if is_call {
-        caller.info.set_nonce(caller.info.nonce.saturating_add(1));
+        let nonce = caller.nonce();
+        caller.set_nonce(nonce.saturating_add(1));
     }
 
     Ok(())
@@ -848,6 +855,7 @@ mod tests {
                 nonce: 0,
                 code_hash: KECCAK_EMPTY,
                 code: None,
+                account_id: None,
             },
         );
 
@@ -860,6 +868,7 @@ mod tests {
                 code: Some(RevmBytecode::new_raw(Bytes::copy_from_slice(
                     STORAGE_RUNTIME.as_slice(),
                 ))),
+                account_id: None,
             },
         );
 
@@ -872,6 +881,7 @@ mod tests {
                 code: Some(RevmBytecode::new_raw(Bytes::copy_from_slice(
                     REVERT_RUNTIME.as_slice(),
                 ))),
+                account_id: None,
             },
         );
 
@@ -946,6 +956,7 @@ mod tests {
                 nonce: 0,
                 code_hash: KECCAK_EMPTY,
                 code: None,
+                account_id: None,
             },
         );
 
@@ -958,6 +969,7 @@ mod tests {
                 code: Some(RevmBytecode::new_raw(Bytes::copy_from_slice(
                     REVERT_RUNTIME.as_slice(),
                 ))),
+                account_id: None,
             },
         );
 
@@ -1026,6 +1038,7 @@ mod tests {
                 nonce: 0,
                 code_hash: KECCAK_EMPTY,
                 code: None,
+                account_id: None,
             },
         );
 
@@ -1038,6 +1051,7 @@ mod tests {
                 code: Some(RevmBytecode::new_raw(Bytes::copy_from_slice(
                     STORAGE_RUNTIME.as_slice(),
                 ))),
+                account_id: None,
             },
         );
 
@@ -1112,6 +1126,7 @@ mod tests {
                 nonce: 0,
                 code_hash: KECCAK_EMPTY,
                 code: None,
+                account_id: None,
             },
         );
 
@@ -1163,6 +1178,7 @@ mod tests {
                 nonce: 0,
                 code_hash: KECCAK_EMPTY,
                 code: None,
+                account_id: None,
             },
         );
 
@@ -1173,6 +1189,7 @@ mod tests {
                 nonce: 0,
                 code_hash: KECCAK_EMPTY,
                 code: None,
+                account_id: None,
             },
         );
 
@@ -1237,6 +1254,7 @@ mod tests {
                 nonce: 0,
                 code_hash: KECCAK_EMPTY,
                 code: None,
+                account_id: None,
             },
         );
 
@@ -1248,6 +1266,7 @@ mod tests {
                 nonce: 0,
                 code_hash: KECCAK_EMPTY,
                 code: None,
+                account_id: None,
             },
         );
 
