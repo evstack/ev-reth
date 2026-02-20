@@ -68,3 +68,5 @@ forge script script/GenerateFeeVaultAlloc.s.sol
 2. Read `contracts/src/AdminProxy.sol` for admin patterns
 3. Check `contracts/script/` for deployment patterns
 4. See how `crates/ev-revm/src/base_fee.rs` interacts with the sink address
+
+<!-- Last reviewed: 2026-02-20 -->
