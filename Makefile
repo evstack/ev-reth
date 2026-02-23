@@ -55,13 +55,13 @@ run: build-dev
 run-dev: build-dev
 	RUST_LOG=debug ./$(TARGET_DIR)/debug/$(BINARY_NAME) node
 
-## fmt: Format code using rustfmt
+## fmt: Format code using rustfmt (nightly)
 fmt:
-	$(CARGO) fmt --all
+	$(CARGO) +nightly fmt --all
 
-## fmt-check: Check if code is formatted correctly
+## fmt-check: Check if code is formatted correctly (nightly)
 fmt-check:
-	$(CARGO) fmt --all -- --check
+	$(CARGO) +nightly fmt --all --check
 
 ## lint: Run clippy linter
 lint:

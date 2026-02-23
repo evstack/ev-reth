@@ -278,7 +278,7 @@ async fn test_e2e_base_fee_sink_receives_base_fee() -> Result<()> {
     setup.apply::<EvolveNode>(&mut env).await?;
 
     let initial_balance =
-        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header, Bytes>::balance(
             &env.node_clients[0].rpc,
             fee_sink,
             Some(BlockId::latest()),
@@ -364,7 +364,7 @@ async fn test_e2e_base_fee_sink_receives_base_fee() -> Result<()> {
     let expected_total_credit = expected_base_fee + expected_tip;
 
     let final_balance: U256 =
-        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header, Bytes>::balance(
             &env.node_clients[0].rpc,
             fee_sink,
             Some(BlockId::latest()),
@@ -428,34 +428,40 @@ async fn test_e2e_sponsored_evnode_transaction() -> Result<()> {
     let sponsor_address = sponsor.address();
 
     let executor_balance_before =
-        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header, Bytes>::balance(
             &env.node_clients[0].rpc,
             executor_address,
             Some(BlockId::latest()),
         )
         .await?;
     let sponsor_balance_before =
-        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header, Bytes>::balance(
             &env.node_clients[0].rpc,
             sponsor_address,
             Some(BlockId::latest()),
         )
         .await?;
     let recipient_balance_before =
-        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header, Bytes>::balance(
             &env.node_clients[0].rpc,
             recipient,
             Some(BlockId::latest()),
         )
         .await?;
 
-    let executor_nonce =
-        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::transaction_count(
-            &env.node_clients[0].rpc,
-            executor_address,
-            Some(BlockId::latest()),
-        )
-        .await?;
+    let executor_nonce = EthApiClient::<
+        TransactionRequest,
+        Transaction,
+        Block,
+        Receipt,
+        Header,
+        Bytes,
+    >::transaction_count(
+        &env.node_clients[0].rpc,
+        executor_address,
+        Some(BlockId::latest()),
+    )
+    .await?;
     let executor_nonce = u64::try_from(executor_nonce).expect("nonce fits into u64");
 
     let transfer_value = U256::from(1_000_000_000_000_000u64); // 0.001 ETH
@@ -508,6 +514,7 @@ async fn test_e2e_sponsored_evnode_transaction() -> Result<()> {
         EvRpcBlock,
         EvRpcReceipt,
         Header,
+        Bytes,
     >::transaction_receipt(&env.node_clients[0].rpc, tx_hash)
     .await?
     .expect("sponsored transaction receipt available");
@@ -522,10 +529,14 @@ async fn test_e2e_sponsored_evnode_transaction() -> Result<()> {
         "receipt should expose sponsor fee payer"
     );
 
-    let tx = EthApiClient::<EvTransactionRequest, EvRpcTransaction, EvRpcBlock, EvRpcReceipt, Header>::transaction_by_hash(
-        &env.node_clients[0].rpc,
-        tx_hash,
-    )
+    let tx = EthApiClient::<
+        EvTransactionRequest,
+        EvRpcTransaction,
+        EvRpcBlock,
+        EvRpcReceipt,
+        Header,
+        Bytes,
+    >::transaction_by_hash(&env.node_clients[0].rpc, tx_hash)
     .await?
     .expect("sponsored transaction available");
     assert_eq!(
@@ -535,21 +546,21 @@ async fn test_e2e_sponsored_evnode_transaction() -> Result<()> {
     );
 
     let executor_balance_after =
-        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header, Bytes>::balance(
             &env.node_clients[0].rpc,
             executor_address,
             Some(BlockId::latest()),
         )
         .await?;
     let sponsor_balance_after =
-        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header, Bytes>::balance(
             &env.node_clients[0].rpc,
             sponsor_address,
             Some(BlockId::latest()),
         )
         .await?;
     let recipient_balance_after =
-        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header, Bytes>::balance(
             &env.node_clients[0].rpc,
             recipient,
             Some(BlockId::latest()),
@@ -618,13 +629,19 @@ async fn test_e2e_invalid_sponsor_signature_skipped() -> Result<()> {
     let executor = wallets.remove(0);
     let executor_address = executor.address();
 
-    let executor_nonce =
-        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::transaction_count(
-            &env.node_clients[0].rpc,
-            executor_address,
-            Some(BlockId::latest()),
-        )
-        .await?;
+    let executor_nonce = EthApiClient::<
+        TransactionRequest,
+        Transaction,
+        Block,
+        Receipt,
+        Header,
+        Bytes,
+    >::transaction_count(
+        &env.node_clients[0].rpc,
+        executor_address,
+        Some(BlockId::latest()),
+    )
+    .await?;
     let executor_nonce = u64::try_from(executor_nonce).expect("nonce fits into u64");
 
     let call = Call {
@@ -685,6 +702,7 @@ async fn test_e2e_invalid_sponsor_signature_skipped() -> Result<()> {
         Block<EvRpcTransaction, Header>,
         EvRpcReceipt,
         Header,
+        Bytes,
     >::transaction_by_hash(&env.node_clients[0].rpc, tx_hash)
     .await?;
     assert!(
@@ -735,13 +753,19 @@ async fn test_e2e_empty_calls_skipped() -> Result<()> {
     let executor = wallets.remove(0);
     let executor_address = executor.address();
 
-    let executor_nonce =
-        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::transaction_count(
-            &env.node_clients[0].rpc,
-            executor_address,
-            Some(BlockId::latest()),
-        )
-        .await?;
+    let executor_nonce = EthApiClient::<
+        TransactionRequest,
+        Transaction,
+        Block,
+        Receipt,
+        Header,
+        Bytes,
+    >::transaction_count(
+        &env.node_clients[0].rpc,
+        executor_address,
+        Some(BlockId::latest()),
+    )
+    .await?;
     let executor_nonce = u64::try_from(executor_nonce).expect("nonce fits into u64");
 
     let ev_tx = EvNodeTransaction {
@@ -790,6 +814,7 @@ async fn test_e2e_empty_calls_skipped() -> Result<()> {
         Block<EvRpcTransaction, Header>,
         EvRpcReceipt,
         Header,
+        Bytes,
     >::transaction_by_hash(&env.node_clients[0].rpc, tx_hash)
     .await?;
     assert!(
@@ -843,20 +868,26 @@ async fn test_e2e_sponsor_insufficient_max_fee_skipped() -> Result<()> {
     let sponsor_address = sponsor.address();
 
     let sponsor_balance =
-        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header, Bytes>::balance(
             &env.node_clients[0].rpc,
             sponsor_address,
             Some(BlockId::latest()),
         )
         .await?;
 
-    let executor_nonce =
-        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::transaction_count(
-            &env.node_clients[0].rpc,
-            executor_address,
-            Some(BlockId::latest()),
-        )
-        .await?;
+    let executor_nonce = EthApiClient::<
+        TransactionRequest,
+        Transaction,
+        Block,
+        Receipt,
+        Header,
+        Bytes,
+    >::transaction_count(
+        &env.node_clients[0].rpc,
+        executor_address,
+        Some(BlockId::latest()),
+    )
+    .await?;
     let executor_nonce = u64::try_from(executor_nonce).expect("nonce fits into u64");
 
     let call = Call {
@@ -930,6 +961,7 @@ async fn test_e2e_sponsor_insufficient_max_fee_skipped() -> Result<()> {
         Block<EvRpcTransaction, Header>,
         EvRpcReceipt,
         Header,
+        Bytes,
     >::transaction_by_hash(&env.node_clients[0].rpc, tx_hash)
     .await?;
     assert!(
@@ -980,13 +1012,19 @@ async fn test_e2e_nonce_bumped_on_create_batch_failure() -> Result<()> {
     let executor = wallets.remove(0);
     let executor_address = executor.address();
 
-    let executor_nonce_before =
-        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::transaction_count(
-            &env.node_clients[0].rpc,
-            executor_address,
-            Some(BlockId::latest()),
-        )
-        .await?;
+    let executor_nonce_before = EthApiClient::<
+        TransactionRequest,
+        Transaction,
+        Block,
+        Receipt,
+        Header,
+        Bytes,
+    >::transaction_count(
+        &env.node_clients[0].rpc,
+        executor_address,
+        Some(BlockId::latest()),
+    )
+    .await?;
     let executor_nonce_before = u64::try_from(executor_nonce_before).expect("nonce fits into u64");
 
     let deploy_tx = TransactionRequest {
@@ -1020,7 +1058,7 @@ async fn test_e2e_nonce_bumped_on_create_batch_failure() -> Result<()> {
 
     let revert_address = contract_address_from_nonce(executor_address, executor_nonce_before);
     let deployed_code =
-        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::get_code(
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header, Bytes>::get_code(
             &env.node_clients[0].rpc,
             revert_address,
             Some(BlockId::latest()),
@@ -1031,13 +1069,19 @@ async fn test_e2e_nonce_bumped_on_create_batch_failure() -> Result<()> {
         "revert contract should be deployed"
     );
 
-    let executor_nonce =
-        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::transaction_count(
-            &env.node_clients[0].rpc,
-            executor_address,
-            Some(BlockId::latest()),
-        )
-        .await?;
+    let executor_nonce = EthApiClient::<
+        TransactionRequest,
+        Transaction,
+        Block,
+        Receipt,
+        Header,
+        Bytes,
+    >::transaction_count(
+        &env.node_clients[0].rpc,
+        executor_address,
+        Some(BlockId::latest()),
+    )
+    .await?;
     let executor_nonce = u64::try_from(executor_nonce).expect("nonce fits into u64");
 
     let revert_calldata = Bytes::from(vec![0x00]);
@@ -1091,6 +1135,7 @@ async fn test_e2e_nonce_bumped_on_create_batch_failure() -> Result<()> {
         Block<EvRpcTransaction, Header>,
         EvRpcReceipt,
         Header,
+        Bytes,
     >::transaction_by_hash(&env.node_clients[0].rpc, tx_hash)
     .await?
     .expect("failed batch should be in the block");
@@ -1101,18 +1146,25 @@ async fn test_e2e_nonce_bumped_on_create_batch_failure() -> Result<()> {
         Block<EvRpcTransaction, Header>,
         EvRpcReceipt,
         Header,
+        Bytes,
     >::transaction_receipt(&env.node_clients[0].rpc, tx_hash)
     .await?
     .expect("receipt should be available");
     assert!(!receipt.inner().status(), "batch should revert");
 
-    let executor_nonce_after =
-        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::transaction_count(
-            &env.node_clients[0].rpc,
-            executor_address,
-            Some(BlockId::latest()),
-        )
-        .await?;
+    let executor_nonce_after = EthApiClient::<
+        TransactionRequest,
+        Transaction,
+        Block,
+        Receipt,
+        Header,
+        Bytes,
+    >::transaction_count(
+        &env.node_clients[0].rpc,
+        executor_address,
+        Some(BlockId::latest()),
+    )
+    .await?;
     let executor_nonce_after = u64::try_from(executor_nonce_after).expect("nonce fits into u64");
     assert_eq!(
         executor_nonce_after,
@@ -1187,7 +1239,7 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
 
     // Check initial balance of new wallet (should be zero since not in genesis).
     let initial_balance =
-        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header, Bytes>::balance(
             &env.node_clients[0].rpc,
             new_wallet_address,
             Some(BlockId::latest()),
@@ -1250,6 +1302,7 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
         Block,
         Receipt,
         Header,
+        Bytes,
     >::transaction_receipt(
         &env.node_clients[0].rpc, *allowlist_envelope.tx_hash()
     )
@@ -1261,7 +1314,7 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
     );
     let allowlist_slot = operator_address.into_word();
     let allowlist_storage =
-        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::storage_at(
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header, Bytes>::storage_at(
             &env.node_clients[0].rpc,
             MINT_PRECOMPILE_ADDR,
             allowlist_slot.into(),
@@ -1313,6 +1366,7 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
         Block,
         Receipt,
         Header,
+        Bytes,
     >::transaction_receipt(
         &env.node_clients[0].rpc, *mint_envelope.tx_hash()
     )
@@ -1329,7 +1383,7 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
     );
 
     let balance_after_mint =
-        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header, Bytes>::balance(
             &env.node_clients[0].rpc,
             new_wallet_address,
             Some(BlockId::latest()),
@@ -1384,6 +1438,7 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
         Block,
         Receipt,
         Header,
+        Bytes,
     >::transaction_receipt(
         &env.node_clients[0].rpc, *burn_envelope.tx_hash()
     )
@@ -1396,7 +1451,7 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
     );
     if !burn_receipt.status() {
         let revert_preview =
-            EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::call(
+            EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header, Bytes>::call(
                 &env.node_clients[0].rpc,
                 burn_tx.clone(),
                 Some(BlockId::latest()),
@@ -1410,7 +1465,7 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
 
     let expected_after_burn = mint_amount - burn_amount;
     let balance_after_burn =
-        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header, Bytes>::balance(
             &env.node_clients[0].rpc,
             new_wallet_address,
             Some(BlockId::latest()),
@@ -1463,6 +1518,7 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
         Block,
         Receipt,
         Header,
+        Bytes,
     >::transaction_receipt(
         &env.node_clients[0].rpc, *remove_envelope.tx_hash()
     )
@@ -1516,6 +1572,7 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
         Block,
         Receipt,
         Header,
+        Bytes,
     >::transaction_receipt(
         &env.node_clients[0].rpc, *unauthorized_envelope.tx_hash()
     )
@@ -1528,7 +1585,7 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
 
     // Ensure balance unchanged after failed mint.
     let final_balance =
-        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header, Bytes>::balance(
             &env.node_clients[0].rpc,
             new_wallet_address,
             Some(BlockId::latest()),
@@ -1602,7 +1659,7 @@ async fn test_e2e_mint_precompile_via_contract() -> Result<()> {
     setup.apply::<EvolveNode>(&mut env).await?;
 
     let recipient_initial_balance =
-        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header, Bytes>::balance(
             &env.node_clients[0].rpc,
             recipient_address,
             Some(BlockId::latest()),
@@ -1707,6 +1764,7 @@ async fn test_e2e_mint_precompile_via_contract() -> Result<()> {
         Block,
         Receipt,
         Header,
+        Bytes,
     >::transaction_receipt(&env.node_clients[0].rpc, mint_tx_hash)
     .await?
     .expect("mint transaction receipt available");
@@ -1721,21 +1779,21 @@ async fn test_e2e_mint_precompile_via_contract() -> Result<()> {
     );
 
     let balance_after_mint: U256 =
-        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header, Bytes>::balance(
             &env.node_clients[0].rpc,
             recipient_address,
             Some(BlockId::latest()),
         )
         .await?;
     let balance_at_block =
-        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header, Bytes>::balance(
             &env.node_clients[0].rpc,
             recipient_address,
             Some(BlockId::Number(BlockNumberOrTag::Number(parent_number))),
         )
         .await?;
     let contract_balance_after_mint =
-        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header, Bytes>::balance(
             &env.node_clients[0].rpc,
             contract_address,
             Some(BlockId::latest()),
@@ -1793,7 +1851,7 @@ async fn test_e2e_mint_precompile_via_contract() -> Result<()> {
     .await?;
 
     let final_balance =
-        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::balance(
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header, Bytes>::balance(
             &env.node_clients[0].rpc,
             recipient_address,
             Some(BlockId::latest()),
@@ -1885,7 +1943,7 @@ async fn test_e2e_deploy_allowlist_blocks_unauthorized_deploys() -> Result<()> {
 
     let denied_address = contract_address_from_nonce(denied_deployer.address(), 0);
     let denied_code =
-        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::get_code(
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header, Bytes>::get_code(
             &env.node_clients[0].rpc,
             denied_address,
             Some(BlockId::latest()),
@@ -1942,7 +2000,7 @@ async fn test_e2e_deploy_allowlist_blocks_unauthorized_deploys() -> Result<()> {
 
     let allowed_address = contract_address_from_nonce(allowed_deployer.address(), 0);
     let allowed_code =
-        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header>::get_code(
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header, Bytes>::get_code(
             &env.node_clients[0].rpc,
             allowed_address,
             Some(BlockId::latest()),

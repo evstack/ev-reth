@@ -11,21 +11,20 @@ use alloy_rpc_types_eth::{
     Log, Transaction, TransactionInfo, TransactionReceipt, TransactionRequest,
 };
 use reth_chainspec::{ChainSpecProvider, EthChainSpec, EthereumHardforks, Hardforks};
-use reth_evm::{ConfigureEvm, SpecFor, TxEnvFor};
+use reth_evm::{ConfigureEvm, EvmEnvFor, TxEnvFor};
 use reth_node_api::{FullNodeComponents, FullNodeTypes, NodeTypes};
 use reth_node_builder::rpc::{EthApiBuilder, EthApiCtx};
 use reth_rpc::EthApi;
 use reth_rpc_convert::{
     transaction::{
-        ConvertReceiptInput, EthTxEnvError, ReceiptConverter, RpcTxConverter, SimTxConverter,
-        TryIntoSimTx, TryIntoTxEnv, TxEnvConverter,
+        ConvertReceiptInput, ReceiptConverter, RpcTxConverter, SimTxConverter, TryIntoSimTx,
+        TxEnvConverter,
     },
-    RpcConvert, RpcConverter, RpcTransaction, RpcTxReq, RpcTypes, SignTxRequestError,
-    SignableTxRequest,
+    EthTxEnvError, RpcConvert, RpcConverter, RpcTransaction, RpcTxReq, RpcTypes,
+    SignTxRequestError, SignableTxRequest, TryIntoTxEnv,
 };
 use reth_rpc_eth_api::{
-    helpers::{pending_block::BuildPendingEnv, AddDevSigners},
-    FromEvmError, FullEthApiServer, RpcNodeCore,
+    helpers::pending_block::BuildPendingEnv, FromEvmError, FullEthApiServer, RpcNodeCore,
 };
 use reth_rpc_eth_types::{receipt::build_receipt, EthApiError};
 use std::marker::PhantomData;
@@ -306,12 +305,9 @@ impl TryIntoTxEnv<EvTxEnv> for EvTransactionRequest {
 
     fn try_into_tx_env<Spec>(
         self,
-        cfg_env: &reth_revm::revm::context::CfgEnv<Spec>,
-        block_env: &reth_revm::revm::context::BlockEnv,
-    ) -> Result<EvTxEnv, Self::Err> {
-        self.0
-            .try_into_tx_env(cfg_env, block_env)
-            .map(EvTxEnv::from)
+        evm_env: &alloy_evm::EvmEnv<Spec>,
+    ) -> Result<EvTxEnv, EthTxEnvError> {
+        self.0.try_into_tx_env(evm_env).map(EvTxEnv::from)
     }
 }
 
@@ -415,16 +411,15 @@ where
     TxEnvFor<<N as FullNodeComponents>::Evm>: From<EvTxEnv>,
     EvRpcConvert<N>: RpcConvert<
         Primitives = EvPrimitives,
-        TxEnv = TxEnvFor<<N as FullNodeComponents>::Evm>,
+        Evm = EvolveEvmConfig,
         Error = EthApiError,
         Network = EvRpcTypes,
-        Spec = SpecFor<<N as FullNodeComponents>::Evm>,
     >,
     EthApiError: FromEvmError<<N as FullNodeComponents>::Evm>,
     EvEthApiFor<N>: FullEthApiServer<
-            Provider = <N as FullNodeTypes>::Provider,
-            Pool = <N as FullNodeComponents>::Pool,
-        > + AddDevSigners,
+        Provider = <N as FullNodeTypes>::Provider,
+        Pool = <N as FullNodeComponents>::Pool,
+    >,
 {
     type EthApi = EvEthApiFor<N>;
 
@@ -501,8 +496,7 @@ impl<Evm> Default for EvTxEnvConverter<Evm> {
     }
 }
 
-impl<Evm> TxEnvConverter<RpcTxReq<EvRpcTypes>, TxEnvFor<Evm>, SpecFor<Evm>>
-    for EvTxEnvConverter<Evm>
+impl<Evm> TxEnvConverter<RpcTxReq<EvRpcTypes>, Evm> for EvTxEnvConverter<Evm>
 where
     Evm: ConfigureEvm + Send + Sync + 'static,
     TxEnvFor<Evm>: From<EvTxEnv>,
@@ -512,12 +506,11 @@ where
     fn convert_tx_env(
         &self,
         tx_req: RpcTxReq<EvRpcTypes>,
-        cfg_env: &reth_revm::revm::context::CfgEnv<SpecFor<Evm>>,
-        block_env: &reth_revm::revm::context::BlockEnv,
+        evm_env: &EvmEnvFor<Evm>,
     ) -> Result<TxEnvFor<Evm>, Self::Error> {
         tx_req
             .0
-            .try_into_tx_env(cfg_env, block_env)
+            .try_into_tx_env(evm_env)
             .map(EvTxEnv::from)
             .map(Into::into)
     }

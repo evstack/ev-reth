@@ -1,3 +1,4 @@
+use alloy_consensus::BlockHeader;
 use alloy_eips::{eip4895::Withdrawals, Decodable2718};
 use alloy_primitives::{Address, Bytes, B256};
 use alloy_rpc_types::{
@@ -9,6 +10,7 @@ use reth_engine_local::payload::LocalPayloadAttributesBuilder;
 use reth_ethereum::node::api::payload::{PayloadAttributes, PayloadBuilderAttributes};
 use reth_payload_builder::EthPayloadBuilderAttributes;
 use reth_payload_primitives::PayloadAttributesBuilder;
+use reth_primitives_traits::SealedHeader;
 use serde::{Deserialize, Serialize};
 
 use crate::error::EvolveEngineError;
@@ -133,7 +135,16 @@ impl From<EthPayloadBuilderAttributes> for EvolveEnginePayloadBuilderAttributes 
 impl PayloadAttributesBuilder<EvolveEnginePayloadAttributes>
     for LocalPayloadAttributesBuilder<reth_ethereum::chainspec::ChainSpec>
 {
-    fn build(&self, timestamp: u64) -> EvolveEnginePayloadAttributes {
+    fn build(&self, parent: &SealedHeader) -> EvolveEnginePayloadAttributes {
+        // use current time, ensuring it's at least parent + 1
+        let timestamp = std::cmp::max(
+            parent.timestamp().saturating_add(1),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+        );
+
         let inner = RpcPayloadAttributes {
             timestamp,
             prev_randao: B256::random(),

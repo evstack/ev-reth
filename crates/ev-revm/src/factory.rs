@@ -16,7 +16,7 @@ use reth_revm::{
     revm::{
         context::{
             result::{EVMError, HaltReason},
-            Evm as RevmEvm, FrameStack, TxEnv,
+            BlockEnv, Evm as RevmEvm, FrameStack, TxEnv,
         },
         context_interface::{journaled_state::JournalTr, result::InvalidTransaction},
         handler::instructions::EthInstructions,
@@ -181,6 +181,7 @@ impl EvmFactory for EvEvmFactory<EthEvmFactory> {
         EVMError<DBError, InvalidTransaction>;
     type HaltReason = HaltReason;
     type Spec = SpecId;
+    type BlockEnv = BlockEnv;
     type Precompiles = PrecompilesMap;
 
     fn create_evm<DB: Database>(
@@ -354,6 +355,7 @@ impl EvmFactory for EvTxEvmFactory {
         EVMError<DBError, InvalidTransaction>;
     type HaltReason = HaltReason;
     type Spec = SpecId;
+    type BlockEnv = BlockEnv;
     type Precompiles = PrecompilesMap;
 
     fn create_evm<DB: Database>(
@@ -490,6 +492,7 @@ mod tests {
                 nonce: 0,
                 code_hash: KECCAK_EMPTY,
                 code: None,
+                account_id: None,
             },
         );
 
@@ -572,6 +575,7 @@ mod tests {
                 nonce: 0,
                 code_hash: KECCAK_EMPTY,
                 code: None,
+                account_id: None,
             },
         );
 
@@ -584,6 +588,7 @@ mod tests {
                 code: Some(RevmBytecode::new_raw(Bytes::copy_from_slice(
                     ADMIN_PROXY_RUNTIME.as_slice(),
                 ))),
+                account_id: None,
             },
         );
 
@@ -686,6 +691,7 @@ mod tests {
                     nonce: 0,
                     code_hash: KECCAK_EMPTY,
                     code: None,
+                    account_id: None,
                 },
             );
 
@@ -698,6 +704,7 @@ mod tests {
                     code: Some(RevmBytecode::new_raw(Bytes::copy_from_slice(
                         ADMIN_PROXY_RUNTIME.as_slice(),
                     ))),
+                    account_id: None,
                 },
             );
 

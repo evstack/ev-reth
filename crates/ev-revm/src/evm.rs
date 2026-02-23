@@ -191,6 +191,42 @@ where
 {
     type Inspector = INSP;
 
+    fn all_inspector(
+        &self,
+    ) -> (
+        &Self::Context,
+        &Self::Instructions,
+        &Self::Precompiles,
+        &FrameStack<Self::Frame>,
+        &Self::Inspector,
+    ) {
+        (
+            &self.inner.ctx,
+            &self.inner.instruction,
+            &self.inner.precompiles,
+            &self.inner.frame_stack,
+            &self.inner.inspector,
+        )
+    }
+
+    fn all_mut_inspector(
+        &mut self,
+    ) -> (
+        &mut Self::Context,
+        &mut Self::Instructions,
+        &mut Self::Precompiles,
+        &mut FrameStack<Self::Frame>,
+        &mut Self::Inspector,
+    ) {
+        (
+            &mut self.inner.ctx,
+            &mut self.inner.instruction,
+            &mut self.inner.precompiles,
+            &mut self.inner.frame_stack,
+            &mut self.inner.inspector,
+        )
+    }
+
     fn inspector(&mut self) -> &mut Self::Inspector {
         &mut self.inner.inspector
     }
@@ -236,6 +272,38 @@ where
     type Instructions = EthInstructions<EthInterpreter, CTX>;
     type Precompiles = PRECOMP;
     type Frame = EthFrame<EthInterpreter>;
+
+    fn all(
+        &self,
+    ) -> (
+        &Self::Context,
+        &Self::Instructions,
+        &Self::Precompiles,
+        &FrameStack<Self::Frame>,
+    ) {
+        (
+            &self.inner.ctx,
+            &self.inner.instruction,
+            &self.inner.precompiles,
+            &self.inner.frame_stack,
+        )
+    }
+
+    fn all_mut(
+        &mut self,
+    ) -> (
+        &mut Self::Context,
+        &mut Self::Instructions,
+        &mut Self::Precompiles,
+        &mut FrameStack<Self::Frame>,
+    ) {
+        (
+            &mut self.inner.ctx,
+            &mut self.inner.instruction,
+            &mut self.inner.precompiles,
+            &mut self.inner.frame_stack,
+        )
+    }
 
     fn ctx(&mut self) -> &mut Self::Context {
         &mut self.inner.ctx
@@ -304,6 +372,7 @@ where
     type Spec = SpecId;
     type Precompiles = PRECOMP;
     type Inspector = INSP;
+    type BlockEnv = BlockEnv;
 
     fn block(&self) -> &BlockEnv {
         &self.inner.ctx.block
@@ -398,6 +467,7 @@ where
     type Error = EVMError<DB::Error, InvalidTransaction>;
     type HaltReason = HaltReason;
     type Spec = SpecId;
+    type BlockEnv = BlockEnv;
     type Precompiles = PRECOMP;
     type Inspector = INSP;
 
