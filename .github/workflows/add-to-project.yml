@@ -4,12 +4,41 @@ on:
   issues:
     types: [opened]
 
+env:
+  PROJECT_ID: PVT_kwDOBy5rXM4ALaHM
+  STATUS_FIELD_ID: PVTSSF_lADOBy5rXM4ALaHMzgHRhFU
+  BACKLOG_OPTION_ID: 9d8a77fe
+  AREA_FIELD_ID: PVTSSF_lADOBy5rXM4ALaHMzg92rZc
+  EXECUTION_OPTION_ID: 244f8d4c
+
 jobs:
   add-to-project:
     name: Add issue to project
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/add-to-project@v1.0.2
+      - name: Add to project
+        id: add
+        uses: actions/add-to-project@v1.0.2
         with:
           project-url: https://github.com/orgs/evstack/projects/7
           github-token: ${{ secrets.ADD_TO_PROJECT_TOKEN }}
+
+      - name: Set Status to Backlog
+        env:
+          GH_TOKEN: ${{ secrets.ADD_TO_PROJECT_TOKEN }}
+        run: |
+          gh project item-edit \
+            --project-id "$PROJECT_ID" \
+            --id "${{ steps.add.outputs.itemId }}" \
+            --field-id "$STATUS_FIELD_ID" \
+            --single-select-option-id "$BACKLOG_OPTION_ID"
+
+      - name: Set Area to Execution
+        env:
+          GH_TOKEN: ${{ secrets.ADD_TO_PROJECT_TOKEN }}
+        run: |
+          gh project item-edit \
+            --project-id "$PROJECT_ID" \
+            --id "${{ steps.add.outputs.itemId }}" \
+            --field-id "$AREA_FIELD_ID" \
+            --single-select-option-id "$EXECUTION_OPTION_ID"
