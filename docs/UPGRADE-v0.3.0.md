@@ -4,11 +4,22 @@ This guide covers the new features and changes in ev-reth v0.3.0.
 
 ## Breaking Changes
 
-### Reth Upgraded to v1.11.0
+### Reth Upgraded to v1.11.0 (Osaka / EOF Support)
 
-The underlying Reth dependency has been upgraded from v1.8.4 to v1.11.0. This is a major version bump that includes changes to EVM handler architecture, payload builder interfaces, and execution primitives.
+The underlying Reth dependency has been upgraded from v1.8.4 to v1.11.0. This is a major version bump that includes full support for the **Osaka hardfork** and the **EVM Object Format (EOF)**, alongside changes to EVM handler architecture, payload builder interfaces, and execution primitives.
 
-**Action Required:** Rebuild from source. No chainspec changes are needed for this upgrade alone.
+**Osaka hardfork highlights:**
+
+- **EVM Object Format (EOF):** A new structured bytecode format for the EVM. EOF introduces code/data separation, static jumps, a dedicated `RETURNCONTRACT` flow, and removes legacy patterns like `JUMPDEST` analysis. This enables better static analysis, faster contract validation at deploy time, and opens the door to future EVM improvements. EOF contracts coexist with legacy contracts -- existing deployed contracts are unaffected.
+- **Per-transaction gas limit cap:** Osaka introduces `MAX_TX_GAS_LIMIT_OSAKA`, an upper bound on the gas limit any single transaction can specify. ev-reth enforces this cap automatically during block building, payload validation, and EVM configuration when Osaka is active.
+
+**How to activate Osaka on your network:**
+
+Set `osakaTime` in your chainspec to a future Unix timestamp. When the chain reaches that timestamp, the Osaka rules (including EOF validation and the transaction gas cap) take effect. See the [chainspec example](#complete-chainspec-example) below -- the sample already includes `"osakaTime": 1893456000`.
+
+If you do not set `osakaTime`, Osaka remains inactive and the chain continues under Cancun rules.
+
+**Action Required:** Rebuild from source. If you want Osaka active, add or verify `osakaTime` in your chainspec.
 
 ### Default Features Disabled for SP1 Compatibility
 
@@ -170,14 +181,16 @@ The chainspec format is unchanged from v0.2.2. Here is a complete example for re
 
 ## Upgrade for Existing Networks
 
-v0.3.0 is a drop-in replacement for v0.2.2. No chainspec modifications are required.
+v0.3.0 is a drop-in replacement for v0.2.2. No chainspec modifications are required for the binary to run, but activating Osaka requires adding `osakaTime` to your chainspec.
 
 1. The EvNode transaction type (0x76) is automatically available once the binary is upgraded
 2. The permissioned EVM gas fix takes effect immediately
 3. Existing configuration (deploy allowlist, EIP-1559 params, mint precompile) continues to work unchanged
+4. **Osaka activation is opt-in:** add `"osakaTime": <unix_timestamp>` to your chainspec `config` to schedule the hardfork. Without it, the chain stays on Cancun rules and EOF is not enabled
 
 ## Migration Checklist
 
+- [ ] Decide whether to activate Osaka on your network and set `osakaTime` in chainspec accordingly
 - [ ] Review the new EvNode transaction type and decide if your application will use it
 - [ ] If using sponsorship: integrate the `@evstack/evnode-viem` client library
 - [ ] If running custom Docker images: verify tini is included or use the official image

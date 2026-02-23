@@ -22,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Upgraded Reth from v1.8.4 to v1.11.0 ([#106](https://github.com/evstack/ev-reth/pull/106))
+- Upgraded Reth from v1.8.4 to v1.11.0 with Osaka hardfork and EOF support ([#106](https://github.com/evstack/ev-reth/pull/106))
 - Disabled default features on several reth crates to unblock SP1 proving work ([#111](https://github.com/evstack/ev-reth/pull/111))
 
 ## [0.2.2] - 2026-01-22
