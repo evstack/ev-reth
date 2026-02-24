@@ -20,7 +20,7 @@ use reth_payload_builder::PayloadBuilderError;
 use reth_provider::HeaderProvider;
 use reth_revm::cached::CachedReads;
 use tokio::runtime::Handle;
-use tracing::info;
+use tracing::{info, instrument};
 
 use crate::{
     attributes::EvolveEnginePayloadBuilderAttributes, builder::EvolvePayloadBuilder,
@@ -131,6 +131,10 @@ where
     type Attributes = EvolveEnginePayloadBuilderAttributes;
     type BuiltPayload = EvBuiltPayload;
 
+    #[instrument(skip(self, args), fields(
+        tx_count = args.config.attributes.transactions.len(),
+        payload_id = %args.config.attributes.payload_id(),
+    ))]
     fn try_build(
         &self,
         args: BuildArguments<Self::Attributes, Self::BuiltPayload>,
@@ -146,10 +150,7 @@ where
             attributes,
         } = config;
 
-        info!(
-            "Evolve engine payload builder: building payload with {} transactions",
-            attributes.transactions.len()
-        );
+        info!("building payload");
 
         // Convert Engine API attributes to Evolve payload attributes.
         // If no gas_limit provided, default to the parent header's gas limit (genesis for first block).
@@ -189,9 +190,9 @@ where
         .map_err(PayloadBuilderError::other)?;
 
         info!(
-            "Evolve engine payload builder: built block with {} transactions, gas used: {}",
-            sealed_block.transaction_count(),
-            sealed_block.gas_used
+            tx_count = sealed_block.transaction_count(),
+            gas_used = sealed_block.gas_used,
+            "built block"
         );
 
         // Convert to EvBuiltPayload.

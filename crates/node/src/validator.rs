@@ -20,7 +20,7 @@ use reth_ethereum::{
 };
 use reth_ethereum_payload_builder::EthereumExecutionPayloadValidator;
 use reth_primitives_traits::{Block as _, RecoveredBlock, SealedBlock};
-use tracing::info;
+use tracing::{debug, info, instrument};
 
 use crate::{attributes::EvolveEnginePayloadAttributes, node::EvolveEngineTypes};
 
@@ -57,24 +57,25 @@ impl PayloadValidator<EvolveEngineTypes> for EvolveEngineValidator {
             .map_err(NewPayloadError::other)
     }
 
+    #[instrument(skip(self, payload), fields(
+        block_number = payload.payload.block_number(),
+        tx_count = payload.payload.transactions().len(),
+    ))]
     fn ensure_well_formed_payload(
         &self,
         payload: ExecutionData,
     ) -> Result<RecoveredBlock<Self::Block>, NewPayloadError> {
-        info!("Evolve engine validator: validating payload");
-
         // Use inner validator but with custom evolve handling.
         match self.inner.ensure_well_formed_payload(payload.clone()) {
             Ok(sealed_block) => {
-                info!("Evolve engine validator: payload validation succeeded");
+                info!("payload validation succeeded");
                 let ev_block = convert_sealed_block(sealed_block);
                 ev_block
                     .try_recover()
                     .map_err(|e| NewPayloadError::Other(e.into()))
             }
             Err(err) => {
-                // Log the error for debugging.
-                tracing::debug!("Evolve payload validation error: {:?}", err);
+                debug!(error = ?err, "payload validation error");
 
                 // Check if this is an error we can bypass for evolve:
                 // 1. BlockHash mismatch - ev-reth computes different hash due to custom tx types
@@ -90,10 +91,7 @@ impl PayloadValidator<EvolveEngineTypes> for EvolveEngineValidator {
                         || is_unknown_tx_type_error(&err);
 
                 if should_bypass {
-                    info!(
-                        "Evolve engine validator: bypassing validation error for ev-reth: {:?}",
-                        err
-                    );
+                    info!(error = ?err, "bypassing validation error for ev-reth");
                     // For evolve, we trust the payload builder - parse the block with EvNode support.
                     let ev_block = parse_evolve_payload(payload)?;
                     ev_block

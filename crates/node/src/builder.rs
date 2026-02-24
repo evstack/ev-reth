@@ -15,7 +15,7 @@ use reth_primitives_traits::SealedBlock;
 use reth_provider::{HeaderProvider, StateProviderFactory};
 use reth_revm::{database::StateProviderDatabase, State};
 use std::sync::Arc;
-use tracing::{debug, info};
+use tracing::{debug, debug_span, info, instrument};
 
 type EvolveEthEvmConfig = EvEvmConfig<ChainSpec, EvTxEvmFactory>;
 
@@ -62,6 +62,11 @@ where
     }
 
     /// Builds a payload using the provided attributes
+    #[instrument(skip(self, attributes), fields(
+        parent_hash = %attributes.parent_hash,
+        tx_count = attributes.transactions.len(),
+        gas_limit = ?attributes.gas_limit,
+    ))]
     pub async fn build_payload(
         &self,
         attributes: EvolvePayloadAttributes,
@@ -136,43 +141,28 @@ where
             .map_err(|err| PayloadBuilderError::Internal(err.into()))?;
 
         // Execute transactions
-        tracing::info!(
-            transaction_count = attributes.transactions.len(),
-            "Evolve payload builder: executing transactions"
-        );
+        info!(tx_count = attributes.transactions.len(), "executing transactions");
         for (i, tx) in attributes.transactions.iter().enumerate() {
-            tracing::debug!(
+            let _span = debug_span!("execute_tx",
                 index = i,
-                hash = ?tx.tx_hash(),
+                hash = %tx.tx_hash(),
                 nonce = tx.nonce(),
-                gas_price = ?tx.gas_price(),
                 gas_limit = tx.gas_limit(),
-                "Processing transaction"
-            );
+            )
+            .entered();
 
-            // Convert to recovered transaction for execution
             let recovered_tx = tx.try_clone_into_recovered().map_err(|_| {
                 PayloadBuilderError::Internal(RethError::Other(
                     "Failed to recover transaction".into(),
                 ))
             })?;
 
-            // Execute the transaction
             match builder.execute_transaction(recovered_tx) {
                 Ok(gas_used) => {
-                    tracing::debug!(index = i, gas_used, "Transaction executed successfully");
-                    debug!(
-                        "[debug] execute_transaction ok: index={}, gas_used={}",
-                        i, gas_used
-                    );
+                    debug!(gas_used, "transaction executed successfully");
                 }
                 Err(err) => {
-                    // Log the error but continue with other transactions
-                    tracing::warn!(index = i, error = ?err, "Transaction execution failed");
-                    debug!(
-                        "[debug] execute_transaction err: index={}, err={:?}",
-                        i, err
-                    );
+                    tracing::warn!(error = ?err, "transaction execution failed");
                 }
             }
         }
@@ -189,12 +179,12 @@ where
 
         let sealed_block = block.sealed_block().clone();
 
-        tracing::info!(
-                    block_number = sealed_block.number,
-                    block_hash = ?sealed_block.hash(),
-                    transaction_count = sealed_block.transaction_count(),
-                    gas_used = sealed_block.gas_used,
-                    "Evolve payload builder: built block"
+        info!(
+            block_number = sealed_block.number,
+            block_hash = ?sealed_block.hash(),
+            tx_count = sealed_block.transaction_count(),
+            gas_used = sealed_block.gas_used,
+            "built block"
         );
 
         // Return the sealed block

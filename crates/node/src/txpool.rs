@@ -29,7 +29,7 @@ use reth_transaction_pool::{
     EthTransactionValidator, PoolTransaction, TransactionOrigin, TransactionValidationOutcome,
     TransactionValidationTaskExecutor, TransactionValidator,
 };
-use tracing::{debug, info, warn};
+use tracing::{debug, info, instrument, warn};
 
 /// Pool transaction wrapper for `EvTxEnvelope`.
 #[derive(Debug, Clone)]
@@ -477,6 +477,10 @@ where
     type Transaction = EvPooledTransaction;
     type Block = <Evm::Primitives as reth_primitives_traits::NodePrimitives>::Block;
 
+    #[instrument(skip(self, transaction), fields(
+        origin = ?origin,
+        tx_hash = %transaction.hash(),
+    ))]
     async fn validate_transaction(
         &self,
         origin: TransactionOrigin,
