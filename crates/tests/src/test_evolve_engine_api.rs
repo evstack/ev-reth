@@ -4,7 +4,10 @@
 //! ensuring that forkchoice updates, payload construction, and finalization
 //! happen against a live ev-reth node instead of mock fixtures.
 
-use crate::{common::create_test_chain_spec, e2e_tests::build_block_with_transactions};
+use crate::{
+    common::{create_test_chain_spec, e2e_test_tree_config},
+    e2e_tests::build_block_with_transactions,
+};
 
 use alloy_consensus::{TxEnvelope, TxReceipt};
 use alloy_eips::eip2718::Encodable2718;
@@ -72,7 +75,8 @@ async fn test_e2e_engine_api_fork_choice_with_transactions() -> Result<()> {
     let mut setup = Setup::<EvolveEngineTypes>::default()
         .with_chain_spec(chain_spec)
         .with_network(NetworkSetup::single_node())
-        .with_dev_mode(true);
+        .with_dev_mode(true)
+        .with_tree_config(e2e_test_tree_config());
 
     let mut env = Environment::<EvolveEngineTypes>::default();
     setup.apply::<EvolveNode>(&mut env).await?;
@@ -246,7 +250,8 @@ async fn test_e2e_engine_api_gas_limit_handling() -> Result<()> {
     let mut setup = Setup::<EvolveEngineTypes>::default()
         .with_chain_spec(chain_spec)
         .with_network(NetworkSetup::single_node())
-        .with_dev_mode(true);
+        .with_dev_mode(true)
+        .with_tree_config(e2e_test_tree_config());
 
     let mut env = Environment::<EvolveEngineTypes>::default();
     setup.apply::<EvolveNode>(&mut env).await?;
