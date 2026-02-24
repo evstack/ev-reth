@@ -34,6 +34,9 @@ pub mod txpool;
 /// Payload validator integration.
 pub mod validator;
 
+#[cfg(test)]
+mod test_utils;
+
 // Re-export public types for convenience.
 pub use args::EvolveArgs;
 pub use attributes::{EvolveEnginePayloadAttributes, EvolveEnginePayloadBuilderAttributes};

@@ -280,6 +280,72 @@ mod tests {
         );
     }
 
+    #[test]
+    fn ensure_well_formed_payload_span_has_expected_fields() {
+        use crate::test_utils::SpanCollector;
+        use alloy_primitives::{Address, Bloom, Bytes, B256, U256};
+        use alloy_rpc_types::engine::{
+            ExecutionData, ExecutionPayload, ExecutionPayloadSidecar, ExecutionPayloadV1,
+            ExecutionPayloadV2, ExecutionPayloadV3,
+        };
+        use reth_chainspec::ChainSpecBuilder;
+
+        let collector = SpanCollector::new();
+        let _guard = collector.as_default();
+
+        let chain_spec = std::sync::Arc::new(
+            ChainSpecBuilder::default()
+                .chain(reth_chainspec::Chain::from_id(1234))
+                .genesis(
+                    serde_json::from_str(include_str!("../../tests/assets/genesis.json"))
+                        .expect("valid genesis"),
+                )
+                .cancun_activated()
+                .build(),
+        );
+        let validator = EvolveEngineValidator::new(chain_spec);
+
+        let v1 = ExecutionPayloadV1 {
+            parent_hash: B256::ZERO,
+            fee_recipient: Address::ZERO,
+            state_root: B256::ZERO,
+            receipts_root: B256::ZERO,
+            logs_bloom: Bloom::ZERO,
+            prev_randao: B256::ZERO,
+            block_number: 1,
+            gas_limit: 30_000_000,
+            gas_used: 0,
+            timestamp: 1710338136,
+            extra_data: Bytes::default(),
+            base_fee_per_gas: U256::ZERO,
+            block_hash: B256::ZERO,
+            transactions: vec![],
+        };
+        let v2 = ExecutionPayloadV2 {
+            payload_inner: v1,
+            withdrawals: vec![],
+        };
+        let v3 = ExecutionPayloadV3 {
+            payload_inner: v2,
+            blob_gas_used: 0,
+            excess_blob_gas: 0,
+        };
+
+        let payload = ExecutionPayload::V3(v3);
+        let sidecar = ExecutionPayloadSidecar::default();
+        let execution_data = ExecutionData::new(payload, sidecar);
+
+        // we only care that the span was created, not whether validation succeeds.
+        let _ = PayloadValidator::ensure_well_formed_payload(&validator, execution_data);
+
+        let span = collector
+            .find_span("ensure_well_formed_payload")
+            .expect("ensure_well_formed_payload span should be recorded");
+
+        assert!(span.has_field("block_number"), "span missing block_number field");
+        assert!(span.has_field("tx_count"), "span missing tx_count field");
+    }
+
     /// Verifies that `is_unknown_tx_type_error` correctly identifies decode errors
     /// with the expected message.
     #[test]

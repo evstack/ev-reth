@@ -760,6 +760,34 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn validate_transaction_span_has_expected_fields() {
+        use crate::test_utils::SpanCollector;
+
+        let collector = SpanCollector::new();
+        let _guard = collector.as_default();
+
+        let validator = create_test_validator(None);
+
+        let gas_limit = 21_000u64;
+        let max_fee_per_gas = 1_000_000_000u128;
+        let signed_tx = create_non_sponsored_evnode_tx(gas_limit, max_fee_per_gas);
+
+        let signer = Address::random();
+        let pooled = create_pooled_tx(signed_tx, signer);
+
+        let _ = validator
+            .validate_transaction(TransactionOrigin::External, pooled)
+            .await;
+
+        let span = collector
+            .find_span("validate_transaction")
+            .expect("validate_transaction span should be recorded");
+
+        assert!(span.has_field("origin"), "span missing origin field");
+        assert!(span.has_field("tx_hash"), "span missing tx_hash field");
+    }
+
     /// Tests pool-level deploy allowlist rejection for `EvNode` CREATE when caller not allowlisted.
     #[test]
     fn evnode_create_rejected_when_not_allowlisted() {
