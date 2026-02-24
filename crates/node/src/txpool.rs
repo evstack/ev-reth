@@ -791,7 +791,10 @@ mod tests {
 
         assert!(span.has_field("origin"), "span missing origin field");
         assert!(span.has_field("tx_hash"), "span missing tx_hash field");
-        assert!(span.has_field("duration_ms"), "span missing duration_ms field");
+        assert!(
+            span.has_field("duration_ms"),
+            "span missing duration_ms field"
+        );
     }
 
     /// Tests pool-level deploy allowlist rejection for `EvNode` CREATE when caller not allowlisted.

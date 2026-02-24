@@ -1,10 +1,16 @@
 //! test utilities for verifying tracing instrumentation.
 
 use std::sync::{Arc, Mutex};
-use tracing::field::{Field, Visit};
-use tracing::subscriber::set_default;
-use tracing::Subscriber;
-use tracing_subscriber::{layer::Context, layer::SubscriberExt, registry::LookupSpan, Layer};
+use tracing::{
+    field::{Field, Visit},
+    subscriber::set_default,
+    Subscriber,
+};
+use tracing_subscriber::{
+    layer::{Context, SubscriberExt},
+    registry::LookupSpan,
+    Layer,
+};
 
 /// a recorded span with its name and captured fields.
 #[derive(Debug, Clone)]

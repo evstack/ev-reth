@@ -144,7 +144,10 @@ where
             .map_err(|err| PayloadBuilderError::Internal(err.into()))?;
 
         // Execute transactions
-        info!(tx_count = attributes.transactions.len(), "executing transactions");
+        info!(
+            tx_count = attributes.transactions.len(),
+            "executing transactions"
+        );
         for (i, tx) in attributes.transactions.iter().enumerate() {
             let _span = debug_span!("execute_tx",
                 index = i,
@@ -231,9 +234,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::EvolvePayloadBuilderConfig;
-    use crate::executor::EvolveEvmConfig;
-    use crate::test_utils::SpanCollector;
+    use crate::{
+        config::EvolvePayloadBuilderConfig, executor::EvolveEvmConfig, test_utils::SpanCollector,
+    };
     use alloy_primitives::B256;
     use evolve_ev_reth::EvolvePayloadAttributes;
     use reth_chainspec::ChainSpecBuilder;
@@ -257,10 +260,14 @@ mod tests {
         );
 
         let provider = MockEthProvider::default();
-        let genesis_hash =
-            B256::from_slice(&hex::decode("2b8bbb1ea1e04f9c9809b4b278a8687806edc061a356c7dbc491930d8e922503").unwrap());
-        let genesis_state_root =
-            B256::from_slice(&hex::decode("05e9954443da80d86f2104e56ffdfd98fe21988730684360104865b3dc8191b4").unwrap());
+        let genesis_hash = B256::from_slice(
+            &hex::decode("2b8bbb1ea1e04f9c9809b4b278a8687806edc061a356c7dbc491930d8e922503")
+                .unwrap(),
+        );
+        let genesis_state_root = B256::from_slice(
+            &hex::decode("05e9954443da80d86f2104e56ffdfd98fe21988730684360104865b3dc8191b4")
+                .unwrap(),
+        );
 
         let genesis_header = Header {
             state_root: genesis_state_root,
@@ -275,11 +282,9 @@ mod tests {
         };
         provider.add_header(genesis_hash, genesis_header);
 
-        let config =
-            EvolvePayloadBuilderConfig::from_chain_spec(chain_spec.as_ref()).unwrap();
+        let config = EvolvePayloadBuilderConfig::from_chain_spec(chain_spec.as_ref()).unwrap();
         let evm_config = EvolveEvmConfig::new(chain_spec);
-        let builder =
-            EvolvePayloadBuilder::new(Arc::new(provider), evm_config, config);
+        let builder = EvolvePayloadBuilder::new(Arc::new(provider), evm_config, config);
 
         let attributes = EvolvePayloadAttributes::new(
             vec![],
@@ -299,10 +304,16 @@ mod tests {
             .find_span("build_payload")
             .expect("build_payload span should be recorded");
 
-        assert!(span.has_field("parent_hash"), "span missing parent_hash field");
+        assert!(
+            span.has_field("parent_hash"),
+            "span missing parent_hash field"
+        );
         assert!(span.has_field("tx_count"), "span missing tx_count field");
         assert!(span.has_field("gas_limit"), "span missing gas_limit field");
-        assert!(span.has_field("duration_ms"), "span missing duration_ms field");
+        assert!(
+            span.has_field("duration_ms"),
+            "span missing duration_ms field"
+        );
     }
 
     #[tokio::test]
@@ -326,10 +337,14 @@ mod tests {
         );
 
         let provider = MockEthProvider::default();
-        let genesis_hash =
-            B256::from_slice(&hex::decode("2b8bbb1ea1e04f9c9809b4b278a8687806edc061a356c7dbc491930d8e922503").unwrap());
-        let genesis_state_root =
-            B256::from_slice(&hex::decode("05e9954443da80d86f2104e56ffdfd98fe21988730684360104865b3dc8191b4").unwrap());
+        let genesis_hash = B256::from_slice(
+            &hex::decode("2b8bbb1ea1e04f9c9809b4b278a8687806edc061a356c7dbc491930d8e922503")
+                .unwrap(),
+        );
+        let genesis_state_root = B256::from_slice(
+            &hex::decode("05e9954443da80d86f2104e56ffdfd98fe21988730684360104865b3dc8191b4")
+                .unwrap(),
+        );
 
         let genesis_header = Header {
             state_root: genesis_state_root,
@@ -344,11 +359,9 @@ mod tests {
         };
         provider.add_header(genesis_hash, genesis_header);
 
-        let config =
-            EvolvePayloadBuilderConfig::from_chain_spec(chain_spec.as_ref()).unwrap();
+        let config = EvolvePayloadBuilderConfig::from_chain_spec(chain_spec.as_ref()).unwrap();
         let evm_config = EvolveEvmConfig::new(chain_spec);
-        let builder =
-            EvolvePayloadBuilder::new(Arc::new(provider), evm_config, config);
+        let builder = EvolvePayloadBuilder::new(Arc::new(provider), evm_config, config);
 
         let legacy_tx = TxLegacy {
             chain_id: Some(ChainId::from(1234u64)),
@@ -363,9 +376,7 @@ mod tests {
             reth_primitives::Transaction::Legacy(legacy_tx),
             Signature::test_signature(),
         );
-        let tx = EvTxEnvelope::Ethereum(
-            reth_ethereum_primitives::TransactionSigned::from(signed),
-        );
+        let tx = EvTxEnvelope::Ethereum(reth_ethereum_primitives::TransactionSigned::from(signed));
 
         let attributes = EvolvePayloadAttributes::new(
             vec![tx],

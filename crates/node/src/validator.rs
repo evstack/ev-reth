@@ -351,10 +351,19 @@ mod tests {
             .find_span("ensure_well_formed_payload")
             .expect("ensure_well_formed_payload span should be recorded");
 
-        assert!(span.has_field("block_number"), "span missing block_number field");
+        assert!(
+            span.has_field("block_number"),
+            "span missing block_number field"
+        );
         assert!(span.has_field("tx_count"), "span missing tx_count field");
-        assert!(span.has_field("block_hash"), "span missing block_hash field");
-        assert!(span.has_field("duration_ms"), "span missing duration_ms field");
+        assert!(
+            span.has_field("block_hash"),
+            "span missing block_hash field"
+        );
+        assert!(
+            span.has_field("duration_ms"),
+            "span missing duration_ms field"
+        );
     }
 
     /// Verifies that `is_unknown_tx_type_error` correctly identifies decode errors
