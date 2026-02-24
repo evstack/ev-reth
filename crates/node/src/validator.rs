@@ -20,7 +20,7 @@ use reth_ethereum::{
 };
 use reth_ethereum_payload_builder::EthereumExecutionPayloadValidator;
 use reth_primitives_traits::{Block as _, RecoveredBlock, SealedBlock};
-use tracing::info;
+use tracing::{debug, info, instrument};
 
 use crate::{attributes::EvolveEnginePayloadAttributes, node::EvolveEngineTypes};
 
@@ -57,24 +57,31 @@ impl PayloadValidator<EvolveEngineTypes> for EvolveEngineValidator {
             .map_err(NewPayloadError::other)
     }
 
+    #[instrument(skip(self, payload), fields(
+        block_number = payload.payload.block_number(),
+        tx_count = payload.payload.transactions().len(),
+        block_hash = tracing::field::Empty,
+        duration_ms = tracing::field::Empty,
+    ))]
     fn ensure_well_formed_payload(
         &self,
         payload: ExecutionData,
     ) -> Result<RecoveredBlock<Self::Block>, NewPayloadError> {
-        info!("Evolve engine validator: validating payload");
-
+        let _start = std::time::Instant::now();
         // Use inner validator but with custom evolve handling.
         match self.inner.ensure_well_formed_payload(payload.clone()) {
             Ok(sealed_block) => {
-                info!("Evolve engine validator: payload validation succeeded");
+                let span = tracing::Span::current();
+                span.record("block_hash", tracing::field::display(sealed_block.hash()));
+                span.record("duration_ms", _start.elapsed().as_millis() as u64);
+                info!("payload validation succeeded");
                 let ev_block = convert_sealed_block(sealed_block);
                 ev_block
                     .try_recover()
                     .map_err(|e| NewPayloadError::Other(e.into()))
             }
             Err(err) => {
-                // Log the error for debugging.
-                tracing::debug!("Evolve payload validation error: {:?}", err);
+                debug!(error = ?err, "payload validation error");
 
                 // Check if this is an error we can bypass for evolve:
                 // 1. BlockHash mismatch - ev-reth computes different hash due to custom tx types
@@ -90,12 +97,12 @@ impl PayloadValidator<EvolveEngineTypes> for EvolveEngineValidator {
                         || is_unknown_tx_type_error(&err);
 
                 if should_bypass {
-                    info!(
-                        "Evolve engine validator: bypassing validation error for ev-reth: {:?}",
-                        err
-                    );
+                    info!(error = ?err, "bypassing validation error for ev-reth");
                     // For evolve, we trust the payload builder - parse the block with EvNode support.
                     let ev_block = parse_evolve_payload(payload)?;
+                    let span = tracing::Span::current();
+                    span.record("block_hash", tracing::field::display(ev_block.hash()));
+                    span.record("duration_ms", _start.elapsed().as_millis() as u64);
                     ev_block
                         .try_recover()
                         .map_err(|e| NewPayloadError::Other(e.into()))
@@ -279,6 +286,83 @@ mod tests {
             "Error message should contain '{}', but got: '{}'",
             UNKNOWN_TX_TYPE_ERROR_MSG,
             err_string
+        );
+    }
+
+    #[test]
+    fn ensure_well_formed_payload_span_has_expected_fields() {
+        use crate::test_utils::SpanCollector;
+        use alloy_primitives::{Address, Bloom, Bytes, B256, U256};
+        use alloy_rpc_types::engine::{
+            ExecutionData, ExecutionPayload, ExecutionPayloadSidecar, ExecutionPayloadV1,
+            ExecutionPayloadV2, ExecutionPayloadV3,
+        };
+        use reth_chainspec::ChainSpecBuilder;
+
+        let collector = SpanCollector::new();
+        let _guard = collector.as_default();
+
+        let chain_spec = std::sync::Arc::new(
+            ChainSpecBuilder::default()
+                .chain(reth_chainspec::Chain::from_id(1234))
+                .genesis(
+                    serde_json::from_str(include_str!("../../tests/assets/genesis.json"))
+                        .expect("valid genesis"),
+                )
+                .cancun_activated()
+                .build(),
+        );
+        let validator = EvolveEngineValidator::new(chain_spec);
+
+        let v1 = ExecutionPayloadV1 {
+            parent_hash: B256::ZERO,
+            fee_recipient: Address::ZERO,
+            state_root: B256::ZERO,
+            receipts_root: B256::ZERO,
+            logs_bloom: Bloom::ZERO,
+            prev_randao: B256::ZERO,
+            block_number: 1,
+            gas_limit: 30_000_000,
+            gas_used: 0,
+            timestamp: 1710338136,
+            extra_data: Bytes::default(),
+            base_fee_per_gas: U256::ZERO,
+            block_hash: B256::ZERO,
+            transactions: vec![],
+        };
+        let v2 = ExecutionPayloadV2 {
+            payload_inner: v1,
+            withdrawals: vec![],
+        };
+        let v3 = ExecutionPayloadV3 {
+            payload_inner: v2,
+            blob_gas_used: 0,
+            excess_blob_gas: 0,
+        };
+
+        let payload = ExecutionPayload::V3(v3);
+        let sidecar = ExecutionPayloadSidecar::default();
+        let execution_data = ExecutionData::new(payload, sidecar);
+
+        // we only care that the span was created, not whether validation succeeds.
+        let _ = PayloadValidator::ensure_well_formed_payload(&validator, execution_data);
+
+        let span = collector
+            .find_span("ensure_well_formed_payload")
+            .expect("ensure_well_formed_payload span should be recorded");
+
+        assert!(
+            span.has_field("block_number"),
+            "span missing block_number field"
+        );
+        assert!(span.has_field("tx_count"), "span missing tx_count field");
+        assert!(
+            span.has_field("block_hash"),
+            "span missing block_hash field"
+        );
+        assert!(
+            span.has_field("duration_ms"),
+            "span missing duration_ms field"
         );
     }
 
