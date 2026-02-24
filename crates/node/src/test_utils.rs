@@ -98,4 +98,22 @@ where
 
         self.spans.lock().unwrap().push(record);
     }
+
+    fn on_record(
+        &self,
+        id: &tracing::span::Id,
+        values: &tracing::span::Record<'_>,
+        ctx: Context<'_, S>,
+    ) {
+        let mut collector = FieldCollector::new();
+        values.record(&mut collector);
+
+        if let Some(span_ref) = ctx.span(id) {
+            let name = span_ref.name().to_string();
+            let mut spans = self.spans.lock().unwrap();
+            if let Some(record) = spans.iter_mut().find(|s| s.name == name) {
+                record.fields.extend(collector.fields);
+            }
+        }
+    }
 }

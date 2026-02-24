@@ -480,18 +480,20 @@ where
     #[instrument(skip(self, transaction), fields(
         origin = ?origin,
         tx_hash = %transaction.hash(),
+        duration_ms = tracing::field::Empty,
     ))]
     async fn validate_transaction(
         &self,
         origin: TransactionOrigin,
         transaction: <Self as TransactionValidator>::Transaction,
     ) -> TransactionValidationOutcome<Self::Transaction> {
+        let _start = std::time::Instant::now();
         let mut state = None;
         let outcome = self
             .inner
             .validate_one_with_state(origin, transaction, &mut state);
 
-        match outcome {
+        let result = match outcome {
             TransactionValidationOutcome::Valid {
                 balance,
                 state_nonce,
@@ -513,7 +515,10 @@ where
                 }
             },
             other => other,
-        }
+        };
+
+        tracing::Span::current().record("duration_ms", _start.elapsed().as_millis() as u64);
+        result
     }
 }
 
@@ -786,6 +791,7 @@ mod tests {
 
         assert!(span.has_field("origin"), "span missing origin field");
         assert!(span.has_field("tx_hash"), "span missing tx_hash field");
+        assert!(span.has_field("duration_ms"), "span missing duration_ms field");
     }
 
     /// Tests pool-level deploy allowlist rejection for `EvNode` CREATE when caller not allowlisted.

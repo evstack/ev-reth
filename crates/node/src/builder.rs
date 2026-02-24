@@ -66,11 +66,14 @@ where
         parent_hash = %attributes.parent_hash,
         tx_count = attributes.transactions.len(),
         gas_limit = ?attributes.gas_limit,
+        duration_ms = tracing::field::Empty,
     ))]
     pub async fn build_payload(
         &self,
         attributes: EvolvePayloadAttributes,
     ) -> Result<SealedBlock<ev_primitives::Block>, PayloadBuilderError> {
+        let _start = std::time::Instant::now();
+
         // Validate attributes
         attributes
             .validate()
@@ -162,7 +165,7 @@ where
                     debug!(gas_used, "transaction executed successfully");
                 }
                 Err(err) => {
-                    tracing::warn!(error = ?err, "transaction execution failed");
+                    tracing::warn!(error = ?err, tx_hash = %tx.tx_hash(), "transaction execution failed");
                 }
             }
         }
@@ -178,6 +181,8 @@ where
             .map_err(PayloadBuilderError::other)?;
 
         let sealed_block = block.sealed_block().clone();
+
+        tracing::Span::current().record("duration_ms", _start.elapsed().as_millis() as u64);
 
         info!(
             block_number = sealed_block.number,
@@ -297,6 +302,7 @@ mod tests {
         assert!(span.has_field("parent_hash"), "span missing parent_hash field");
         assert!(span.has_field("tx_count"), "span missing tx_count field");
         assert!(span.has_field("gas_limit"), "span missing gas_limit field");
+        assert!(span.has_field("duration_ms"), "span missing duration_ms field");
     }
 
     #[tokio::test]

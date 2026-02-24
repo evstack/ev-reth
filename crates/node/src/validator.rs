@@ -60,14 +60,20 @@ impl PayloadValidator<EvolveEngineTypes> for EvolveEngineValidator {
     #[instrument(skip(self, payload), fields(
         block_number = payload.payload.block_number(),
         tx_count = payload.payload.transactions().len(),
+        block_hash = tracing::field::Empty,
+        duration_ms = tracing::field::Empty,
     ))]
     fn ensure_well_formed_payload(
         &self,
         payload: ExecutionData,
     ) -> Result<RecoveredBlock<Self::Block>, NewPayloadError> {
+        let _start = std::time::Instant::now();
         // Use inner validator but with custom evolve handling.
         match self.inner.ensure_well_formed_payload(payload.clone()) {
             Ok(sealed_block) => {
+                let span = tracing::Span::current();
+                span.record("block_hash", tracing::field::display(sealed_block.hash()));
+                span.record("duration_ms", _start.elapsed().as_millis() as u64);
                 info!("payload validation succeeded");
                 let ev_block = convert_sealed_block(sealed_block);
                 ev_block
@@ -94,6 +100,9 @@ impl PayloadValidator<EvolveEngineTypes> for EvolveEngineValidator {
                     info!(error = ?err, "bypassing validation error for ev-reth");
                     // For evolve, we trust the payload builder - parse the block with EvNode support.
                     let ev_block = parse_evolve_payload(payload)?;
+                    let span = tracing::Span::current();
+                    span.record("block_hash", tracing::field::display(ev_block.hash()));
+                    span.record("duration_ms", _start.elapsed().as_millis() as u64);
                     ev_block
                         .try_recover()
                         .map_err(|e| NewPayloadError::Other(e.into()))
@@ -344,6 +353,8 @@ mod tests {
 
         assert!(span.has_field("block_number"), "span missing block_number field");
         assert!(span.has_field("tx_count"), "span missing tx_count field");
+        assert!(span.has_field("block_hash"), "span missing block_hash field");
+        assert!(span.has_field("duration_ms"), "span missing duration_ms field");
     }
 
     /// Verifies that `is_unknown_tx_type_error` correctly identifies decode errors

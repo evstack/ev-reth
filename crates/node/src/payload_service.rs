@@ -134,11 +134,13 @@ where
     #[instrument(skip(self, args), fields(
         tx_count = args.config.attributes.transactions.len(),
         payload_id = %args.config.attributes.payload_id(),
+        duration_ms = tracing::field::Empty,
     ))]
     fn try_build(
         &self,
         args: BuildArguments<Self::Attributes, Self::BuiltPayload>,
     ) -> Result<BuildOutcome<Self::BuiltPayload>, PayloadBuilderError> {
+        let _start = std::time::Instant::now();
         let BuildArguments {
             cached_reads: _,
             config,
@@ -203,6 +205,8 @@ where
             U256::from(gas_used), // Block gas used.
             None,                 // No blob sidecar for evolve.
         );
+
+        tracing::Span::current().record("duration_ms", _start.elapsed().as_millis() as u64);
 
         Ok(BuildOutcome::Better {
             payload: built_payload,
@@ -371,5 +375,6 @@ mod tests {
 
         assert!(span.has_field("tx_count"), "span missing tx_count field");
         assert!(span.has_field("payload_id"), "span missing payload_id field");
+        assert!(span.has_field("duration_ms"), "span missing duration_ms field");
     }
 }
