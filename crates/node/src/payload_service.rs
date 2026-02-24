@@ -20,7 +20,7 @@ use reth_payload_builder::PayloadBuilderError;
 use reth_provider::HeaderProvider;
 use reth_revm::cached::CachedReads;
 use tokio::runtime::Handle;
-use tracing::info;
+use tracing::{info, instrument};
 
 use crate::{
     attributes::EvolveEnginePayloadBuilderAttributes, builder::EvolvePayloadBuilder,
@@ -131,10 +131,16 @@ where
     type Attributes = EvolveEnginePayloadBuilderAttributes;
     type BuiltPayload = EvBuiltPayload;
 
+    #[instrument(skip(self, args), fields(
+        tx_count = args.config.attributes.transactions.len(),
+        payload_id = %args.config.attributes.payload_id(),
+        duration_ms = tracing::field::Empty,
+    ))]
     fn try_build(
         &self,
         args: BuildArguments<Self::Attributes, Self::BuiltPayload>,
     ) -> Result<BuildOutcome<Self::BuiltPayload>, PayloadBuilderError> {
+        let _start = std::time::Instant::now();
         let BuildArguments {
             cached_reads: _,
             config,
@@ -146,10 +152,7 @@ where
             attributes,
         } = config;
 
-        info!(
-            "Evolve engine payload builder: building payload with {} transactions",
-            attributes.transactions.len()
-        );
+        info!("building payload");
 
         // Convert Engine API attributes to Evolve payload attributes.
         // If no gas_limit provided, default to the parent header's gas limit (genesis for first block).
@@ -189,9 +192,9 @@ where
         .map_err(PayloadBuilderError::other)?;
 
         info!(
-            "Evolve engine payload builder: built block with {} transactions, gas used: {}",
-            sealed_block.transaction_count(),
-            sealed_block.gas_used
+            tx_count = sealed_block.transaction_count(),
+            gas_used = sealed_block.gas_used,
+            "built block"
         );
 
         // Convert to EvBuiltPayload.
@@ -202,6 +205,8 @@ where
             U256::from(gas_used), // Block gas used.
             None,                 // No blob sidecar for evolve.
         );
+
+        tracing::Span::current().record("duration_ms", _start.elapsed().as_millis() as u64);
 
         Ok(BuildOutcome::Better {
             payload: built_payload,
@@ -275,5 +280,110 @@ where
         _args: BuildArguments<Self::Attributes, Self::BuiltPayload>,
     ) -> MissingPayloadBehaviour<Self::BuiltPayload> {
         MissingPayloadBehaviour::AwaitInProgress
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        config::EvolvePayloadBuilderConfig, executor::EvolveEvmConfig, test_utils::SpanCollector,
+    };
+    use alloy_primitives::B256;
+    use alloy_rpc_types::engine::PayloadAttributes as RpcPayloadAttributes;
+    use reth_basic_payload_builder::PayloadConfig;
+    use reth_chainspec::ChainSpecBuilder;
+    use reth_payload_builder::EthPayloadBuilderAttributes;
+    use reth_primitives_traits::SealedHeader;
+    use reth_provider::test_utils::MockEthProvider;
+    use reth_revm::{cached::CachedReads, cancelled::CancelOnDrop};
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn try_build_span_has_expected_fields() {
+        let collector = SpanCollector::new();
+        let _guard = collector.as_default();
+
+        let genesis: alloy_genesis::Genesis =
+            serde_json::from_str(include_str!("../../tests/assets/genesis.json"))
+                .expect("valid genesis");
+        let chain_spec = Arc::new(
+            ChainSpecBuilder::default()
+                .chain(reth_chainspec::Chain::from_id(1234))
+                .genesis(genesis)
+                .cancun_activated()
+                .build(),
+        );
+
+        let provider = MockEthProvider::default();
+        let genesis_hash = B256::from_slice(
+            &hex::decode("2b8bbb1ea1e04f9c9809b4b278a8687806edc061a356c7dbc491930d8e922503")
+                .unwrap(),
+        );
+        let genesis_state_root = B256::from_slice(
+            &hex::decode("05e9954443da80d86f2104e56ffdfd98fe21988730684360104865b3dc8191b4")
+                .unwrap(),
+        );
+
+        let genesis_header = Header {
+            state_root: genesis_state_root,
+            number: 0,
+            gas_limit: 30_000_000,
+            timestamp: 1710338135,
+            base_fee_per_gas: Some(0),
+            excess_blob_gas: Some(0),
+            blob_gas_used: Some(0),
+            parent_beacon_block_root: Some(B256::ZERO),
+            ..Default::default()
+        };
+        provider.add_header(genesis_hash, genesis_header.clone());
+
+        let config = EvolvePayloadBuilderConfig::from_chain_spec(chain_spec.as_ref()).unwrap();
+        let evm_config = EvolveEvmConfig::new(chain_spec);
+        let evolve_builder = Arc::new(EvolvePayloadBuilder::new(
+            Arc::new(provider),
+            evm_config,
+            config.clone(),
+        ));
+
+        let engine_builder = EvolveEnginePayloadBuilder {
+            evolve_builder,
+            config,
+        };
+
+        let rpc_attrs = RpcPayloadAttributes {
+            timestamp: 1710338136,
+            prev_randao: B256::random(),
+            suggested_fee_recipient: Address::random(),
+            withdrawals: Some(vec![]),
+            parent_beacon_block_root: Some(B256::ZERO),
+        };
+        let eth_attrs = EthPayloadBuilderAttributes::new(genesis_hash, rpc_attrs);
+        let builder_attrs = EvolveEnginePayloadBuilderAttributes::from(eth_attrs);
+
+        let sealed_parent = SealedHeader::new(genesis_header, genesis_hash);
+        let payload_config = PayloadConfig::new(Arc::new(sealed_parent), builder_attrs);
+        let args = BuildArguments::new(
+            CachedReads::default(),
+            payload_config,
+            CancelOnDrop::default(),
+            None,
+        );
+
+        // we only care that the span was created with the right fields.
+        let _ = engine_builder.try_build(args);
+
+        let span = collector
+            .find_span("try_build")
+            .expect("try_build span should be recorded");
+
+        assert!(span.has_field("tx_count"), "span missing tx_count field");
+        assert!(
+            span.has_field("payload_id"),
+            "span missing payload_id field"
+        );
+        assert!(
+            span.has_field("duration_ms"),
+            "span missing duration_ms field"
+        );
     }
 }

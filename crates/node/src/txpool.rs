@@ -29,7 +29,7 @@ use reth_transaction_pool::{
     EthTransactionValidator, PoolTransaction, TransactionOrigin, TransactionValidationOutcome,
     TransactionValidationTaskExecutor, TransactionValidator,
 };
-use tracing::{debug, info, warn};
+use tracing::{debug, info, instrument, warn};
 
 /// Pool transaction wrapper for `EvTxEnvelope`.
 #[derive(Debug, Clone)]
@@ -477,17 +477,23 @@ where
     type Transaction = EvPooledTransaction;
     type Block = <Evm::Primitives as reth_primitives_traits::NodePrimitives>::Block;
 
+    #[instrument(skip(self, transaction), fields(
+        origin = ?origin,
+        tx_hash = %transaction.hash(),
+        duration_ms = tracing::field::Empty,
+    ))]
     async fn validate_transaction(
         &self,
         origin: TransactionOrigin,
         transaction: <Self as TransactionValidator>::Transaction,
     ) -> TransactionValidationOutcome<Self::Transaction> {
+        let _start = std::time::Instant::now();
         let mut state = None;
         let outcome = self
             .inner
             .validate_one_with_state(origin, transaction, &mut state);
 
-        match outcome {
+        let result = match outcome {
             TransactionValidationOutcome::Valid {
                 balance,
                 state_nonce,
@@ -509,7 +515,10 @@ where
                 }
             },
             other => other,
-        }
+        };
+
+        tracing::Span::current().record("duration_ms", _start.elapsed().as_millis() as u64);
+        result
     }
 }
 
@@ -753,6 +762,38 @@ mod tests {
             result.is_ok(),
             "Non-sponsored EvNode with sufficient balance should be accepted, got: {:?}",
             result
+        );
+    }
+
+    #[tokio::test]
+    async fn validate_transaction_span_has_expected_fields() {
+        use crate::test_utils::SpanCollector;
+
+        let collector = SpanCollector::new();
+        let _guard = collector.as_default();
+
+        let validator = create_test_validator(None);
+
+        let gas_limit = 21_000u64;
+        let max_fee_per_gas = 1_000_000_000u128;
+        let signed_tx = create_non_sponsored_evnode_tx(gas_limit, max_fee_per_gas);
+
+        let signer = Address::random();
+        let pooled = create_pooled_tx(signed_tx, signer);
+
+        let _ = validator
+            .validate_transaction(TransactionOrigin::External, pooled)
+            .await;
+
+        let span = collector
+            .find_span("validate_transaction")
+            .expect("validate_transaction span should be recorded");
+
+        assert!(span.has_field("origin"), "span missing origin field");
+        assert!(span.has_field("tx_hash"), "span missing tx_hash field");
+        assert!(
+            span.has_field("duration_ms"),
+            "span missing duration_ms field"
         );
     }
 

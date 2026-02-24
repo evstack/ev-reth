@@ -15,7 +15,7 @@ use reth_primitives_traits::SealedBlock;
 use reth_provider::{HeaderProvider, StateProviderFactory};
 use reth_revm::{database::StateProviderDatabase, State};
 use std::sync::Arc;
-use tracing::{debug, info};
+use tracing::{debug, debug_span, info, instrument};
 
 type EvolveEthEvmConfig = EvEvmConfig<ChainSpec, EvTxEvmFactory>;
 
@@ -62,10 +62,18 @@ where
     }
 
     /// Builds a payload using the provided attributes
+    #[instrument(skip(self, attributes), fields(
+        parent_hash = %attributes.parent_hash,
+        tx_count = attributes.transactions.len(),
+        gas_limit = ?attributes.gas_limit,
+        duration_ms = tracing::field::Empty,
+    ))]
     pub async fn build_payload(
         &self,
         attributes: EvolvePayloadAttributes,
     ) -> Result<SealedBlock<ev_primitives::Block>, PayloadBuilderError> {
+        let _start = std::time::Instant::now();
+
         // Validate attributes
         attributes
             .validate()
@@ -136,43 +144,31 @@ where
             .map_err(|err| PayloadBuilderError::Internal(err.into()))?;
 
         // Execute transactions
-        tracing::info!(
-            transaction_count = attributes.transactions.len(),
-            "Evolve payload builder: executing transactions"
+        info!(
+            tx_count = attributes.transactions.len(),
+            "executing transactions"
         );
         for (i, tx) in attributes.transactions.iter().enumerate() {
-            tracing::debug!(
+            let _span = debug_span!("execute_tx",
                 index = i,
-                hash = ?tx.tx_hash(),
+                hash = %tx.tx_hash(),
                 nonce = tx.nonce(),
-                gas_price = ?tx.gas_price(),
                 gas_limit = tx.gas_limit(),
-                "Processing transaction"
-            );
+            )
+            .entered();
 
-            // Convert to recovered transaction for execution
             let recovered_tx = tx.try_clone_into_recovered().map_err(|_| {
                 PayloadBuilderError::Internal(RethError::Other(
                     "Failed to recover transaction".into(),
                 ))
             })?;
 
-            // Execute the transaction
             match builder.execute_transaction(recovered_tx) {
                 Ok(gas_used) => {
-                    tracing::debug!(index = i, gas_used, "Transaction executed successfully");
-                    debug!(
-                        "[debug] execute_transaction ok: index={}, gas_used={}",
-                        i, gas_used
-                    );
+                    debug!(gas_used, "transaction executed successfully");
                 }
                 Err(err) => {
-                    // Log the error but continue with other transactions
-                    tracing::warn!(index = i, error = ?err, "Transaction execution failed");
-                    debug!(
-                        "[debug] execute_transaction err: index={}, err={:?}",
-                        i, err
-                    );
+                    tracing::warn!(error = ?err, tx_hash = %tx.tx_hash(), "transaction execution failed");
                 }
             }
         }
@@ -189,12 +185,14 @@ where
 
         let sealed_block = block.sealed_block().clone();
 
-        tracing::info!(
-                    block_number = sealed_block.number,
-                    block_hash = ?sealed_block.hash(),
-                    transaction_count = sealed_block.transaction_count(),
-                    gas_used = sealed_block.gas_used,
-                    "Evolve payload builder: built block"
+        tracing::Span::current().record("duration_ms", _start.elapsed().as_millis() as u64);
+
+        info!(
+            block_number = sealed_block.number,
+            block_hash = ?sealed_block.hash(),
+            tx_count = sealed_block.transaction_count(),
+            gas_used = sealed_block.gas_used,
+            "built block"
         );
 
         // Return the sealed block
@@ -202,7 +200,7 @@ where
     }
 }
 
-/// Creates a new payload builder service
+/// Creates a new payload builder service.
 pub fn create_payload_builder_service<Client>(
     client: Arc<Client>,
     evm_config: EvolveEthEvmConfig,
@@ -231,4 +229,174 @@ where
     }
 
     Some(EvolvePayloadBuilder::new(client, evm_config, config))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        config::EvolvePayloadBuilderConfig, executor::EvolveEvmConfig, test_utils::SpanCollector,
+    };
+    use alloy_primitives::B256;
+    use evolve_ev_reth::EvolvePayloadAttributes;
+    use reth_chainspec::ChainSpecBuilder;
+    use reth_primitives::Header;
+    use reth_provider::test_utils::MockEthProvider;
+
+    #[tokio::test]
+    async fn build_payload_span_has_expected_fields() {
+        let collector = SpanCollector::new();
+        let _guard = collector.as_default();
+
+        let genesis: alloy_genesis::Genesis =
+            serde_json::from_str(include_str!("../../tests/assets/genesis.json"))
+                .expect("valid genesis");
+        let chain_spec = Arc::new(
+            ChainSpecBuilder::default()
+                .chain(reth_chainspec::Chain::from_id(1234))
+                .genesis(genesis)
+                .cancun_activated()
+                .build(),
+        );
+
+        let provider = MockEthProvider::default();
+        let genesis_hash = B256::from_slice(
+            &hex::decode("2b8bbb1ea1e04f9c9809b4b278a8687806edc061a356c7dbc491930d8e922503")
+                .unwrap(),
+        );
+        let genesis_state_root = B256::from_slice(
+            &hex::decode("05e9954443da80d86f2104e56ffdfd98fe21988730684360104865b3dc8191b4")
+                .unwrap(),
+        );
+
+        let genesis_header = Header {
+            state_root: genesis_state_root,
+            number: 0,
+            gas_limit: 30_000_000,
+            timestamp: 1710338135,
+            base_fee_per_gas: Some(0),
+            excess_blob_gas: Some(0),
+            blob_gas_used: Some(0),
+            parent_beacon_block_root: Some(B256::ZERO),
+            ..Default::default()
+        };
+        provider.add_header(genesis_hash, genesis_header);
+
+        let config = EvolvePayloadBuilderConfig::from_chain_spec(chain_spec.as_ref()).unwrap();
+        let evm_config = EvolveEvmConfig::new(chain_spec);
+        let builder = EvolvePayloadBuilder::new(Arc::new(provider), evm_config, config);
+
+        let attributes = EvolvePayloadAttributes::new(
+            vec![],
+            Some(30_000_000),
+            1710338136,
+            B256::random(),
+            Address::random(),
+            genesis_hash,
+            1,
+        );
+
+        // we only care that the span was created with the right fields,
+        // not whether the payload build itself succeeds.
+        let _ = builder.build_payload(attributes).await;
+
+        let span = collector
+            .find_span("build_payload")
+            .expect("build_payload span should be recorded");
+
+        assert!(
+            span.has_field("parent_hash"),
+            "span missing parent_hash field"
+        );
+        assert!(span.has_field("tx_count"), "span missing tx_count field");
+        assert!(span.has_field("gas_limit"), "span missing gas_limit field");
+        assert!(
+            span.has_field("duration_ms"),
+            "span missing duration_ms field"
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_tx_span_has_expected_fields() {
+        use alloy_consensus::TxLegacy;
+        use alloy_primitives::{Bytes, ChainId, Signature, TxKind, U256};
+        use ev_primitives::EvTxEnvelope;
+
+        let collector = SpanCollector::new();
+        let _guard = collector.as_default();
+
+        let genesis: alloy_genesis::Genesis =
+            serde_json::from_str(include_str!("../../tests/assets/genesis.json"))
+                .expect("valid genesis");
+        let chain_spec = Arc::new(
+            ChainSpecBuilder::default()
+                .chain(reth_chainspec::Chain::from_id(1234))
+                .genesis(genesis)
+                .cancun_activated()
+                .build(),
+        );
+
+        let provider = MockEthProvider::default();
+        let genesis_hash = B256::from_slice(
+            &hex::decode("2b8bbb1ea1e04f9c9809b4b278a8687806edc061a356c7dbc491930d8e922503")
+                .unwrap(),
+        );
+        let genesis_state_root = B256::from_slice(
+            &hex::decode("05e9954443da80d86f2104e56ffdfd98fe21988730684360104865b3dc8191b4")
+                .unwrap(),
+        );
+
+        let genesis_header = Header {
+            state_root: genesis_state_root,
+            number: 0,
+            gas_limit: 30_000_000,
+            timestamp: 1710338135,
+            base_fee_per_gas: Some(0),
+            excess_blob_gas: Some(0),
+            blob_gas_used: Some(0),
+            parent_beacon_block_root: Some(B256::ZERO),
+            ..Default::default()
+        };
+        provider.add_header(genesis_hash, genesis_header);
+
+        let config = EvolvePayloadBuilderConfig::from_chain_spec(chain_spec.as_ref()).unwrap();
+        let evm_config = EvolveEvmConfig::new(chain_spec);
+        let builder = EvolvePayloadBuilder::new(Arc::new(provider), evm_config, config);
+
+        let legacy_tx = TxLegacy {
+            chain_id: Some(ChainId::from(1234u64)),
+            nonce: 0,
+            gas_price: 0,
+            gas_limit: 21_000,
+            to: TxKind::Call(Address::ZERO),
+            value: U256::ZERO,
+            input: Bytes::default(),
+        };
+        let signed = alloy_consensus::Signed::new_unhashed(
+            reth_primitives::Transaction::Legacy(legacy_tx),
+            Signature::test_signature(),
+        );
+        let tx = EvTxEnvelope::Ethereum(reth_ethereum_primitives::TransactionSigned::from(signed));
+
+        let attributes = EvolvePayloadAttributes::new(
+            vec![tx],
+            Some(30_000_000),
+            1710338136,
+            B256::random(),
+            Address::random(),
+            genesis_hash,
+            1,
+        );
+
+        let _ = builder.build_payload(attributes).await;
+
+        let span = collector
+            .find_span("execute_tx")
+            .expect("execute_tx span should be recorded");
+
+        assert!(span.has_field("index"), "span missing index field");
+        assert!(span.has_field("hash"), "span missing hash field");
+        assert!(span.has_field("nonce"), "span missing nonce field");
+        assert!(span.has_field("gas_limit"), "span missing gas_limit field");
+    }
 }
