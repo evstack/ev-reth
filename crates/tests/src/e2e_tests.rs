@@ -28,7 +28,7 @@ use reth_rpc_api::clients::{EngineApiClient, EthApiClient};
 use crate::common::{
     create_test_chain_spec, create_test_chain_spec_with_base_fee_sink,
     create_test_chain_spec_with_deploy_allowlist, create_test_chain_spec_with_mint_admin,
-    TEST_CHAIN_ID,
+    e2e_test_tree_config, TEST_CHAIN_ID,
 };
 use ev_node::rpc::{EvRpcReceipt, EvRpcTransaction, EvTransactionRequest};
 use ev_precompiles::mint::MINT_PRECOMPILE_ADDR;
@@ -218,7 +218,8 @@ async fn test_e2e_single_node_produces_blocks() -> Result<()> {
     let setup = Setup::<EvolveEngineTypes>::default()
         .with_chain_spec(chain_spec)
         .with_network(NetworkSetup::single_node())
-        .with_dev_mode(true);
+        .with_dev_mode(true)
+        .with_tree_config(e2e_test_tree_config());
 
     TestBuilder::new()
         .with_setup(setup)
@@ -272,7 +273,8 @@ async fn test_e2e_base_fee_sink_receives_base_fee() -> Result<()> {
     let mut setup = Setup::<EvolveEngineTypes>::default()
         .with_chain_spec(chain_spec)
         .with_network(NetworkSetup::single_node())
-        .with_dev_mode(true);
+        .with_dev_mode(true)
+        .with_tree_config(e2e_test_tree_config());
 
     let mut env = Environment::<EvolveEngineTypes>::default();
     setup.apply::<EvolveNode>(&mut env).await?;
@@ -406,7 +408,8 @@ async fn test_e2e_sponsored_evnode_transaction() -> Result<()> {
     let mut setup = Setup::<EvolveEngineTypes>::default()
         .with_chain_spec(chain_spec)
         .with_network(NetworkSetup::single_node())
-        .with_dev_mode(true);
+        .with_dev_mode(true)
+        .with_tree_config(e2e_test_tree_config());
 
     let mut env = Environment::<EvolveEngineTypes>::default();
     setup.apply::<EvolveNode>(&mut env).await?;
@@ -611,7 +614,8 @@ async fn test_e2e_invalid_sponsor_signature_skipped() -> Result<()> {
     let mut setup = Setup::<EvolveEngineTypes>::default()
         .with_chain_spec(chain_spec)
         .with_network(NetworkSetup::single_node())
-        .with_dev_mode(true);
+        .with_dev_mode(true)
+        .with_tree_config(e2e_test_tree_config());
 
     let mut env = Environment::<EvolveEngineTypes>::default();
     setup.apply::<EvolveNode>(&mut env).await?;
@@ -735,7 +739,8 @@ async fn test_e2e_empty_calls_skipped() -> Result<()> {
     let mut setup = Setup::<EvolveEngineTypes>::default()
         .with_chain_spec(chain_spec)
         .with_network(NetworkSetup::single_node())
-        .with_dev_mode(true);
+        .with_dev_mode(true)
+        .with_tree_config(e2e_test_tree_config());
 
     let mut env = Environment::<EvolveEngineTypes>::default();
     setup.apply::<EvolveNode>(&mut env).await?;
@@ -847,7 +852,8 @@ async fn test_e2e_sponsor_insufficient_max_fee_skipped() -> Result<()> {
     let mut setup = Setup::<EvolveEngineTypes>::default()
         .with_chain_spec(chain_spec)
         .with_network(NetworkSetup::single_node())
-        .with_dev_mode(true);
+        .with_dev_mode(true)
+        .with_tree_config(e2e_test_tree_config());
 
     let mut env = Environment::<EvolveEngineTypes>::default();
     setup.apply::<EvolveNode>(&mut env).await?;
@@ -994,7 +1000,8 @@ async fn test_e2e_nonce_bumped_on_create_batch_failure() -> Result<()> {
     let mut setup = Setup::<EvolveEngineTypes>::default()
         .with_chain_spec(chain_spec)
         .with_network(NetworkSetup::single_node())
-        .with_dev_mode(true);
+        .with_dev_mode(true)
+        .with_tree_config(e2e_test_tree_config());
 
     let mut env = Environment::<EvolveEngineTypes>::default();
     setup.apply::<EvolveNode>(&mut env).await?;
@@ -1232,7 +1239,8 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
     let mut setup = Setup::<EvolveEngineTypes>::default()
         .with_chain_spec(chain_spec.clone())
         .with_network(NetworkSetup::single_node())
-        .with_dev_mode(true);
+        .with_dev_mode(true)
+        .with_tree_config(e2e_test_tree_config());
 
     let mut env = Environment::<EvolveEngineTypes>::default();
     setup.apply::<EvolveNode>(&mut env).await?;
@@ -1653,7 +1661,8 @@ async fn test_e2e_mint_precompile_via_contract() -> Result<()> {
     let mut setup = Setup::<EvolveEngineTypes>::default()
         .with_chain_spec(chain_spec.clone())
         .with_network(NetworkSetup::single_node())
-        .with_dev_mode(true);
+        .with_dev_mode(true)
+        .with_tree_config(e2e_test_tree_config());
 
     let mut env = Environment::<EvolveEngineTypes>::default();
     setup.apply::<EvolveNode>(&mut env).await?;
@@ -1883,7 +1892,8 @@ async fn test_e2e_deploy_allowlist_blocks_unauthorized_deploys() -> Result<()> {
     let mut setup = Setup::<EvolveEngineTypes>::default()
         .with_chain_spec(chain_spec)
         .with_network(NetworkSetup::single_node())
-        .with_dev_mode(true);
+        .with_dev_mode(true)
+        .with_tree_config(e2e_test_tree_config());
 
     let mut env = Environment::<EvolveEngineTypes>::default();
     setup.apply::<EvolveNode>(&mut env).await?;

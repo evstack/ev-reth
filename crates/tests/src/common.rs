@@ -15,6 +15,7 @@ use ev_revm::{
 };
 use eyre::Result;
 use reth_chainspec::{ChainSpec, ChainSpecBuilder};
+use reth_node_api::TreeConfig;
 use reth_primitives::{Header, Transaction};
 use reth_provider::test_utils::{ExtendedAccount, MockEthProvider};
 use serde_json::json;
@@ -99,6 +100,16 @@ pub fn create_test_chain_spec_with_deploy_allowlist(
     deploy_allowlist: Vec<Address>,
 ) -> Arc<ChainSpec> {
     create_test_chain_spec_with_extras(None, None, Some(deploy_allowlist))
+}
+
+/// Returns a deterministic engine tree config for e2e tests.
+///
+/// This avoids a known debug-mode panic in upstream reth where deferred trie
+/// data can be synchronously awaited from a rayon proof worker thread.
+pub fn e2e_test_tree_config() -> TreeConfig {
+    TreeConfig::default()
+        .with_legacy_state_root(true)
+        .with_disable_proof_v2(true)
 }
 
 /// Shared test fixture for evolve payload builder tests

@@ -30,13 +30,6 @@ reth-tracing-otlp = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1
 reth-node-api = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.11.1" }
 reth-node-builder = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.11.1" }
 reth-errors = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.11.1" }
-reth-optimism-node = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.11.1" }
-reth-optimism-cli = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.11.1" }
-reth-optimism-rpc = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.11.1" }
-reth-optimism-forks = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.11.1" }
-reth-optimism-chainspec = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.11.1" }
-reth-optimism-payload-builder = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.11.1" }
-reth-optimism-primitives = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.11.1" }
 reth-trie-db = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.11.1" }
 reth-trie-common = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.11.1" }
 reth-rpc-eth-types = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.11.1" }
