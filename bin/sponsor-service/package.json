@@ -1,0 +1,21 @@
+{
+  "name": "@evstack/sponsor-service",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "start": "bun run src/index.ts",
+    "test": "bun test",
+    "test:unit": "bun test tests/unit",
+    "test:integration": "bun test tests/integration"
+  },
+  "dependencies": {
+    "fastify": "^5.2.0",
+    "viem": "^2.45.0",
+    "@evstack/evnode-viem": "file:../../clients"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.7.0"
+  }
+}
