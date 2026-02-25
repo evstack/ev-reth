@@ -407,7 +407,7 @@ where
         Ok(account.balance)
     }
 
-    /// Validates an EvNode transaction. Returns an optional override balance
+    /// Validates an `EvNode` transaction. Returns an optional override balance
     /// for sponsored transactions (the sponsor's balance), so the pool uses
     /// the sponsor's balance for pending/queued ordering instead of the executor's.
     fn validate_evnode(
