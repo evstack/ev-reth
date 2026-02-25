@@ -4,8 +4,8 @@ import type { SponsorService } from '../services/sponsor-service.js';
 export function registerHealthRoute(app: FastifyInstance, service: SponsorService) {
   app.get('/v1/health', async (_request, reply) => {
     const [balance, nodeConnected] = await Promise.allSettled([
-      service.getSponsorBalance(),
-      service.isNodeConnected(),
+      service.rpc.getBalance(service.sponsorAddress),
+      service.rpc.isConnected(),
     ]);
 
     const sponsorBalance = balance.status === 'fulfilled' ? balance.value.toString() : null;

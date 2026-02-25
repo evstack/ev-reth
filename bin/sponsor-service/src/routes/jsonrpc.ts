@@ -28,8 +28,8 @@ function isEvNodeTx(rawTx: Hex): boolean {
 function sponsorErrorToRpcCode(e: SponsorError): number {
   switch (e.statusCode) {
     case 429: return -32005;
+    case 502:
     case 503: return -32003;
-    case 502: return -32003;
     default: return -32602;
   }
 }
@@ -39,7 +39,7 @@ async function handleEvNodeSendRaw(rawTx: Hex, service: SponsorService): Promise
 
   // Already has sponsor signature — forward as-is
   if (signedTx.transaction.feePayerSignature) {
-    return service.sendRawTransaction(rawTx);
+    return service.rpc.sendRawTransaction(rawTx);
   }
 
   // No sponsor signature — sponsor it
@@ -74,7 +74,7 @@ export function registerJsonRpcRoute(app: FastifyInstance, service: SponsorServi
 
     // Everything else: proxy to the real node
     try {
-      const proxyResult = await service.proxyRpcRequest(body);
+      const proxyResult = await service.rpc.proxy(body);
       return reply.send(proxyResult);
     } catch {
       return reply.send(jsonRpcError(body.id, -32003, 'Unable to connect to upstream node'));

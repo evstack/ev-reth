@@ -50,7 +50,6 @@ All config via environment variables:
 | `MAX_FEE_PER_GAS_LIMIT` | No | `100000000000` (100 gwei) | Max fee per gas allowed |
 | `MIN_SPONSOR_BALANCE` | No | `1000000000000000000` (1 ETH) | Min sponsor balance to accept txs |
 | `PORT` | No | `3000` | HTTP port |
-| `DB_PATH` | No | `./sponsor.db` | SQLite database path |
 
 ## Running
 
@@ -101,7 +100,6 @@ Policy violations return standard JSON-RPC errors:
 |---|---|
 | `GET /v1/health` | Health check with sponsor balance and node connectivity |
 | `GET /v1/policy` | Current sponsorship policies |
-| `POST /v1/sponsor` | Submit an intent directly (alternative to JSON-RPC proxy) |
 
 ## Tests
 

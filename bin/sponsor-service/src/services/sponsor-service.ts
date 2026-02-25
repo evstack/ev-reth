@@ -10,7 +10,8 @@ import {
 } from '@evstack/evnode-viem';
 import type { SponsorConfig } from '../config.js';
 import { PolicyEngine } from './policy-engine.js';
-import { SPONSOR_BALANCE_LOW, NODE_ERROR } from '../errors.js';
+import { RpcClient } from './rpc-client.js';
+import { SPONSOR_BALANCE_LOW } from '../errors.js';
 
 export interface SponsorResult {
   txHash: Hex;
@@ -19,13 +20,13 @@ export interface SponsorResult {
 
 export class SponsorService {
   public readonly policyEngine: PolicyEngine;
+  public readonly rpc: RpcClient;
   private readonly sponsorSigner: HashSigner;
-  private readonly rpcUrl: string;
   private readonly minBalance: bigint;
 
-  constructor(config: SponsorConfig) {
+  constructor(config: SponsorConfig, rpc?: RpcClient) {
     this.policyEngine = new PolicyEngine(config);
-    this.rpcUrl = config.rpcUrl;
+    this.rpc = rpc ?? new RpcClient(config.rpcUrl);
     this.minBalance = config.minSponsorBalance;
 
     const account = privateKeyToAccount(config.sponsorPrivateKey);
@@ -45,7 +46,7 @@ export class SponsorService {
   async sponsorIntent(intent: SponsorableIntent): Promise<SponsorResult> {
     await this.policyEngine.validate(intent);
 
-    const balance = await this.getSponsorBalance();
+    const balance = await this.rpc.getBalance(this.sponsorSigner.address);
     if (balance < this.minBalance) {
       throw SPONSOR_BALANCE_LOW();
     }
@@ -61,46 +62,8 @@ export class SponsorService {
       executorSignature: intent.executorSignature,
     };
     const encoded = encodeSignedTransaction(signedTx);
-    const txHash = await this.sendRawTransaction(encoded);
+    const txHash = await this.rpc.sendRawTransaction(encoded);
 
     return { txHash, sponsorAddress: this.sponsorSigner.address };
-  }
-
-  private async fetchRpc(body: unknown): Promise<Response> {
-    return fetch(this.rpcUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-  }
-
-  private async rpcCall(method: string, params: unknown[] = []): Promise<any> {
-    const response = await this.fetchRpc({ jsonrpc: '2.0', id: 1, method, params });
-    const data = (await response.json()) as { result?: any; error?: { message: string } };
-    if (data.error) throw NODE_ERROR(data.error.message);
-    return data.result;
-  }
-
-  async getSponsorBalance(): Promise<bigint> {
-    const result = await this.rpcCall('eth_getBalance', [this.sponsorSigner.address, 'latest']);
-    return BigInt(result);
-  }
-
-  async isNodeConnected(): Promise<boolean> {
-    try {
-      const result = await this.rpcCall('net_version');
-      return !!result;
-    } catch {
-      return false;
-    }
-  }
-
-  async sendRawTransaction(encoded: Hex): Promise<Hex> {
-    return this.rpcCall('eth_sendRawTransaction', [encoded]);
-  }
-
-  async proxyRpcRequest(body: unknown): Promise<unknown> {
-    const response = await this.fetchRpc(body);
-    return response.json();
   }
 }
