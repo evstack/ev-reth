@@ -18,10 +18,15 @@ describe('REST API', () => {
 
   test('GET /v1/health returns status', async () => {
     const response = await app.inject({ method: 'GET', url: '/v1/health' });
-    expect(response.statusCode).toBe(200);
     const body = response.json();
     expect(body).toHaveProperty('status');
     expect(body).toHaveProperty('nodeConnected');
+    // HTTP status depends on whether a real node is reachable
+    if (body.status === 'unhealthy') {
+      expect(response.statusCode).toBe(503);
+    } else {
+      expect(response.statusCode).toBe(200);
+    }
   });
 
   test('GET /v1/policy returns config', async () => {
@@ -31,6 +36,7 @@ describe('REST API', () => {
     expect(body.chainId).toBe('1337');
     expect(body).toHaveProperty('sponsorAddress');
     expect(body).toHaveProperty('maxGasPerTx');
+    expect(body).toHaveProperty('maxFeePerGas');
   });
 });
 
@@ -71,7 +77,7 @@ describe('JSON-RPC proxy', () => {
     expect(body.id).toBe(1);
     expect(body.error).toBeDefined();
     // Should fail at sponsor balance check or node connection, not at decoding
-    expect(body.error.message).toMatch(/balance|Node error|connect|fetch/i);
+    expect(body.error.message).toMatch(/balance|Node error|connect/i);
   });
 
   test('eth_sendRawTransaction with 0x76 tx rejects gas limit exceeded', async () => {

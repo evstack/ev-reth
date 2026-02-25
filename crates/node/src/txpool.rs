@@ -458,8 +458,7 @@ where
         self.validate_evnode_calls(tx)?;
 
         if let Some(signature) = tx.fee_payer_signature.as_ref() {
-            // Sponsored transaction: validate sponsor balance and return it
-            // so the pool uses the sponsor's balance for pending/queued ordering
+            // Sponsored transaction: sponsor pays gas, executor pays call values.
             let executor = pooled.transaction().signer();
             let sponsor = tx.recover_sponsor(executor, signature).map_err(|_| {
                 InvalidPoolTransactionError::other(EvTxPoolError::InvalidSponsorSignature)
@@ -467,6 +466,16 @@ where
 
             let gas_cost = U256::from(tx.max_fee_per_gas).saturating_mul(U256::from(tx.gas_limit));
             let sponsor_balance = self.validate_sponsor_balance(state, sponsor, gas_cost)?;
+
+            // Validate executor balance covers call value transfers
+            let call_value = alloy_consensus::Transaction::value(tx);
+            if !call_value.is_zero() && sender_balance < call_value {
+                return Err(InvalidPoolTransactionError::Overdraft {
+                    cost: call_value,
+                    balance: sender_balance,
+                });
+            }
+
             Ok(Some(sponsor_balance))
         } else {
             Self::check_sender_overdraft(pooled, sender_balance)?;
@@ -798,6 +807,54 @@ mod tests {
             span.has_field("duration_ms"),
             "span missing duration_ms field"
         );
+    }
+
+    /// Tests that non-sponsored `EvNode` transactions with non-zero call values
+    /// require the sender to cover both gas and value.
+    #[test]
+    fn non_sponsored_evnode_rejects_when_balance_covers_gas_but_not_value() {
+        let validator = create_test_validator(None);
+
+        let gas_limit = 21_000u64;
+        let max_fee_per_gas = 1_000_000_000u128; // 1 gwei
+        let call_value = U256::from(1_000_000_000_000_000_000u128); // 1 ETH
+
+        let tx = EvNodeTransaction {
+            chain_id: 1,
+            nonce: 0,
+            max_priority_fee_per_gas: 1,
+            max_fee_per_gas,
+            gas_limit,
+            calls: vec![Call {
+                to: TxKind::Call(Address::ZERO),
+                value: call_value,
+                input: Bytes::new(),
+            }],
+            access_list: AccessList::default(),
+            fee_payer_signature: None,
+        };
+        let signed_tx = Signed::new_unhashed(tx, sample_signature());
+
+        let signer = Address::random();
+        let pooled = create_pooled_tx(signed_tx, signer);
+
+        // Balance covers gas cost but NOT the call value
+        let gas_cost = U256::from(gas_limit) * U256::from(max_fee_per_gas);
+        let sender_balance = gas_cost + U256::from(1); // enough for gas, not for value
+        let mut state: Option<Box<dyn AccountInfoReader + Send>> = None;
+
+        let result = validator.validate_evnode(&pooled, sender_balance, &mut state);
+        assert!(
+            result.is_err(),
+            "Should reject when balance covers gas but not call value"
+        );
+        if let Err(err) = result {
+            assert!(
+                matches!(err, InvalidPoolTransactionError::Overdraft { .. }),
+                "Expected Overdraft error, got: {:?}",
+                err
+            );
+        }
     }
 
     /// Tests pool-level deploy allowlist rejection for `EvNode` CREATE when caller not allowlisted.

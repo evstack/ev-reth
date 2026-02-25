@@ -1,5 +1,5 @@
 import type { Address, Hex } from 'viem';
-import { hexToSignature } from 'viem';
+import { parseSignature } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import {
   signAsSponsor,
@@ -34,7 +34,7 @@ export class SponsorService {
       address: account.address,
       signHash: async (hash: Hex) => {
         const sig = await account.sign({ hash });
-        return hexToSignature(sig);
+        return parseSignature(sig);
       },
     };
   }
@@ -43,6 +43,11 @@ export class SponsorService {
     return this.sponsorSigner.address;
   }
 
+  // NOTE: Concurrent sponsorIntent calls share a TOCTOU race on the balance check.
+  // Under high load, multiple requests may each read balance > minBalance and all
+  // proceed to submit. The practical impact is low (gas cost per tx << minBalance)
+  // and on-chain nonce ordering prevents double-spending. Consider adding a
+  // nonce-management queue if production load requires tighter control.
   async sponsorIntent(intent: SponsorableIntent): Promise<SponsorResult> {
     await this.policyEngine.validate(intent);
 

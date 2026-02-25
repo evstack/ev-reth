@@ -10,8 +10,17 @@ export function registerHealthRoute(app: FastifyInstance, service: SponsorServic
 
     const sponsorBalance = balance.status === 'fulfilled' ? balance.value.toString() : null;
     const connected = nodeConnected.status === 'fulfilled' ? nodeConnected.value : false;
-    const status = sponsorBalance !== null && connected ? 'healthy' : 'degraded';
 
-    return reply.send({ status, sponsorBalance, nodeConnected: connected });
+    let status: 'healthy' | 'degraded' | 'unhealthy';
+    if (!connected) {
+      status = 'unhealthy';
+    } else if (sponsorBalance === null) {
+      status = 'degraded';
+    } else {
+      status = 'healthy';
+    }
+
+    const httpStatus = status === 'unhealthy' ? 503 : 200;
+    return reply.status(httpStatus).send({ status, sponsorBalance, nodeConnected: connected });
   });
 }

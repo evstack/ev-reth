@@ -19,7 +19,7 @@ function jsonRpcError(id: number | string | null, code: number, message: string)
   return { jsonrpc: '2.0', id, error: { code, message } };
 }
 
-const EVNODE_TX_TYPE_HEX = EVNODE_TX_TYPE.toString(16);
+const EVNODE_TX_TYPE_HEX = EVNODE_TX_TYPE.toString(16).padStart(2, '0');
 
 function isEvNodeTx(rawTx: Hex): boolean {
   return rawTx.length >= 4 && rawTx.slice(2, 4).toLowerCase() === EVNODE_TX_TYPE_HEX;
@@ -55,6 +55,9 @@ async function handleEvNodeSendRaw(rawTx: Hex, service: SponsorService): Promise
 export function registerJsonRpcRoute(app: FastifyInstance, service: SponsorService) {
   app.post('/', async (request, reply) => {
     const body = request.body as JsonRpcRequest;
+    if (!body || typeof body !== 'object') {
+      return reply.send(jsonRpcError(null, -32600, 'Invalid Request'));
+    }
 
     if (body.method === 'eth_sendRawTransaction' && body.params?.[0]) {
       const rawTx = body.params[0] as Hex;

@@ -6,11 +6,12 @@ export class RpcClient {
 
   constructor(private readonly rpcUrl: string) {}
 
-  private async fetchRpc(body: unknown): Promise<Response> {
+  private async fetchRpc(body: unknown, timeoutMs = 10_000): Promise<Response> {
     return fetch(this.rpcUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   }
 
@@ -42,6 +43,10 @@ export class RpcClient {
 
   async proxy(body: unknown): Promise<unknown> {
     const response = await this.fetchRpc(body);
-    return response.json();
+    try {
+      return await response.json();
+    } catch {
+      throw NODE_ERROR(`upstream returned non-JSON response (status ${response.status})`);
+    }
   }
 }

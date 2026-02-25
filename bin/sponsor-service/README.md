@@ -4,23 +4,25 @@ Transparent JSON-RPC proxy that sponsors gas fees for ev-reth transactions. Clie
 
 ## How it works
 
-```
-Client (evnode-viem)       Sponsor Service                 ev-reth
-     |                              |                            |
-     | eth_sendRawTransaction(0x76) |                            |
-     |----------------------------->|                            |
-     |                              | 1. Decode 0x76 tx          |
-     |                              | 2. No feePayerSignature?   |
-     |                              | 3. Validate policy         |
-     |                              | 4. Sign as sponsor         |
-     |                              | 5. Re-encode & forward --->|
-     |                              |                            |
-     |    { txHash }                |<---------------------------|
-     |<-----------------------------|                            |
-     |                              |                            |
-     | eth_chainId / eth_getBalance |                            |
-     |----------------------------->| proxy ---------------------->|
-     |<-----------------------------|<----------------------------|
+```mermaid
+sequenceDiagram
+    participant Client as Client (evnode-viem)
+    participant Sponsor as Sponsor Service
+    participant Node as ev-reth
+
+    Client->>Sponsor: eth_sendRawTransaction(0x76)
+    Sponsor->>Sponsor: 1. Decode 0x76 tx
+    Sponsor->>Sponsor: 2. No feePayerSignature?
+    Sponsor->>Sponsor: 3. Validate policy
+    Sponsor->>Sponsor: 4. Sign as sponsor
+    Sponsor->>Node: 5. Re-encode & forward
+    Node-->>Sponsor: { txHash }
+    Sponsor-->>Client: { txHash }
+
+    Client->>Sponsor: eth_chainId / eth_getBalance
+    Sponsor->>Node: proxy
+    Node-->>Sponsor: result
+    Sponsor-->>Client: result
 ```
 
 The client needs zero code changes — just change the RPC URL from the node to the sponsor service.
@@ -30,11 +32,11 @@ The client needs zero code changes — just change the RPC URL from the node to 
 Requires [Bun](https://bun.sh) runtime.
 
 ```bash
-# Build the client library first
+# Build the client library first (from repo root)
 cd ../../clients && bun install && bun run build
 
-# Install dependencies
-cd ../../bin/sponsor-service && bun install
+# Install dependencies (from bin/sponsor-service)
+bun install
 ```
 
 ## Configuration
@@ -121,7 +123,7 @@ cd /path/to/ev-node/apps/evm && docker compose up -d
 bun run tests/e2e/fund-executor.ts
 
 # 3. Start the sponsor service
-RPC_URL=http://localhost:8545 CHAIN_ID=1234 SPONSOR_PRIVATE_KEY=0x... bun run start
+RPC_URL=http://localhost:8545 CHAIN_ID=1337 SPONSOR_PRIVATE_KEY=0x... bun run start
 
 # 4. Run the E2E test
 bun run tests/e2e/sponsor-e2e.ts
