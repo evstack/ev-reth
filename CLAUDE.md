@@ -5,26 +5,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Common Development Commands
 
 ### Building
-- **Release build**: `make build`
-- **Debug build**: `make build-dev`
-- **Build all workspace members**: `make build-all`
+- **Release build**: `just build`
+- **Debug build**: `just build-dev`
+- **Build all workspace members**: `just build-all`
 
 ### Testing
-- **Run all tests**: `make test`
-- **Run tests with output**: `make test-verbose`
-- **Unit tests only**: `make test-unit`
-- **Integration tests**: `make test-integration`
-- **Test specific crate**: `make test-node`, `make test-evolve`, `make test-common`
+- **Run all tests**: `just test`
+- **Run tests with output**: `just test-verbose`
+- **Unit tests only**: `just test-unit`
+- **Integration tests**: `just test-integration`
+- **Test specific crate**: `just test-node`, `just test-evolve`, `just test-common`
 
 ### Code Quality
-- **Format code**: `make fmt`
-- **Check formatting**: `make fmt-check`
-- **Run linter**: `make lint`
-- **Run all checks**: `make check-all`
+- **Format code**: `just fmt`
+- **Check formatting**: `just fmt-check`
+- **Run linter**: `just lint`
+- **Run all checks**: `just check-all`
 
 ### Running the Node
-- **Run with defaults**: `make run`
-- **Run with debug logs**: `make run-dev`
+- **Run with defaults**: `just run`
+- **Run with debug logs**: `just run-dev`
 - **Direct execution**: `./target/release/lumen node --chain <CHAIN_SPEC> --datadir <DATA_DIR> --http --ws`
 
 ## High-Level Architecture

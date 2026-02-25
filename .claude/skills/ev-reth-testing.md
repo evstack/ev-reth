@@ -142,9 +142,9 @@ pub const TEST_BASE_FEE: u64 = 0;
 ## Development Commands
 
 ```bash
-make test              # Run all tests
-make test-verbose      # Run with output
-make test-integration  # Integration tests only
+just test              # Run all tests
+just test-verbose      # Run with output
+just test-integration  # Integration tests only
 
 # Run specific test
 cargo test -p ev-reth-tests test_payload_with_transactions
