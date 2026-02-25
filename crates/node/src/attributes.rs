@@ -13,6 +13,8 @@ use reth_payload_primitives::PayloadAttributesBuilder;
 use reth_primitives_traits::SealedHeader;
 use serde::{Deserialize, Serialize};
 
+use tracing::{info, instrument, Span};
+
 use crate::error::EvolveEngineError;
 use ev_primitives::TransactionSigned;
 
@@ -68,11 +70,18 @@ impl PayloadBuilderAttributes for EvolveEnginePayloadBuilderAttributes {
     type RpcPayloadAttributes = EvolveEnginePayloadAttributes;
     type Error = EvolveEngineError;
 
+    #[instrument(skip(parent, attributes, _version), fields(
+        parent_hash = %parent,
+        raw_tx_count = attributes.transactions.as_ref().map_or(0, |t| t.len()),
+        gas_limit = ?attributes.gas_limit,
+        duration_ms = tracing::field::Empty,
+    ))]
     fn try_new(
         parent: B256,
         attributes: EvolveEnginePayloadAttributes,
         _version: u8,
     ) -> Result<Self, Self::Error> {
+        let _start = std::time::Instant::now();
         let ethereum_attributes = EthPayloadBuilderAttributes::new(parent, attributes.inner);
 
         // Decode transactions from bytes if provided.
@@ -85,6 +94,12 @@ impl PayloadBuilderAttributes for EvolveEnginePayloadBuilderAttributes {
                     .map_err(|e| EvolveEngineError::InvalidTransactionData(e.to_string()))
             })
             .collect::<Result<Vec<_>, _>>()?;
+
+        info!(
+            decoded_tx_count = transactions.len(),
+            "decoded payload attributes"
+        );
+        Span::current().record("duration_ms", _start.elapsed().as_millis() as u64);
 
         Ok(Self {
             ethereum_attributes,
@@ -164,5 +179,51 @@ impl PayloadAttributesBuilder<EvolveEnginePayloadAttributes>
             transactions: None,
             gas_limit: None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::SpanCollector;
+
+    #[test]
+    fn try_new_span_has_expected_fields() {
+        let collector = SpanCollector::new();
+        let _guard = collector.as_default();
+
+        let parent = B256::random();
+        let attrs = EvolveEnginePayloadAttributes {
+            inner: RpcPayloadAttributes {
+                timestamp: 1710338136,
+                prev_randao: B256::random(),
+                suggested_fee_recipient: Address::random(),
+                withdrawals: Some(vec![]),
+                parent_beacon_block_root: Some(B256::ZERO),
+            },
+            transactions: Some(vec![]),
+            gas_limit: Some(30_000_000),
+        };
+
+        // we only care that the span was created with the right fields.
+        let _ = EvolveEnginePayloadBuilderAttributes::try_new(parent, attrs, 3);
+
+        let span = collector
+            .find_span("try_new")
+            .expect("try_new span should be recorded");
+
+        assert!(
+            span.has_field("parent_hash"),
+            "span missing parent_hash field"
+        );
+        assert!(
+            span.has_field("raw_tx_count"),
+            "span missing raw_tx_count field"
+        );
+        assert!(span.has_field("gas_limit"), "span missing gas_limit field");
+        assert!(
+            span.has_field("duration_ms"),
+            "span missing duration_ms field"
+        );
     }
 }

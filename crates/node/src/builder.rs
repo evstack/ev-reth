@@ -15,7 +15,7 @@ use reth_primitives_traits::SealedBlock;
 use reth_provider::{HeaderProvider, StateProviderFactory};
 use reth_revm::{database::StateProviderDatabase, State};
 use std::sync::Arc;
-use tracing::{debug, debug_span, info, instrument};
+use tracing::{debug, debug_span, info, instrument, Span};
 
 type EvolveEthEvmConfig = EvEvmConfig<ChainSpec, EvTxEvmFactory>;
 
@@ -185,7 +185,7 @@ where
 
         let sealed_block = block.sealed_block().clone();
 
-        tracing::Span::current().record("duration_ms", _start.elapsed().as_millis() as u64);
+        Span::current().record("duration_ms", _start.elapsed().as_millis() as u64);
 
         info!(
             block_number = sealed_block.number,

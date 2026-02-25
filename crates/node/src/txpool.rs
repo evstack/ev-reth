@@ -29,7 +29,7 @@ use reth_transaction_pool::{
     EthTransactionValidator, PoolTransaction, TransactionOrigin, TransactionValidationOutcome,
     TransactionValidationTaskExecutor, TransactionValidator,
 };
-use tracing::{debug, info, instrument, warn};
+use tracing::{debug, info, instrument, warn, Span};
 
 /// Pool transaction wrapper for `EvTxEnvelope`.
 #[derive(Debug, Clone)]
@@ -394,7 +394,27 @@ where
         Ok(())
     }
 
+    #[instrument(skip(self, pooled, sender_balance, state), fields(
+        tx_hash = %pooled.hash(),
+        is_evnode = matches!(pooled.transaction().inner(), EvTxEnvelope::EvNode(_)),
+        duration_ms = tracing::field::Empty,
+    ))]
     fn validate_evnode(
+        &self,
+        pooled: &EvPooledTransaction,
+        sender_balance: U256,
+        state: &mut Option<Box<dyn AccountInfoReader + Send>>,
+    ) -> Result<(), InvalidPoolTransactionError>
+    where
+        Client: StateProviderFactory,
+    {
+        let _start = std::time::Instant::now();
+        let result = self.validate_evnode_inner(pooled, sender_balance, state);
+        Span::current().record("duration_ms", _start.elapsed().as_millis() as u64);
+        result
+    }
+
+    fn validate_evnode_inner(
         &self,
         pooled: &EvPooledTransaction,
         sender_balance: U256,
@@ -517,7 +537,7 @@ where
             other => other,
         };
 
-        tracing::Span::current().record("duration_ms", _start.elapsed().as_millis() as u64);
+        Span::current().record("duration_ms", _start.elapsed().as_millis() as u64);
         result
     }
 }
@@ -820,5 +840,38 @@ mod tests {
         if let Err(err) = result {
             assert!(matches!(err, InvalidPoolTransactionError::Other(_)));
         }
+    }
+
+    #[test]
+    fn validate_evnode_span_has_expected_fields() {
+        use crate::test_utils::SpanCollector;
+
+        let collector = SpanCollector::new();
+        let _guard = collector.as_default();
+
+        let validator = create_test_validator(None);
+
+        let gas_limit = 21_000u64;
+        let max_fee_per_gas = 1_000_000_000u128;
+        let signed_tx = create_non_sponsored_evnode_tx(gas_limit, max_fee_per_gas);
+
+        let signer = Address::random();
+        let pooled = create_pooled_tx(signed_tx, signer);
+
+        let sender_balance = *pooled.cost() + U256::from(1);
+        let mut state: Option<Box<dyn AccountInfoReader + Send>> = None;
+
+        let _ = validator.validate_evnode(&pooled, sender_balance, &mut state);
+
+        let span = collector
+            .find_span("validate_evnode")
+            .expect("validate_evnode span should be recorded");
+
+        assert!(span.has_field("tx_hash"), "span missing tx_hash field");
+        assert!(span.has_field("is_evnode"), "span missing is_evnode field");
+        assert!(
+            span.has_field("duration_ms"),
+            "span missing duration_ms field"
+        );
     }
 }
