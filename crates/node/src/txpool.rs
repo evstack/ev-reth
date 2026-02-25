@@ -708,9 +708,6 @@ mod tests {
 
     /// Tests that non-sponsored `EvNode` transactions with insufficient sender balance
     /// are rejected with an Overdraft error.
-    ///
-    /// BUG: Currently this test FAILS because `validate_evnode` does not check
-    /// sender balance for non-sponsored `EvNode` transactions.
     #[test]
     fn non_sponsored_evnode_rejects_insufficient_balance() {
         let validator = create_test_validator(None);

@@ -48,8 +48,6 @@ All config via environment variables:
 | `SPONSOR_PRIVATE_KEY` | Yes | - | Hex-encoded private key for the sponsor account |
 | `MAX_GAS_LIMIT_PER_TX` | No | `500000` | Max gas limit per sponsored tx |
 | `MAX_FEE_PER_GAS_LIMIT` | No | `100000000000` (100 gwei) | Max fee per gas allowed |
-| `RATE_LIMIT_WINDOW` | No | `86400` (24h) | Rate limit window in seconds |
-| `RATE_LIMIT_MAX_TX` | No | `100` | Max transactions per window per address |
 | `MIN_SPONSOR_BALANCE` | No | `1000000000000000000` (1 ETH) | Min sponsor balance to accept txs |
 | `PORT` | No | `3000` | HTTP port |
 | `DB_PATH` | No | `./sponsor.db` | SQLite database path |
@@ -95,7 +93,6 @@ All JSON-RPC requests are accepted at the root endpoint. `eth_sendRawTransaction
 
 Policy violations return standard JSON-RPC errors:
 - `-32602` — `CHAIN_ID_MISMATCH`, `GAS_LIMIT_EXCEEDED`, `FEE_TOO_HIGH`, `INVALID_INTENT`
-- `-32005` — `RATE_LIMIT_EXCEEDED`
 - `-32003` — `SPONSOR_BALANCE_LOW`, `NODE_ERROR`
 
 ### REST endpoints
@@ -104,7 +101,6 @@ Policy violations return standard JSON-RPC errors:
 |---|---|
 | `GET /v1/health` | Health check with sponsor balance and node connectivity |
 | `GET /v1/policy` | Current sponsorship policies |
-| `GET /v1/usage/:address` | Rate limit usage for an executor address |
 | `POST /v1/sponsor` | Submit an intent directly (alternative to JSON-RPC proxy) |
 
 ## Tests
