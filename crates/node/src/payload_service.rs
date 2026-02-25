@@ -20,7 +20,7 @@ use reth_payload_builder::PayloadBuilderError;
 use reth_provider::HeaderProvider;
 use reth_revm::cached::CachedReads;
 use tokio::runtime::Handle;
-use tracing::{info, instrument};
+use tracing::{info, instrument, Span};
 
 use crate::{
     attributes::EvolveEnginePayloadBuilderAttributes, builder::EvolvePayloadBuilder,
@@ -206,7 +206,7 @@ where
             None,                 // No blob sidecar for evolve.
         );
 
-        tracing::Span::current().record("duration_ms", _start.elapsed().as_millis() as u64);
+        Span::current().record("duration_ms", _start.elapsed().as_millis() as u64);
 
         Ok(BuildOutcome::Better {
             payload: built_payload,
@@ -214,16 +214,21 @@ where
         })
     }
 
+    #[instrument(skip(self, config), fields(
+        payload_id = %config.attributes.payload_id(),
+        duration_ms = tracing::field::Empty,
+    ))]
     fn build_empty_payload(
         &self,
         config: PayloadConfig<Self::Attributes, HeaderForPayload<Self::BuiltPayload>>,
     ) -> Result<Self::BuiltPayload, PayloadBuilderError> {
+        let _start = std::time::Instant::now();
         let PayloadConfig {
             parent_header,
             attributes,
         } = config;
 
-        info!("Evolve engine payload builder: building empty payload");
+        info!("building empty payload");
 
         // Create empty evolve attributes (no transactions).
         // If no gas_limit provided, default to the parent header's gas limit (genesis for first block).
@@ -263,6 +268,7 @@ where
         .map_err(PayloadBuilderError::other)?;
 
         let gas_used = sealed_block.gas_used;
+        Span::current().record("duration_ms", _start.elapsed().as_millis() as u64);
         Ok(EvBuiltPayload::new(
             attributes.payload_id(),
             Arc::new(sealed_block),
@@ -377,6 +383,88 @@ mod tests {
             .expect("try_build span should be recorded");
 
         assert!(span.has_field("tx_count"), "span missing tx_count field");
+        assert!(
+            span.has_field("payload_id"),
+            "span missing payload_id field"
+        );
+        assert!(
+            span.has_field("duration_ms"),
+            "span missing duration_ms field"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn build_empty_payload_span_has_expected_fields() {
+        let collector = SpanCollector::new();
+        let _guard = collector.as_default();
+
+        let genesis: alloy_genesis::Genesis =
+            serde_json::from_str(include_str!("../../tests/assets/genesis.json"))
+                .expect("valid genesis");
+        let chain_spec = Arc::new(
+            ChainSpecBuilder::default()
+                .chain(reth_chainspec::Chain::from_id(1234))
+                .genesis(genesis)
+                .cancun_activated()
+                .build(),
+        );
+
+        let provider = MockEthProvider::default();
+        let genesis_hash = B256::from_slice(
+            &hex::decode("2b8bbb1ea1e04f9c9809b4b278a8687806edc061a356c7dbc491930d8e922503")
+                .unwrap(),
+        );
+        let genesis_state_root = B256::from_slice(
+            &hex::decode("05e9954443da80d86f2104e56ffdfd98fe21988730684360104865b3dc8191b4")
+                .unwrap(),
+        );
+
+        let genesis_header = Header {
+            state_root: genesis_state_root,
+            number: 0,
+            gas_limit: 30_000_000,
+            timestamp: 1710338135,
+            base_fee_per_gas: Some(0),
+            excess_blob_gas: Some(0),
+            blob_gas_used: Some(0),
+            parent_beacon_block_root: Some(B256::ZERO),
+            ..Default::default()
+        };
+        provider.add_header(genesis_hash, genesis_header.clone());
+
+        let config = EvolvePayloadBuilderConfig::from_chain_spec(chain_spec.as_ref()).unwrap();
+        let evm_config = EvolveEvmConfig::new(chain_spec);
+        let evolve_builder = Arc::new(EvolvePayloadBuilder::new(
+            Arc::new(provider),
+            evm_config,
+            config.clone(),
+        ));
+
+        let engine_builder = EvolveEnginePayloadBuilder {
+            evolve_builder,
+            config,
+        };
+
+        let rpc_attrs = RpcPayloadAttributes {
+            timestamp: 1710338136,
+            prev_randao: B256::random(),
+            suggested_fee_recipient: Address::random(),
+            withdrawals: Some(vec![]),
+            parent_beacon_block_root: Some(B256::ZERO),
+        };
+        let eth_attrs = EthPayloadBuilderAttributes::new(genesis_hash, rpc_attrs);
+        let builder_attrs = EvolveEnginePayloadBuilderAttributes::from(eth_attrs);
+
+        let sealed_parent = SealedHeader::new(genesis_header, genesis_hash);
+        let payload_config = PayloadConfig::new(Arc::new(sealed_parent), builder_attrs);
+
+        // we only care that the span was created with the right fields.
+        let _ = engine_builder.build_empty_payload(payload_config);
+
+        let span = collector
+            .find_span("build_empty_payload")
+            .expect("build_empty_payload span should be recorded");
+
         assert!(
             span.has_field("payload_id"),
             "span missing payload_id field"
