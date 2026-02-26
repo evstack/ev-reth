@@ -80,3 +80,60 @@ pub fn check_deploy_allowed(
         Err(DeployCheckError::NotAllowed)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloy_primitives::address;
+
+    #[test]
+    fn empty_allowlist_allows_any_caller() {
+        let settings = DeployAllowlistSettings::new(vec![], 0);
+        let caller = address!("0x00000000000000000000000000000000000000aa");
+        assert!(settings.is_allowed(caller));
+    }
+
+    #[test]
+    fn check_deploy_allowed_with_empty_settings_allows() {
+        let settings = DeployAllowlistSettings::new(vec![], 0);
+        let caller = address!("0x00000000000000000000000000000000000000bb");
+        let result = check_deploy_allowed(Some(&settings), caller, true, 0);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn check_deploy_allowed_with_none_settings_allows() {
+        let caller = address!("0x00000000000000000000000000000000000000cc");
+        let result = check_deploy_allowed(None, caller, true, 0);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn allowlisted_caller_is_allowed() {
+        let caller = address!("0x00000000000000000000000000000000000000aa");
+        let settings = DeployAllowlistSettings::new(vec![caller], 0);
+        assert!(settings.is_allowed(caller));
+        let result = check_deploy_allowed(Some(&settings), caller, true, 0);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn non_allowlisted_caller_is_denied() {
+        let allowed = address!("0x00000000000000000000000000000000000000aa");
+        let caller = address!("0x00000000000000000000000000000000000000bb");
+        let settings = DeployAllowlistSettings::new(vec![allowed], 0);
+        assert!(!settings.is_allowed(caller));
+        let result = check_deploy_allowed(Some(&settings), caller, true, 0);
+        assert_eq!(result, Err(DeployCheckError::NotAllowed));
+    }
+
+    #[test]
+    fn call_tx_always_allowed_regardless_of_allowlist() {
+        let allowed = address!("0x00000000000000000000000000000000000000aa");
+        let caller = address!("0x00000000000000000000000000000000000000bb");
+        let settings = DeployAllowlistSettings::new(vec![allowed], 0);
+        // caller is not in the allowlist, but is_top_level_create=false so it's allowed
+        let result = check_deploy_allowed(Some(&settings), caller, false, 0);
+        assert!(result.is_ok());
+    }
+}
