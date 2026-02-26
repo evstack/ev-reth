@@ -404,31 +404,34 @@ where
         Client: StateProviderFactory,
     {
         // Unified deploy allowlist check (covers both Ethereum and EvNode txs).
+        // empty allowlist = permissionless, skip enforcement
         if let Some(settings) = &self.deploy_allowlist {
-            let is_top_level_create = match pooled.transaction().inner() {
-                EvTxEnvelope::Ethereum(tx) => alloy_consensus::Transaction::is_create(tx),
-                EvTxEnvelope::EvNode(ref signed) => {
-                    let tx = signed.tx();
-                    tx.calls.first().map(|c| c.to.is_create()).unwrap_or(false)
+            if !settings.allowlist().is_empty() {
+                let is_top_level_create = match pooled.transaction().inner() {
+                    EvTxEnvelope::Ethereum(tx) => alloy_consensus::Transaction::is_create(tx),
+                    EvTxEnvelope::EvNode(ref signed) => {
+                        let tx = signed.tx();
+                        tx.calls.first().map(|c| c.to.is_create()).unwrap_or(false)
+                    }
+                };
+                let caller = pooled.transaction().signer();
+                let block_number = self.inner.client().best_block_number().map_err(
+                    |err: reth_provider::ProviderError| {
+                        InvalidPoolTransactionError::other(EvTxPoolError::StateProvider(
+                            err.to_string(),
+                        ))
+                    },
+                )?;
+                if let Err(_e) = ev_revm::deploy::check_deploy_allowed(
+                    Some(settings),
+                    caller,
+                    is_top_level_create,
+                    block_number,
+                ) {
+                    return Err(InvalidPoolTransactionError::other(
+                        EvTxPoolError::DeployNotAllowed,
+                    ));
                 }
-            };
-            let caller = pooled.transaction().signer();
-            let block_number = self.inner.client().best_block_number().map_err(
-                |err: reth_provider::ProviderError| {
-                    InvalidPoolTransactionError::other(EvTxPoolError::StateProvider(
-                        err.to_string(),
-                    ))
-                },
-            )?;
-            if let Err(_e) = ev_revm::deploy::check_deploy_allowed(
-                Some(settings),
-                caller,
-                is_top_level_create,
-                block_number,
-            ) {
-                return Err(InvalidPoolTransactionError::other(
-                    EvTxPoolError::DeployNotAllowed,
-                ));
             }
         }
 
@@ -794,6 +797,28 @@ mod tests {
         assert!(
             span.has_field("duration_ms"),
             "span missing duration_ms field"
+        );
+    }
+
+    #[test]
+    fn evnode_create_allowed_when_allowlist_is_empty() {
+        let settings = ev_revm::deploy::DeployAllowlistSettings::new(vec![], 0);
+        let validator = create_test_validator(Some(settings));
+
+        let gas_limit = 200_000u64;
+        let max_fee_per_gas = 1_000_000_000u128;
+        let signed_tx = create_non_sponsored_evnode_create_tx(gas_limit, max_fee_per_gas);
+
+        let signer = Address::from([0x33u8; 20]);
+        let pooled = create_pooled_tx(signed_tx, signer);
+
+        let sender_balance = *pooled.cost() + U256::from(1);
+        let mut state: Option<Box<dyn AccountInfoReader + Send>> = None;
+
+        let result = validator.validate_evnode(&pooled, sender_balance, &mut state);
+        assert!(
+            result.is_ok(),
+            "empty allowlist should allow any caller to deploy, got: {result:?}"
         );
     }
 

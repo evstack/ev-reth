@@ -80,3 +80,24 @@ pub fn check_deploy_allowed(
         Err(DeployCheckError::NotAllowed)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloy_primitives::address;
+
+    #[test]
+    fn empty_allowlist_allows_any_caller() {
+        let settings = DeployAllowlistSettings::new(vec![], 0);
+        let caller = address!("0x00000000000000000000000000000000000000aa");
+        assert!(settings.is_allowed(caller));
+    }
+
+    #[test]
+    fn check_deploy_allowed_with_empty_settings_allows() {
+        let settings = DeployAllowlistSettings::new(vec![], 0);
+        let caller = address!("0x00000000000000000000000000000000000000bb");
+        let result = check_deploy_allowed(Some(&settings), caller, true, 0);
+        assert!(result.is_ok());
+    }
+}

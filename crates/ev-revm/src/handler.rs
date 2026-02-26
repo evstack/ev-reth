@@ -58,12 +58,13 @@ impl<EVM, ERROR, FRAME> EvHandler<EVM, ERROR, FRAME> {
         self.redirect
     }
 
-    const fn deploy_allowlist_for_block(
-        &self,
-        block_number: u64,
-    ) -> Option<&DeployAllowlistSettings> {
+    fn deploy_allowlist_for_block(&self, block_number: u64) -> Option<&DeployAllowlistSettings> {
         match self.deploy_allowlist.as_ref() {
-            Some(settings) if settings.is_active(block_number) => Some(settings),
+            Some(settings)
+                if settings.is_active(block_number) && !settings.allowlist().is_empty() =>
+            {
+                Some(settings)
+            }
             _ => None,
         }
     }
@@ -1332,6 +1333,31 @@ mod tests {
 
         let result = handler.validate_against_state_and_deduct_caller(&mut evm);
         assert!(matches!(result, Err(EVMError::Custom(_))));
+    }
+
+    #[test]
+    fn allow_deploy_when_allowlist_is_empty() {
+        let caller = address!("0x00000000000000000000000000000000000000cc");
+        let allowlist = DeployAllowlistSettings::new(vec![], 0);
+
+        let mut ctx = Context::mainnet().with_db(EmptyDB::default());
+        ctx.block.number = U256::from(1);
+        ctx.cfg.spec = SpecId::CANCUN;
+        ctx.cfg.disable_nonce_check = true;
+        ctx.tx.caller = caller;
+        ctx.tx.kind = TxKind::Create;
+        ctx.tx.gas_limit = 1_000_000;
+        // gas_price=0 so no balance is required
+        ctx.tx.gas_price = 0;
+
+        let mut evm = EvEvm::new(ctx, NoOpInspector, None);
+        let handler: TestHandler = EvHandler::new(None, Some(allowlist));
+
+        let result = handler.validate_against_state_and_deduct_caller(&mut evm);
+        assert!(
+            result.is_ok(),
+            "empty allowlist should allow any caller to deploy, got: {result:?}"
+        );
     }
 
     fn setup_evm(redirect: BaseFeeRedirect, beneficiary: Address) -> (TestEvm, TestHandler) {
