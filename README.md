@@ -136,10 +136,10 @@ git clone https://github.com/evstack/ev-reth.git
 cd ev-reth
 
 # Build the project
-make build
+just build
 
 # Run tests
-make test
+just test
 ```
 
 ## Usage
@@ -534,7 +534,7 @@ ev-reth/
 ├── etc/                          # Configuration files
 │   └── ev-reth-genesis.json      # Genesis configuration
 ├── Cargo.toml                    # Workspace configuration
-├── Makefile                      # Build automation
+├── justfile                      # Build automation
 └── README.md                     # This file
 ```
 
@@ -542,10 +542,10 @@ ev-reth/
 
 ```bash
 # Run all tests
-make test
+just test
 
 # Run with verbose output
-make test-verbose
+just test-verbose
 
 # Run specific test
 cargo test test_name
@@ -555,10 +555,10 @@ cargo test test_name
 
 ```bash
 # Debug build
-make build-dev
+just build-dev
 
 # Run with debug logs
-make run-dev
+just run-dev
 ```
 
 ## Troubleshooting

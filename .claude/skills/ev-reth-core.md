@@ -97,9 +97,9 @@ The chainspec parser supports Evolve-specific extras via `EvolveEip1559Config`:
 ## Development Commands
 
 ```bash
-make build      # Release build
-make run-dev    # Run with debug logs
-make test-node  # Test node crate
+just build      # Release build
+just run-dev    # Run with debug logs
+just test-node  # Test node crate
 ```
 
 ## Exploration Starting Points

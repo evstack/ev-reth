@@ -41,7 +41,7 @@ jobs:
           sudo apt-get install -y gcc-aarch64-linux-gnu
 
       - name: Build release binary
-        run: make build-maxperf
+        run: RUSTFLAGS="-C target-cpu=native" cargo build --profile maxperf --features jemalloc,asm-keccak --bin ev-reth
 
       - name: Create tarball
         if: matrix.os != 'windows-latest'

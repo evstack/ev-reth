@@ -74,4 +74,16 @@ jobs:
           export AR_aarch64_unknown_linux_gnu=aarch64-linux-gnu-ar
           export PKG_CONFIG_ALLOW_CROSS=1
           export DOCKER_TAG=${{ steps.set-tag.outputs.DOCKER_TAG }}
-          make docker-build-push
+          FEATURES="${FEATURES:-jemalloc}"
+          PROFILE="${PROFILE:-release}"
+          cross build --bin ev-reth --target x86_64-unknown-linux-gnu --features "$FEATURES" --profile "$PROFILE"
+          JEMALLOC_SYS_WITH_LG_PAGE=16 cross build --bin ev-reth --target aarch64-unknown-linux-gnu --features "$FEATURES" --profile "$PROFILE"
+          mkdir -p dist/bin/linux/amd64 dist/bin/linux/arm64
+          cp "target/x86_64-unknown-linux-gnu/$PROFILE/ev-reth" dist/bin/linux/amd64/ev-reth
+          cp "target/aarch64-unknown-linux-gnu/$PROFILE/ev-reth" dist/bin/linux/arm64/ev-reth
+          docker buildx build --file ./Dockerfile.cross . \
+            --platform linux/amd64,linux/arm64 \
+            --tag "$DOCKER_IMAGE_NAME:$DOCKER_TAG" \
+            --provenance=false \
+            --sbom=false \
+            --push
