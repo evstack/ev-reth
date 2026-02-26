@@ -58,13 +58,12 @@ impl<EVM, ERROR, FRAME> EvHandler<EVM, ERROR, FRAME> {
         self.redirect
     }
 
-    fn deploy_allowlist_for_block(&self, block_number: u64) -> Option<&DeployAllowlistSettings> {
+    const fn deploy_allowlist_for_block(
+        &self,
+        block_number: u64,
+    ) -> Option<&DeployAllowlistSettings> {
         match self.deploy_allowlist.as_ref() {
-            Some(settings)
-                if settings.is_active(block_number) && !settings.allowlist().is_empty() =>
-            {
-                Some(settings)
-            }
+            Some(settings) if settings.is_active(block_number) => Some(settings),
             _ => None,
         }
     }

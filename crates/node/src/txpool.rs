@@ -404,34 +404,31 @@ where
         Client: StateProviderFactory,
     {
         // Unified deploy allowlist check (covers both Ethereum and EvNode txs).
-        // empty allowlist = permissionless, skip enforcement
         if let Some(settings) = &self.deploy_allowlist {
-            if !settings.allowlist().is_empty() {
-                let is_top_level_create = match pooled.transaction().inner() {
-                    EvTxEnvelope::Ethereum(tx) => alloy_consensus::Transaction::is_create(tx),
-                    EvTxEnvelope::EvNode(ref signed) => {
-                        let tx = signed.tx();
-                        tx.calls.first().map(|c| c.to.is_create()).unwrap_or(false)
-                    }
-                };
-                let caller = pooled.transaction().signer();
-                let block_number = self.inner.client().best_block_number().map_err(
-                    |err: reth_provider::ProviderError| {
-                        InvalidPoolTransactionError::other(EvTxPoolError::StateProvider(
-                            err.to_string(),
-                        ))
-                    },
-                )?;
-                if let Err(_e) = ev_revm::deploy::check_deploy_allowed(
-                    Some(settings),
-                    caller,
-                    is_top_level_create,
-                    block_number,
-                ) {
-                    return Err(InvalidPoolTransactionError::other(
-                        EvTxPoolError::DeployNotAllowed,
-                    ));
+            let is_top_level_create = match pooled.transaction().inner() {
+                EvTxEnvelope::Ethereum(tx) => alloy_consensus::Transaction::is_create(tx),
+                EvTxEnvelope::EvNode(ref signed) => {
+                    let tx = signed.tx();
+                    tx.calls.first().map(|c| c.to.is_create()).unwrap_or(false)
                 }
+            };
+            let caller = pooled.transaction().signer();
+            let block_number = self.inner.client().best_block_number().map_err(
+                |err: reth_provider::ProviderError| {
+                    InvalidPoolTransactionError::other(EvTxPoolError::StateProvider(
+                        err.to_string(),
+                    ))
+                },
+            )?;
+            if let Err(_e) = ev_revm::deploy::check_deploy_allowed(
+                Some(settings),
+                caller,
+                is_top_level_create,
+                block_number,
+            ) {
+                return Err(InvalidPoolTransactionError::other(
+                    EvTxPoolError::DeployNotAllowed,
+                ));
             }
         }
 
