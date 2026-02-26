@@ -846,4 +846,71 @@ mod tests {
             assert!(matches!(err, InvalidPoolTransactionError::Other(_)));
         }
     }
+
+    #[test]
+    fn evnode_create_allowed_when_allowlist_is_none() {
+        let validator = create_test_validator(None);
+
+        let gas_limit = 200_000u64;
+        let max_fee_per_gas = 1_000_000_000u128;
+        let signed_tx = create_non_sponsored_evnode_create_tx(gas_limit, max_fee_per_gas);
+
+        let signer = Address::from([0x44u8; 20]);
+        let pooled = create_pooled_tx(signed_tx, signer);
+
+        let sender_balance = *pooled.cost() + U256::from(1);
+        let mut state: Option<Box<dyn AccountInfoReader + Send>> = None;
+
+        let result = validator.validate_evnode(&pooled, sender_balance, &mut state);
+        assert!(
+            result.is_ok(),
+            "no allowlist configured should allow any caller to deploy, got: {result:?}"
+        );
+    }
+
+    #[test]
+    fn evnode_create_allowed_for_allowlisted_caller() {
+        let signer = Address::from([0x55u8; 20]);
+        let settings = ev_revm::deploy::DeployAllowlistSettings::new(vec![signer], 0);
+        let validator = create_test_validator(Some(settings));
+
+        let gas_limit = 200_000u64;
+        let max_fee_per_gas = 1_000_000_000u128;
+        let signed_tx = create_non_sponsored_evnode_create_tx(gas_limit, max_fee_per_gas);
+
+        let pooled = create_pooled_tx(signed_tx, signer);
+
+        let sender_balance = *pooled.cost() + U256::from(1);
+        let mut state: Option<Box<dyn AccountInfoReader + Send>> = None;
+
+        let result = validator.validate_evnode(&pooled, sender_balance, &mut state);
+        assert!(
+            result.is_ok(),
+            "allowlisted caller should be allowed to deploy, got: {result:?}"
+        );
+    }
+
+    #[test]
+    fn evnode_call_allowed_for_non_allowlisted_caller() {
+        let allowed = Address::from([0x11u8; 20]);
+        let settings = ev_revm::deploy::DeployAllowlistSettings::new(vec![allowed], 0);
+        let validator = create_test_validator(Some(settings));
+
+        let gas_limit = 21_000u64;
+        let max_fee_per_gas = 1_000_000_000u128;
+        // CALL tx, not CREATE
+        let signed_tx = create_non_sponsored_evnode_tx(gas_limit, max_fee_per_gas);
+
+        let signer = Address::from([0x66u8; 20]); // not allowlisted
+        let pooled = create_pooled_tx(signed_tx, signer);
+
+        let sender_balance = *pooled.cost() + U256::from(1);
+        let mut state: Option<Box<dyn AccountInfoReader + Send>> = None;
+
+        let result = validator.validate_evnode(&pooled, sender_balance, &mut state);
+        assert!(
+            result.is_ok(),
+            "CALL tx should be allowed regardless of allowlist, got: {result:?}"
+        );
+    }
 }

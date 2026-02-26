@@ -1360,6 +1360,78 @@ mod tests {
         );
     }
 
+    #[test]
+    fn allow_deploy_when_allowlist_is_none() {
+        let caller = address!("0x00000000000000000000000000000000000000dd");
+
+        let mut ctx = Context::mainnet().with_db(EmptyDB::default());
+        ctx.block.number = U256::from(1);
+        ctx.cfg.spec = SpecId::CANCUN;
+        ctx.cfg.disable_nonce_check = true;
+        ctx.tx.caller = caller;
+        ctx.tx.kind = TxKind::Create;
+        ctx.tx.gas_limit = 1_000_000;
+        ctx.tx.gas_price = 0;
+
+        let mut evm = EvEvm::new(ctx, NoOpInspector, None);
+        let handler: TestHandler = EvHandler::new(None, None);
+
+        let result = handler.validate_against_state_and_deduct_caller(&mut evm);
+        assert!(
+            result.is_ok(),
+            "no allowlist configured should allow any caller to deploy, got: {result:?}"
+        );
+    }
+
+    #[test]
+    fn allow_deploy_for_allowlisted_caller() {
+        let caller = address!("0x00000000000000000000000000000000000000ee");
+        let allowlist = DeployAllowlistSettings::new(vec![caller], 0);
+
+        let mut ctx = Context::mainnet().with_db(EmptyDB::default());
+        ctx.block.number = U256::from(1);
+        ctx.cfg.spec = SpecId::CANCUN;
+        ctx.cfg.disable_nonce_check = true;
+        ctx.tx.caller = caller;
+        ctx.tx.kind = TxKind::Create;
+        ctx.tx.gas_limit = 1_000_000;
+        ctx.tx.gas_price = 0;
+
+        let mut evm = EvEvm::new(ctx, NoOpInspector, None);
+        let handler: TestHandler = EvHandler::new(None, Some(allowlist));
+
+        let result = handler.validate_against_state_and_deduct_caller(&mut evm);
+        assert!(
+            result.is_ok(),
+            "allowlisted caller should be allowed to deploy, got: {result:?}"
+        );
+    }
+
+    #[test]
+    fn call_tx_allowed_for_non_allowlisted_caller() {
+        let allowed = address!("0x00000000000000000000000000000000000000aa");
+        let caller = address!("0x00000000000000000000000000000000000000ff");
+        let allowlist = DeployAllowlistSettings::new(vec![allowed], 0);
+
+        let mut ctx = Context::mainnet().with_db(EmptyDB::default());
+        ctx.block.number = U256::from(1);
+        ctx.cfg.spec = SpecId::CANCUN;
+        ctx.cfg.disable_nonce_check = true;
+        ctx.tx.caller = caller;
+        ctx.tx.kind = TxKind::Call(Address::ZERO);
+        ctx.tx.gas_limit = 1_000_000;
+        ctx.tx.gas_price = 0;
+
+        let mut evm = EvEvm::new(ctx, NoOpInspector, None);
+        let handler: TestHandler = EvHandler::new(None, Some(allowlist));
+
+        let result = handler.validate_against_state_and_deduct_caller(&mut evm);
+        assert!(
+            result.is_ok(),
+            "CALL tx should be allowed regardless of allowlist, got: {result:?}"
+        );
+    }
+
     fn setup_evm(redirect: BaseFeeRedirect, beneficiary: Address) -> (TestEvm, TestHandler) {
         let mut ctx = Context::mainnet().with_db(EmptyDB::default());
         ctx.block.basefee = BASE_FEE;
