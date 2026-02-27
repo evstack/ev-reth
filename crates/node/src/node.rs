@@ -6,20 +6,23 @@ use alloy_rpc_types::engine::{
     ExecutionPayloadV1,
 };
 use ev_primitives::EvPrimitives;
+use reth_engine_local::LocalPayloadAttributesBuilder;
 use reth_ethereum::{
     chainspec::ChainSpec,
     node::{
-        api::{EngineTypes, FullNodeTypes, NodeTypes, PayloadTypes},
+        api::{EngineTypes, FullNodeComponents, FullNodeTypes, NodeTypes, PayloadTypes},
         builder::{
             components::{BasicPayloadServiceBuilder, ComponentsBuilder},
             rpc::RpcAddOns,
-            Node, NodeAdapter,
+            DebugNode, Node, NodeAdapter,
         },
         node::EthereumNetworkBuilder,
     },
 };
+use reth_payload_primitives::PayloadAttributesBuilder;
 use reth_primitives_traits::SealedBlock;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use tracing::info;
 
 use crate::{
@@ -116,6 +119,22 @@ where
 
     fn add_ons(&self) -> Self::AddOns {
         EvolveNodeAddOns::default()
+    }
+}
+
+impl<N: FullNodeComponents<Types = Self>> DebugNode<N> for EvolveNode {
+    type RpcBlock = alloy_rpc_types::Block;
+
+    fn rpc_to_primitive_block(rpc_block: Self::RpcBlock) -> ev_primitives::Block {
+        let eth_block: reth_ethereum_primitives::Block =
+            rpc_block.into_consensus().convert_transactions();
+        eth_block.map_transactions(ev_primitives::EvTxEnvelope::Ethereum)
+    }
+
+    fn local_payload_attributes_builder(
+        chain_spec: &Self::ChainSpec,
+    ) -> impl PayloadAttributesBuilder<<Self::Payload as PayloadTypes>::PayloadAttributes> {
+        LocalPayloadAttributesBuilder::new(Arc::new(chain_spec.clone()))
     }
 }
 

@@ -2917,6 +2917,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "ev-dev"
+version = "0.1.0"
+dependencies = [
+ "alloy-primitives",
+ "alloy-signer-local",
+ "clap",
+ "ev-node",
+ "evolve-ev-reth",
+ "eyre",
+ "reth-cli-util",
+ "reth-ethereum-cli",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "ev-node"
 version = "0.1.0"
 dependencies = [

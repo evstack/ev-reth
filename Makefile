@@ -55,6 +55,14 @@ run: build-dev
 run-dev: build-dev
 	RUST_LOG=debug ./$(TARGET_DIR)/debug/$(BINARY_NAME) node
 
+## build-ev-dev: Build the ev-dev binary in release mode
+build-ev-dev:
+	$(CARGO) build --release --bin ev-dev
+
+## dev-chain: Build and run the local dev chain
+dev-chain: build-ev-dev
+	./$(TARGET_DIR)/release/ev-dev
+
 ## fmt: Format code using rustfmt (nightly)
 fmt:
 	$(CARGO) +nightly fmt --all
