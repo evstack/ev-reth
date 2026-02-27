@@ -109,3 +109,5 @@ make test-node  # Test node crate
 3. Read `crates/node/src/builder.rs` for payload building (this is the heart)
 4. Check `crates/node/src/validator.rs` for validation customizations
 5. See `crates/node/src/chainspec.rs` for config parsing
+
+<!-- Last reviewed: 2026-02-27 -->

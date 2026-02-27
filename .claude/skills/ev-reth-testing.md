@@ -166,3 +166,5 @@ cargo test -p ev-reth-tests mint
 2. Read a simple test in `crates/tests/src/e2e_tests.rs`
 3. Check how chain spec is configured for different test scenarios
 4. See `EvolveTestFixture::new()` for the full setup flow
+
+<!-- Last reviewed: 2026-02-27 -->
