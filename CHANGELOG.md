@@ -9,10 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `ev-dev` binary (`bin/ev-dev`): one-command local development chain with pre-funded Hardhat accounts, similar to Anvil or Hardhat Node
 - Transaction sponsor service (`bin/sponsor-service`) for signing EvNode transactions on behalf of users via JSON-RPC proxy ([#141](https://github.com/evstack/ev-reth/pull/141))
 
 ### Fixed
 
+- Payload builder now pulls pending transactions from the txpool in `--dev` mode, fixing `cast send` and other RPC-submitted transactions not being included in blocks
 - Txpool now uses sponsor balance for pending/queued ordering in sponsored EvNode transactions, and validates executor balance separately for call value transfers ([#141](https://github.com/evstack/ev-reth/pull/141))
 
 ## [0.3.0] - 2026-02-23
