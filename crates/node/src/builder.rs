@@ -15,7 +15,8 @@ use reth_primitives_traits::SealedBlock;
 use reth_provider::{HeaderProvider, StateProviderFactory};
 use reth_revm::{database::StateProviderDatabase, State};
 use std::sync::Arc;
-use tracing::{debug, debug_span, info, instrument, Span};
+use crate::tracing_ext::RecordDurationOnDrop;
+use tracing::{debug, debug_span, info, instrument};
 
 type EvolveEthEvmConfig = EvEvmConfig<ChainSpec, EvTxEvmFactory>;
 
@@ -72,7 +73,7 @@ where
         &self,
         attributes: EvolvePayloadAttributes,
     ) -> Result<SealedBlock<ev_primitives::Block>, PayloadBuilderError> {
-        let _start = std::time::Instant::now();
+        let _duration = RecordDurationOnDrop::new();
 
         // Validate attributes
         attributes
@@ -184,8 +185,6 @@ where
             .map_err(PayloadBuilderError::other)?;
 
         let sealed_block = block.sealed_block().clone();
-
-        Span::current().record("duration_ms", _start.elapsed().as_millis() as u64);
 
         info!(
             block_number = sealed_block.number,

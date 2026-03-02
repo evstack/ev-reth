@@ -20,6 +20,7 @@ use reth_ethereum::{
 };
 use reth_ethereum_payload_builder::EthereumExecutionPayloadValidator;
 use reth_primitives_traits::{Block as _, RecoveredBlock, SealedBlock};
+use crate::tracing_ext::RecordDurationOnDrop;
 use tracing::{debug, info, instrument, Span};
 
 use crate::{attributes::EvolveEnginePayloadAttributes, node::EvolveEngineTypes};
@@ -67,13 +68,11 @@ impl PayloadValidator<EvolveEngineTypes> for EvolveEngineValidator {
         &self,
         payload: ExecutionData,
     ) -> Result<RecoveredBlock<Self::Block>, NewPayloadError> {
-        let _start = std::time::Instant::now();
+        let _duration = RecordDurationOnDrop::new();
         // Use inner validator but with custom evolve handling.
         match self.inner.ensure_well_formed_payload(payload.clone()) {
             Ok(sealed_block) => {
-                let span = Span::current();
-                span.record("block_hash", tracing::field::display(sealed_block.hash()));
-                span.record("duration_ms", _start.elapsed().as_millis() as u64);
+                Span::current().record("block_hash", tracing::field::display(sealed_block.hash()));
                 info!("payload validation succeeded");
                 let ev_block = convert_sealed_block(sealed_block);
                 ev_block
@@ -100,9 +99,8 @@ impl PayloadValidator<EvolveEngineTypes> for EvolveEngineValidator {
                     info!(error = ?err, "bypassing validation error for ev-reth");
                     // For evolve, we trust the payload builder - parse the block with EvNode support.
                     let ev_block = parse_evolve_payload(payload)?;
-                    let span = Span::current();
-                    span.record("block_hash", tracing::field::display(ev_block.hash()));
-                    span.record("duration_ms", _start.elapsed().as_millis() as u64);
+                    Span::current()
+                        .record("block_hash", tracing::field::display(ev_block.hash()));
                     ev_block
                         .try_recover()
                         .map_err(|e| NewPayloadError::Other(e.into()))
@@ -141,7 +139,7 @@ fn convert_sealed_block(
 fn parse_evolve_payload(
     payload: ExecutionData,
 ) -> Result<SealedBlock<ev_primitives::Block>, NewPayloadError> {
-    let _start = std::time::Instant::now();
+    let _duration = RecordDurationOnDrop::new();
     let ExecutionData { payload, sidecar } = payload;
 
     // Parse transactions using EvTxEnvelope which supports both Ethereum and EvNode types.
@@ -191,7 +189,6 @@ fn parse_evolve_payload(
 
     let block = EvBlock::new(header, body);
     let sealed = block.seal_slow();
-    Span::current().record("duration_ms", _start.elapsed().as_millis() as u64);
     Ok(sealed)
 }
 

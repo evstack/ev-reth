@@ -29,7 +29,8 @@ use reth_transaction_pool::{
     EthTransactionValidator, PoolTransaction, TransactionOrigin, TransactionValidationOutcome,
     TransactionValidationTaskExecutor, TransactionValidator,
 };
-use tracing::{debug, info, instrument, warn, Span};
+use crate::tracing_ext::RecordDurationOnDrop;
+use tracing::{debug, info, instrument, warn};
 
 /// Pool transaction wrapper for `EvTxEnvelope`.
 #[derive(Debug, Clone)]
@@ -424,21 +425,7 @@ where
     where
         Client: StateProviderFactory,
     {
-        let _start = std::time::Instant::now();
-        let result = self.validate_evnode_inner(pooled, sender_balance, state);
-        Span::current().record("duration_ms", _start.elapsed().as_millis() as u64);
-        result
-    }
-
-    fn validate_evnode_inner(
-        &self,
-        pooled: &EvPooledTransaction,
-        sender_balance: U256,
-        state: &mut Option<Box<dyn AccountInfoReader + Send>>,
-    ) -> Result<Option<U256>, InvalidPoolTransactionError>
-    where
-        Client: StateProviderFactory,
-    {
+        let _duration = RecordDurationOnDrop::new();
         // Unified deploy allowlist check (covers both Ethereum and EvNode txs).
         if let Some(settings) = &self.deploy_allowlist {
             let is_top_level_create = match pooled.transaction().inner() {
@@ -522,7 +509,7 @@ where
         origin: TransactionOrigin,
         transaction: <Self as TransactionValidator>::Transaction,
     ) -> TransactionValidationOutcome<Self::Transaction> {
-        let _start = std::time::Instant::now();
+        let _duration = RecordDurationOnDrop::new();
         let mut state = None;
         let outcome = self
             .inner
@@ -552,7 +539,6 @@ where
             other => other,
         };
 
-        Span::current().record("duration_ms", _start.elapsed().as_millis() as u64);
         result
     }
 }

@@ -13,7 +13,8 @@ use reth_payload_primitives::PayloadAttributesBuilder;
 use reth_primitives_traits::SealedHeader;
 use serde::{Deserialize, Serialize};
 
-use tracing::{info, instrument, Span};
+use crate::tracing_ext::RecordDurationOnDrop;
+use tracing::{info, instrument};
 
 use crate::error::EvolveEngineError;
 use ev_primitives::TransactionSigned;
@@ -81,7 +82,7 @@ impl PayloadBuilderAttributes for EvolveEnginePayloadBuilderAttributes {
         attributes: EvolveEnginePayloadAttributes,
         _version: u8,
     ) -> Result<Self, Self::Error> {
-        let _start = std::time::Instant::now();
+        let _duration = RecordDurationOnDrop::new();
         let ethereum_attributes = EthPayloadBuilderAttributes::new(parent, attributes.inner);
 
         // Decode transactions from bytes if provided.
@@ -99,7 +100,6 @@ impl PayloadBuilderAttributes for EvolveEnginePayloadBuilderAttributes {
             decoded_tx_count = transactions.len(),
             "decoded payload attributes"
         );
-        Span::current().record("duration_ms", _start.elapsed().as_millis() as u64);
 
         Ok(Self {
             ethereum_attributes,

@@ -20,7 +20,8 @@ use reth_payload_builder::PayloadBuilderError;
 use reth_provider::HeaderProvider;
 use reth_revm::cached::CachedReads;
 use tokio::runtime::Handle;
-use tracing::{info, instrument, Span};
+use crate::tracing_ext::RecordDurationOnDrop;
+use tracing::{info, instrument};
 
 use crate::{
     attributes::EvolveEnginePayloadBuilderAttributes, builder::EvolvePayloadBuilder,
@@ -140,7 +141,7 @@ where
         &self,
         args: BuildArguments<Self::Attributes, Self::BuiltPayload>,
     ) -> Result<BuildOutcome<Self::BuiltPayload>, PayloadBuilderError> {
-        let _start = std::time::Instant::now();
+        let _duration = RecordDurationOnDrop::new();
         let BuildArguments {
             cached_reads: _,
             config,
@@ -206,8 +207,6 @@ where
             None,                 // No blob sidecar for evolve.
         );
 
-        Span::current().record("duration_ms", _start.elapsed().as_millis() as u64);
-
         Ok(BuildOutcome::Better {
             payload: built_payload,
             cached_reads: CachedReads::default(),
@@ -222,7 +221,7 @@ where
         &self,
         config: PayloadConfig<Self::Attributes, HeaderForPayload<Self::BuiltPayload>>,
     ) -> Result<Self::BuiltPayload, PayloadBuilderError> {
-        let _start = std::time::Instant::now();
+        let _duration = RecordDurationOnDrop::new();
         let PayloadConfig {
             parent_header,
             attributes,
@@ -268,7 +267,6 @@ where
         .map_err(PayloadBuilderError::other)?;
 
         let gas_used = sealed_block.gas_used;
-        Span::current().record("duration_ms", _start.elapsed().as_millis() as u64);
         Ok(EvBuiltPayload::new(
             attributes.payload_id(),
             Arc::new(sealed_block),

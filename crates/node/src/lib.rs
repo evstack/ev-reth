@@ -29,6 +29,8 @@ pub mod payload_service;
 pub mod payload_types;
 /// RPC wiring for EvTxEnvelope support.
 pub mod rpc;
+/// Drop guard for recording `duration_ms` on tracing spans.
+pub(crate) mod tracing_ext;
 /// Transaction pool wiring and validation.
 pub mod txpool;
 /// Payload validator integration.
