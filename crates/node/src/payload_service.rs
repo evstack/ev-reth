@@ -189,7 +189,10 @@ where
                 .map(|tx| tx.transaction.clone_into_consensus().into_inner())
                 .collect();
             if !pool_txs.is_empty() {
-                info!(pool_tx_count = pool_txs.len(), "pulling transactions from pool");
+                info!(
+                    pool_tx_count = pool_txs.len(),
+                    "pulling transactions from pool"
+                );
             }
             pool_txs
         } else {
@@ -310,6 +313,7 @@ mod tests {
     use super::*;
     use crate::{
         config::EvolvePayloadBuilderConfig, executor::EvolveEvmConfig, test_utils::SpanCollector,
+        txpool::EvPooledTransaction,
     };
     use alloy_primitives::B256;
     use alloy_rpc_types::engine::PayloadAttributes as RpcPayloadAttributes;
@@ -319,7 +323,6 @@ mod tests {
     use reth_primitives_traits::SealedHeader;
     use reth_provider::test_utils::MockEthProvider;
     use reth_revm::{cached::CachedReads, cancelled::CancelOnDrop};
-    use crate::txpool::EvPooledTransaction;
     use reth_transaction_pool::noop::NoopTransactionPool;
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -411,5 +414,4 @@ mod tests {
             "span missing duration_ms field"
         );
     }
-
 }

@@ -148,11 +148,7 @@ fn main() {
 
     // Use a temp data directory so each run starts with clean state
     let datadir = tempfile::TempDir::new().expect("failed to create temp data dir");
-    let datadir_path = datadir
-        .path()
-        .to_str()
-        .expect("valid path")
-        .to_string();
+    let datadir_path = datadir.path().to_str().expect("valid path").to_string();
 
     let mut args = vec![
         "ev-dev".to_string(),
