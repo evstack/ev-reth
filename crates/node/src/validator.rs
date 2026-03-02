@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use crate::tracing_ext::RecordDurationOnDrop;
 use alloy_consensus::Header;
 use alloy_eips::Decodable2718;
 use alloy_rpc_types::engine::ExecutionData;
@@ -20,7 +21,6 @@ use reth_ethereum::{
 };
 use reth_ethereum_payload_builder::EthereumExecutionPayloadValidator;
 use reth_primitives_traits::{Block as _, RecoveredBlock, SealedBlock};
-use crate::tracing_ext::RecordDurationOnDrop;
 use tracing::{debug, info, instrument, Span};
 
 use crate::{attributes::EvolveEnginePayloadAttributes, node::EvolveEngineTypes};
@@ -99,8 +99,7 @@ impl PayloadValidator<EvolveEngineTypes> for EvolveEngineValidator {
                     info!(error = ?err, "bypassing validation error for ev-reth");
                     // For evolve, we trust the payload builder - parse the block with EvNode support.
                     let ev_block = parse_evolve_payload(payload)?;
-                    Span::current()
-                        .record("block_hash", tracing::field::display(ev_block.hash()));
+                    Span::current().record("block_hash", tracing::field::display(ev_block.hash()));
                     ev_block
                         .try_recover()
                         .map_err(|e| NewPayloadError::Other(e.into()))

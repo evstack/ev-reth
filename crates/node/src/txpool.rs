@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::tracing_ext::RecordDurationOnDrop;
 use alloy_consensus::{
     constants::EIP1559_TX_TYPE_ID,
     transaction::{Recovered, TxHashRef},
@@ -29,7 +30,6 @@ use reth_transaction_pool::{
     EthTransactionValidator, PoolTransaction, TransactionOrigin, TransactionValidationOutcome,
     TransactionValidationTaskExecutor, TransactionValidator,
 };
-use crate::tracing_ext::RecordDurationOnDrop;
 use tracing::{debug, info, instrument, warn};
 
 /// Pool transaction wrapper for `EvTxEnvelope`.

@@ -1,3 +1,4 @@
+use crate::tracing_ext::RecordDurationOnDrop;
 use crate::{config::EvolvePayloadBuilderConfig, executor::EvEvmConfig};
 use alloy_consensus::transaction::{Transaction, TxHashRef};
 use alloy_primitives::Address;
@@ -15,7 +16,6 @@ use reth_primitives_traits::SealedBlock;
 use reth_provider::{HeaderProvider, StateProviderFactory};
 use reth_revm::{database::StateProviderDatabase, State};
 use std::sync::Arc;
-use crate::tracing_ext::RecordDurationOnDrop;
 use tracing::{debug, debug_span, info, instrument};
 
 type EvolveEthEvmConfig = EvEvmConfig<ChainSpec, EvTxEvmFactory>;

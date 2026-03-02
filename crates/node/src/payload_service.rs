@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::tracing_ext::RecordDurationOnDrop;
 use alloy_primitives::{Address, U256};
 use evolve_ev_reth::EvolvePayloadAttributes;
 use eyre::WrapErr;
@@ -20,7 +21,6 @@ use reth_payload_builder::PayloadBuilderError;
 use reth_provider::HeaderProvider;
 use reth_revm::cached::CachedReads;
 use tokio::runtime::Handle;
-use crate::tracing_ext::RecordDurationOnDrop;
 use tracing::{info, instrument};
 
 use crate::{
