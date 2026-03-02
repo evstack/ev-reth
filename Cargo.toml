@@ -143,7 +143,7 @@ jsonrpsee-http-client = "0.26.0"
 jsonrpsee-types = "0.26.0"
 jsonrpsee-proc-macros = "0.26.0"
 # Additional dependencies
-reqwest = { version = "0.11", features = ["json"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "http2"] }
 chrono = { version = "0.4", features = ["serde"] }
 rand = "0.8"
 tempfile = "3.10"
