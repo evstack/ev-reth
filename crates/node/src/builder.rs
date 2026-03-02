@@ -1,5 +1,6 @@
-use crate::tracing_ext::RecordDurationOnDrop;
-use crate::{config::EvolvePayloadBuilderConfig, executor::EvEvmConfig};
+use crate::{
+    config::EvolvePayloadBuilderConfig, executor::EvEvmConfig, tracing_ext::RecordDurationOnDrop,
+};
 use alloy_consensus::transaction::{Transaction, TxHashRef};
 use alloy_primitives::Address;
 use ev_revm::EvTxEvmFactory;
