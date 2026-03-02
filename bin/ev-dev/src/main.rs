@@ -202,23 +202,22 @@ fn main() {
     };
 
     if let Err(err) = cli.run(|builder, _evolve_args| async move {
-            info!("=== EV-DEV: Starting local development chain ===");
-            let handle = builder
-                .node(EvolveNode::new())
-                .extend_rpc_modules(move |ctx| {
-                    let evolve_cfg = EvolveConfig::default();
-                    let evolve_txpool =
-                        EvolveTxpoolApiImpl::new(ctx.pool().clone(), evolve_cfg.max_txpool_bytes);
-                    ctx.modules.merge_configured(evolve_txpool.into_rpc())?;
-                    Ok(())
-                })
-                .launch_with_debug_capabilities()
-                .await?;
+        info!("=== EV-DEV: Starting local development chain ===");
+        let handle = builder
+            .node(EvolveNode::new())
+            .extend_rpc_modules(move |ctx| {
+                let evolve_cfg = EvolveConfig::default();
+                let evolve_txpool =
+                    EvolveTxpoolApiImpl::new(ctx.pool().clone(), evolve_cfg.max_txpool_bytes);
+                ctx.modules.merge_configured(evolve_txpool.into_rpc())?;
+                Ok(())
+            })
+            .launch_with_debug_capabilities()
+            .await?;
 
-            info!("=== EV-DEV: Local chain running - RPC ready ===");
-            handle.node_exit_future.await
-        })
-    {
+        info!("=== EV-DEV: Local chain running - RPC ready ===");
+        handle.node_exit_future.await
+    }) {
         eprintln!("Error: {err:?}");
         std::process::exit(1);
     }
