@@ -65,7 +65,7 @@ alloy-consensus-any.workspace = true
 alloy-evm.workspace = true
 alloy-genesis.workspace = true
 alloy-network.workspace = true
-c-kzg = "2.1.5"
+c-kzg = "2.1.6"
 
 # Core dependencies
 eyre.workspace = true
