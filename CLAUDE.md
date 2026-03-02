@@ -25,7 +25,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Running the Node
 - **Run with defaults**: `just run`
 - **Run with debug logs**: `just run-dev`
-- **Direct execution**: `./target/release/lumen node --chain <CHAIN_SPEC> --datadir <DATA_DIR> --http --ws`
+- **Direct execution**: `./target/release/ev-reth node --chain <CHAIN_SPEC> --datadir <DATA_DIR> --http --ws`
 
 ## High-Level Architecture
 

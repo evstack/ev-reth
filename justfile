@@ -133,7 +133,6 @@ docker-build-push: _build-x86_64 _build-aarch64
     docker buildx build --file ./Dockerfile.cross . \
         --platform linux/amd64,linux/arm64 \
         --tag {{docker_image}}:{{docker_tag}} \
-        --tag {{docker_image}}:{{docker_tag}} \
         --provenance=false \
         --sbom=false \
         --push
