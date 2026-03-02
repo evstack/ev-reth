@@ -137,7 +137,7 @@ where
     type BuiltPayload = EvBuiltPayload;
 
     #[instrument(skip(self, args), fields(
-        tx_count = args.config.attributes.transactions.len(),
+        tx_count = tracing::field::Empty,
         payload_id = %args.config.attributes.payload_id(),
         duration_ms = tracing::field::Empty,
     ))]
@@ -198,6 +198,8 @@ where
         } else {
             attributes.transactions.clone()
         };
+
+        tracing::Span::current().record("tx_count", transactions.len());
 
         let evolve_attrs = EvolvePayloadAttributes::new(
             transactions,

@@ -23,6 +23,15 @@ static ALLOC: reth_cli_util::allocator::Allocator = reth_cli_util::allocator::ne
 const DEVNET_GENESIS: &str = include_str!("../assets/devnet-genesis.json");
 const HARDHAT_MNEMONIC: &str = "test test test test test test test test test test test junk";
 
+fn parse_accounts(s: &str) -> Result<usize, String> {
+    let n: usize = s.parse().map_err(|e| format!("{e}"))?;
+    if (1..=20).contains(&n) {
+        Ok(n)
+    } else {
+        Err(format!("{n} is not in 1..=20"))
+    }
+}
+
 /// Local dev chain for ev-reth with pre-funded accounts.
 #[derive(Parser, Debug)]
 #[command(name = "ev-dev", about = "One-command local Evolve dev chain")]
@@ -43,8 +52,8 @@ struct EvDevArgs {
     #[arg(long, default_value_t = false)]
     silent: bool,
 
-    /// Number of accounts to display (max 20)
-    #[arg(long, default_value_t = 10)]
+    /// Number of accounts to display (1..=20)
+    #[arg(long, default_value_t = 10, value_parser = parse_accounts)]
     accounts: usize,
 }
 
@@ -76,8 +85,7 @@ fn chain_id_from_genesis() -> u64 {
 }
 
 fn print_banner(args: &EvDevArgs) {
-    let count = args.accounts.min(20);
-    let accounts = derive_keys(count);
+    let accounts = derive_keys(args.accounts);
 
     println!();
     println!(r"                       _            ");
@@ -104,7 +112,7 @@ fn print_banner(args: &EvDevArgs) {
     println!("Available Accounts");
     println!("==================");
     for (i, (addr, _)) in accounts.iter().enumerate() {
-        println!("({i}) {addr} (1000 ETH)");
+        println!("({i}) {addr} (1000000 ETH)");
     }
     println!();
     println!("Private Keys");
@@ -185,9 +193,15 @@ fn main() {
         args.push(format!("{}s", dev_args.block_time));
     }
 
-    if let Err(err) = Cli::<EvolveChainSpecParser, EvolveArgs>::try_parse_from(args)
-        .expect("valid CLI args")
-        .run(|builder, _evolve_args| async move {
+    let cli = match Cli::<EvolveChainSpecParser, EvolveArgs>::try_parse_from(args) {
+        Ok(cli) => cli,
+        Err(err) => {
+            eprintln!("{err}");
+            std::process::exit(2);
+        }
+    };
+
+    if let Err(err) = cli.run(|builder, _evolve_args| async move {
             info!("=== EV-DEV: Starting local development chain ===");
             let handle = builder
                 .node(EvolveNode::new())
