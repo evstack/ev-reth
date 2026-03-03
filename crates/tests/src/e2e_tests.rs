@@ -80,7 +80,7 @@ const REVERT_INITCODE: [u8; 17] = [
 ///
 /// # Returns
 /// The deterministic contract address that will be created
-fn contract_address_from_nonce(deployer: Address, nonce: u64) -> Address {
+pub(crate) fn contract_address_from_nonce(deployer: Address, nonce: u64) -> Address {
     deployer.create(nonce)
 }
 
