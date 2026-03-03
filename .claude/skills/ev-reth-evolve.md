@@ -97,7 +97,7 @@ Executed and included in block
 ## Development Commands
 
 ```bash
-make test-evolve
+just test-evolve
 # Or directly:
 cargo test -p evolve-ev-reth
 ```
