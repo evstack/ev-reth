@@ -1,4 +1,6 @@
-use crate::{config::EvolvePayloadBuilderConfig, executor::EvEvmConfig};
+use crate::{
+    config::EvolvePayloadBuilderConfig, executor::EvEvmConfig, tracing_ext::RecordDurationOnDrop,
+};
 use alloy_consensus::transaction::{Transaction, TxHashRef};
 use alloy_primitives::Address;
 use ev_revm::EvTxEvmFactory;
@@ -72,7 +74,7 @@ where
         &self,
         attributes: EvolvePayloadAttributes,
     ) -> Result<SealedBlock<ev_primitives::Block>, PayloadBuilderError> {
-        let _start = std::time::Instant::now();
+        let _duration = RecordDurationOnDrop::new();
 
         // Validate attributes
         attributes
@@ -184,8 +186,6 @@ where
             .map_err(PayloadBuilderError::other)?;
 
         let sealed_block = block.sealed_block().clone();
-
-        tracing::Span::current().record("duration_ms", _start.elapsed().as_millis() as u64);
 
         info!(
             block_number = sealed_block.number,
