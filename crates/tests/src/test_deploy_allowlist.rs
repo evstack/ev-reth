@@ -2,7 +2,10 @@ use alloy_consensus::TxReceipt;
 use alloy_eips::{eip2718::Encodable2718, BlockNumberOrTag};
 use alloy_primitives::{Address, Bytes, TxKind, B256, U256};
 use alloy_rpc_types::{
-    eth::{Block, Header, Receipt, Transaction, TransactionInput, TransactionRequest},
+    eth::{
+        Block, BlockTransactions, Header, Receipt, Transaction, TransactionInput,
+        TransactionRequest,
+    },
     BlockId,
 };
 use eyre::Result;
@@ -45,16 +48,19 @@ const CREATE2_CHILD_INITCODE: [u8; 22] = alloy_primitives::hex!(
 ///
 /// # Test Flow
 /// 1. Create a deploy allowlist containing only `allowed_deployer`
-/// 2. `allowed_deployer` deploys a CREATE2 factory contract (top-level CREATE, allowed)
-/// 3. `non_allowlisted` account calls the factory, which internally uses CREATE2
-/// 4. Verify the child contract is deployed at the expected deterministic address
+/// 2. `non_allowlisted` attempts a direct top-level CREATE — rejected by the allowlist
+/// 3. `allowed_deployer` deploys a CREATE2 factory contract (top-level CREATE, allowed)
+/// 4. `non_allowlisted` account calls the factory, which internally uses CREATE2
+/// 5. Verify the child contract is deployed at the expected deterministic address
 ///
 /// # What It Tests
-/// - deploy allowlist only blocks top-level CREATE transactions
+/// - deploy allowlist blocks top-level CREATE from non-allowlisted accounts
+/// - deploy allowlist permits top-level CREATE from allowlisted accounts
 /// - contract-to-contract CREATE2 bypasses the allowlist (by design)
 /// - the factory pattern works as an indirect deployment mechanism
 ///
 /// # Success Criteria
+/// - non-allowlisted top-level CREATE is excluded from the block
 /// - factory deploys successfully from allowlisted account
 /// - non-allowlisted account's call to the factory succeeds
 /// - child contract appears at the predicted CREATE2 address
@@ -86,6 +92,64 @@ async fn test_e2e_deploy_allowlist_permits_create2_via_factory() -> Result<()> {
     let mut parent_timestamp = parent_block.header.inner.timestamp;
     let mut parent_number = parent_block.header.inner.number;
     let gas_limit = parent_block.header.inner.gas_limit;
+
+    // non-allowlisted account attempts a direct top-level CREATE — should be rejected
+    let denied_deploy_tx = TransactionRequest {
+        nonce: Some(0),
+        gas: Some(1_000_000),
+        max_fee_per_gas: Some(20_000_000_000),
+        max_priority_fee_per_gas: Some(2_000_000_000),
+        chain_id: Some(chain_id),
+        value: Some(U256::ZERO),
+        to: Some(TxKind::Create),
+        input: TransactionInput {
+            input: None,
+            data: Some(Bytes::from_static(&CREATE2_FACTORY_INITCODE)),
+        },
+        ..Default::default()
+    };
+
+    let denied_envelope =
+        TransactionTestContext::sign_tx(non_allowlisted.clone(), denied_deploy_tx).await;
+    let denied_raw: Bytes = denied_envelope.encoded_2718().into();
+
+    build_block_with_transactions(
+        &mut env,
+        &mut parent_hash,
+        &mut parent_number,
+        &mut parent_timestamp,
+        Some(gas_limit),
+        vec![denied_raw],
+        Address::ZERO,
+    )
+    .await?;
+
+    let latest_block = env.node_clients[0]
+        .get_block_by_number(BlockNumberOrTag::Latest)
+        .await?
+        .expect("latest block available after denied deploy");
+    let denied_tx_count = match latest_block.transactions {
+        BlockTransactions::Full(ref txs) => txs.len(),
+        BlockTransactions::Hashes(ref hashes) => hashes.len(),
+        BlockTransactions::Uncle => 0,
+    };
+    assert_eq!(
+        denied_tx_count, 0,
+        "non-allowlisted top-level CREATE should be excluded from the block"
+    );
+
+    let denied_address = contract_address_from_nonce(non_allowlisted.address(), 0);
+    let denied_code =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header, Bytes>::get_code(
+            &env.node_clients[0].rpc,
+            denied_address,
+            Some(BlockId::latest()),
+        )
+        .await?;
+    assert!(
+        denied_code.is_empty(),
+        "non-allowlisted deploy should not create contract code"
+    );
 
     // allowlisted account deploys the factory via top-level CREATE
     let deploy_factory_tx = TransactionRequest {
