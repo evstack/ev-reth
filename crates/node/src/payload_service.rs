@@ -471,6 +471,7 @@ mod tests {
         let engine_builder = EvolveEnginePayloadBuilder {
             evolve_builder,
             config,
+            pool: NoopTransactionPool::<EvPooledTransaction>::new(),
         };
 
         let rpc_attrs = RpcPayloadAttributes {
