@@ -249,7 +249,7 @@ async fn test_e2e_deploy_allowlist_permits_create2_via_factory() -> Result<()> {
     );
 
     // verify child contract exists at the expected CREATE2 address
-    let init_code_hash = alloy_primitives::keccak256(&CREATE2_CHILD_INITCODE);
+    let init_code_hash = alloy_primitives::keccak256(CREATE2_CHILD_INITCODE);
     let expected_child_address = factory_address.create2(salt, init_code_hash);
     let child_code =
         EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header, Bytes>::get_code(
