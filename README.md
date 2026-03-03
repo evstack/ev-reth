@@ -482,10 +482,17 @@ All standard Reth configuration options are supported. Key options for Evolve in
 ```
 ev-reth/
 ├── bin/
-│   └── ev-reth/                  # Main binary
+│   ├── ev-reth/                  # Main binary
+│   │   ├── Cargo.toml
+│   │   └── src/
+│   │       └── main.rs           # Binary with Engine API integration
+│   └── ev-dev/                   # Local dev chain (like Hardhat Node / Anvil)
 │       ├── Cargo.toml
+│       ├── README.md             # Usage guide with tool integrations
+│       ├── assets/
+│       │   └── devnet-genesis.json
 │       └── src/
-│           └── main.rs           # Binary with Engine API integration
+│           └── main.rs
 ├── crates/
 │   ├── common/                   # Shared utilities and constants
 │   │   ├── Cargo.toml
