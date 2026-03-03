@@ -8,6 +8,8 @@ pub mod common;
 #[cfg(test)]
 pub(crate) mod e2e_tests;
 #[cfg(test)]
+mod test_deploy_allowlist;
+#[cfg(test)]
 mod test_evolve_engine_api;
 
 // Re-export common test utilities
