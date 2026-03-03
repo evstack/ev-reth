@@ -55,12 +55,13 @@ impl Default for EvolvePayloadBuilderBuilder {
 
 /// The evolve engine payload builder that integrates with the evolve payload builder.
 #[derive(Debug, Clone)]
-pub struct EvolveEnginePayloadBuilder<Client>
+pub struct EvolveEnginePayloadBuilder<Client, Pool>
 where
     Client: Clone,
 {
     pub(crate) evolve_builder: Arc<EvolvePayloadBuilder<Client>>,
     pub(crate) config: EvolvePayloadBuilderConfig,
+    pub(crate) pool: Pool,
 }
 
 impl<Node, Pool> PayloadBuilderBuilder<Node, Pool, EvolveEvmConfig> for EvolvePayloadBuilderBuilder
@@ -76,12 +77,12 @@ where
         + Unpin
         + 'static,
 {
-    type PayloadBuilder = EvolveEnginePayloadBuilder<Node::Provider>;
+    type PayloadBuilder = EvolveEnginePayloadBuilder<Node::Provider, Pool>;
 
     async fn build_payload_builder(
         self,
         ctx: &BuilderContext<Node>,
-        _pool: Pool,
+        pool: Pool,
         evm_config: EvolveEvmConfig,
     ) -> eyre::Result<Self::PayloadBuilder> {
         let chain_spec = ctx.chain_spec();
@@ -114,11 +115,12 @@ where
         Ok(EvolveEnginePayloadBuilder {
             evolve_builder,
             config,
+            pool,
         })
     }
 }
 
-impl<Client> PayloadBuilder for EvolveEnginePayloadBuilder<Client>
+impl<Client, Pool> PayloadBuilder for EvolveEnginePayloadBuilder<Client, Pool>
 where
     Client: reth_ethereum::provider::StateProviderFactory
         + ChainSpecProvider<ChainSpec = ChainSpec>
@@ -127,12 +129,15 @@ where
         + Send
         + Sync
         + 'static,
+    Pool: TransactionPool<Transaction: PoolTransaction<Consensus = TransactionSigned>>
+        + Unpin
+        + 'static,
 {
     type Attributes = EvolveEnginePayloadBuilderAttributes;
     type BuiltPayload = EvBuiltPayload;
 
     #[instrument(skip(self, args), fields(
-        tx_count = args.config.attributes.transactions.len(),
+        tx_count = tracing::field::Empty,
         payload_id = %args.config.attributes.payload_id(),
         duration_ms = tracing::field::Empty,
     ))]
@@ -174,8 +179,30 @@ where
             }
         }
 
+        // Use transactions from Engine API attributes if provided, otherwise pull from the pool
+        // (e.g. in --dev mode where LocalMiner sends empty attributes).
+        let transactions = if attributes.transactions.is_empty() {
+            let pool_txs: Vec<TransactionSigned> = self
+                .pool
+                .pending_transactions()
+                .into_iter()
+                .map(|tx| tx.transaction.clone_into_consensus().into_inner())
+                .collect();
+            if !pool_txs.is_empty() {
+                info!(
+                    pool_tx_count = pool_txs.len(),
+                    "pulling transactions from pool"
+                );
+            }
+            pool_txs
+        } else {
+            attributes.transactions.clone()
+        };
+
+        tracing::Span::current().record("tx_count", transactions.len());
+
         let evolve_attrs = EvolvePayloadAttributes::new(
-            attributes.transactions.clone(),
+            transactions,
             Some(effective_gas_limit),
             attributes.timestamp(),
             attributes.prev_randao(),
@@ -288,6 +315,7 @@ mod tests {
     use super::*;
     use crate::{
         config::EvolvePayloadBuilderConfig, executor::EvolveEvmConfig, test_utils::SpanCollector,
+        txpool::EvPooledTransaction,
     };
     use alloy_primitives::B256;
     use alloy_rpc_types::engine::PayloadAttributes as RpcPayloadAttributes;
@@ -297,6 +325,7 @@ mod tests {
     use reth_primitives_traits::SealedHeader;
     use reth_provider::test_utils::MockEthProvider;
     use reth_revm::{cached::CachedReads, cancelled::CancelOnDrop};
+    use reth_transaction_pool::noop::NoopTransactionPool;
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn try_build_span_has_expected_fields() {
@@ -348,6 +377,7 @@ mod tests {
         let engine_builder = EvolveEnginePayloadBuilder {
             evolve_builder,
             config,
+            pool: NoopTransactionPool::<EvPooledTransaction>::new(),
         };
 
         let rpc_attrs = RpcPayloadAttributes {
