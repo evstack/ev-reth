@@ -63,6 +63,7 @@ where
     pub(crate) evolve_builder: Arc<EvolvePayloadBuilder<Client>>,
     pub(crate) config: EvolvePayloadBuilderConfig,
     pub(crate) pool: Pool,
+    pub(crate) dev_mode: bool,
 }
 
 impl<Node, Pool> PayloadBuilderBuilder<Node, Pool, EvolveEvmConfig> for EvolvePayloadBuilderBuilder
@@ -117,6 +118,7 @@ where
             evolve_builder,
             config,
             pool,
+            dev_mode: ctx.is_dev(),
         })
     }
 }
@@ -180,9 +182,9 @@ where
             }
         }
 
-        // Use transactions from Engine API attributes if provided, otherwise pull from the pool
-        // (e.g. in --dev mode where LocalMiner sends empty attributes).
-        let transactions = if attributes.transactions.is_empty() {
+        // In dev mode, pull pending transactions from the txpool.
+        // In production, transactions come exclusively from Engine API attributes.
+        let transactions = if self.dev_mode {
             let pool_txs: Vec<TransactionSigned> = self
                 .pool
                 .pending_transactions()
@@ -192,7 +194,7 @@ where
             if !pool_txs.is_empty() {
                 info!(
                     pool_tx_count = pool_txs.len(),
-                    "pulling transactions from pool"
+                    "pulling transactions from pool (dev mode)"
                 );
             }
             pool_txs
@@ -382,6 +384,7 @@ mod tests {
             evolve_builder,
             config,
             pool: NoopTransactionPool::<EvPooledTransaction>::new(),
+            dev_mode: false,
         };
 
         let rpc_attrs = RpcPayloadAttributes {
@@ -472,6 +475,7 @@ mod tests {
             evolve_builder,
             config,
             pool: NoopTransactionPool::<EvPooledTransaction>::new(),
+            dev_mode: false,
         };
 
         let rpc_attrs = RpcPayloadAttributes {

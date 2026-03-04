@@ -78,7 +78,7 @@ async fn test_e2e_deploy_allowlist_permits_create2_via_factory() -> Result<()> {
     let mut setup = Setup::<EvolveEngineTypes>::default()
         .with_chain_spec(chain_spec)
         .with_network(NetworkSetup::single_node())
-        .with_dev_mode(true)
+        .with_dev_mode(false)
         .with_tree_config(e2e_test_tree_config());
 
     let mut env = Environment::<EvolveEngineTypes>::default();

@@ -119,6 +119,7 @@ impl EvolvePayloadBuilderConfig {
                 }
             }
         }
+
         Ok(config)
     }
 
@@ -400,10 +401,7 @@ mod tests {
             mint_admin: Some(address!("00000000000000000000000000000000000000aa")),
             base_fee_redirect_activation_height: Some(0),
             mint_precompile_activation_height: Some(0),
-            contract_size_limit: None,
-            contract_size_limit_activation_height: None,
-            deploy_allowlist: Vec::new(),
-            deploy_allowlist_activation_height: None,
+            ..Default::default()
         };
         assert!(config_with_sink.validate().is_ok());
     }
@@ -468,14 +466,9 @@ mod tests {
             allowlist.push(addr);
         }
         let config = EvolvePayloadBuilderConfig {
-            base_fee_sink: None,
-            mint_admin: None,
-            base_fee_redirect_activation_height: None,
-            mint_precompile_activation_height: None,
-            contract_size_limit: None,
-            contract_size_limit_activation_height: None,
             deploy_allowlist: allowlist,
             deploy_allowlist_activation_height: Some(0),
+            ..Default::default()
         };
 
         assert!(matches!(
@@ -489,13 +482,8 @@ mod tests {
         let sink = address!("0000000000000000000000000000000000000003");
         let mut config = EvolvePayloadBuilderConfig {
             base_fee_sink: Some(sink),
-            mint_admin: None,
             base_fee_redirect_activation_height: Some(5),
-            mint_precompile_activation_height: None,
-            contract_size_limit: None,
-            contract_size_limit_activation_height: None,
-            deploy_allowlist: Vec::new(),
-            deploy_allowlist_activation_height: None,
+            ..Default::default()
         };
 
         assert_eq!(config.base_fee_sink_for_block(4), None);

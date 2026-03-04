@@ -273,7 +273,7 @@ async fn test_e2e_base_fee_sink_receives_base_fee() -> Result<()> {
     let mut setup = Setup::<EvolveEngineTypes>::default()
         .with_chain_spec(chain_spec)
         .with_network(NetworkSetup::single_node())
-        .with_dev_mode(true)
+        .with_dev_mode(false)
         .with_tree_config(e2e_test_tree_config());
 
     let mut env = Environment::<EvolveEngineTypes>::default();
@@ -408,7 +408,7 @@ async fn test_e2e_sponsored_evnode_transaction() -> Result<()> {
     let mut setup = Setup::<EvolveEngineTypes>::default()
         .with_chain_spec(chain_spec)
         .with_network(NetworkSetup::single_node())
-        .with_dev_mode(true)
+        .with_dev_mode(false)
         .with_tree_config(e2e_test_tree_config());
 
     let mut env = Environment::<EvolveEngineTypes>::default();
@@ -614,7 +614,7 @@ async fn test_e2e_invalid_sponsor_signature_skipped() -> Result<()> {
     let mut setup = Setup::<EvolveEngineTypes>::default()
         .with_chain_spec(chain_spec)
         .with_network(NetworkSetup::single_node())
-        .with_dev_mode(true)
+        .with_dev_mode(false)
         .with_tree_config(e2e_test_tree_config());
 
     let mut env = Environment::<EvolveEngineTypes>::default();
@@ -739,7 +739,7 @@ async fn test_e2e_empty_calls_skipped() -> Result<()> {
     let mut setup = Setup::<EvolveEngineTypes>::default()
         .with_chain_spec(chain_spec)
         .with_network(NetworkSetup::single_node())
-        .with_dev_mode(true)
+        .with_dev_mode(false)
         .with_tree_config(e2e_test_tree_config());
 
     let mut env = Environment::<EvolveEngineTypes>::default();
@@ -852,7 +852,7 @@ async fn test_e2e_sponsor_insufficient_max_fee_skipped() -> Result<()> {
     let mut setup = Setup::<EvolveEngineTypes>::default()
         .with_chain_spec(chain_spec)
         .with_network(NetworkSetup::single_node())
-        .with_dev_mode(true)
+        .with_dev_mode(false)
         .with_tree_config(e2e_test_tree_config());
 
     let mut env = Environment::<EvolveEngineTypes>::default();
@@ -1000,7 +1000,7 @@ async fn test_e2e_nonce_bumped_on_create_batch_failure() -> Result<()> {
     let mut setup = Setup::<EvolveEngineTypes>::default()
         .with_chain_spec(chain_spec)
         .with_network(NetworkSetup::single_node())
-        .with_dev_mode(true)
+        .with_dev_mode(false)
         .with_tree_config(e2e_test_tree_config());
 
     let mut env = Environment::<EvolveEngineTypes>::default();
@@ -1239,7 +1239,7 @@ async fn test_e2e_mint_and_burn_to_new_wallet() -> Result<()> {
     let mut setup = Setup::<EvolveEngineTypes>::default()
         .with_chain_spec(chain_spec.clone())
         .with_network(NetworkSetup::single_node())
-        .with_dev_mode(true)
+        .with_dev_mode(false)
         .with_tree_config(e2e_test_tree_config());
 
     let mut env = Environment::<EvolveEngineTypes>::default();
@@ -1661,7 +1661,7 @@ async fn test_e2e_mint_precompile_via_contract() -> Result<()> {
     let mut setup = Setup::<EvolveEngineTypes>::default()
         .with_chain_spec(chain_spec.clone())
         .with_network(NetworkSetup::single_node())
-        .with_dev_mode(true)
+        .with_dev_mode(false)
         .with_tree_config(e2e_test_tree_config());
 
     let mut env = Environment::<EvolveEngineTypes>::default();
@@ -1892,7 +1892,7 @@ async fn test_e2e_deploy_allowlist_blocks_unauthorized_deploys() -> Result<()> {
     let mut setup = Setup::<EvolveEngineTypes>::default()
         .with_chain_spec(chain_spec)
         .with_network(NetworkSetup::single_node())
-        .with_dev_mode(true)
+        .with_dev_mode(false)
         .with_tree_config(e2e_test_tree_config());
 
     let mut env = Environment::<EvolveEngineTypes>::default();
@@ -2019,6 +2019,73 @@ async fn test_e2e_deploy_allowlist_blocks_unauthorized_deploys() -> Result<()> {
     assert!(
         !allowed_code.is_empty(),
         "allowlisted deploy should create contract code"
+    );
+
+    Ok(())
+}
+
+/// Tests that dev mode correctly enables the txpool fallback.
+///
+/// When running with `--dev` flag, the payload builder pulls pending
+/// transactions from the txpool instead of relying on Engine API attributes.
+/// This validates the full flow:
+///   `--dev` flag → `ctx.is_dev()` → `dev_mode` on payload builder → txpool
+#[tokio::test(flavor = "multi_thread")]
+async fn test_e2e_dev_mode_txpool_fallback() -> Result<()> {
+    reth_tracing::init_test_tracing();
+
+    let chain_spec = create_test_chain_spec();
+    let chain_id = chain_spec.chain().id();
+
+    let mut setup = Setup::<EvolveEngineTypes>::default()
+        .with_chain_spec(chain_spec)
+        .with_network(NetworkSetup::single_node())
+        .with_dev_mode(true)
+        .with_tree_config(e2e_test_tree_config());
+
+    let mut env = Environment::<EvolveEngineTypes>::default();
+    setup.apply::<EvolveNode>(&mut env).await?;
+
+    let parent_block = env.node_clients[0]
+        .get_block_by_number(BlockNumberOrTag::Latest)
+        .await?
+        .expect("parent block should exist");
+    let mut parent_hash = parent_block.header.hash;
+    let mut parent_timestamp = parent_block.header.inner.timestamp;
+    let mut parent_number = parent_block.header.inner.number;
+
+    // Create a signed transaction and send it to the txpool
+    let wallets = Wallet::new(1).with_chain_id(chain_id).wallet_gen();
+    let sender = wallets.into_iter().next().unwrap();
+    let raw_tx = TransactionTestContext::transfer_tx_bytes(chain_id, sender).await;
+
+    EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header, Bytes>::send_raw_transaction(
+        &env.node_clients[0].rpc,
+        raw_tx,
+    )
+    .await?;
+
+    // Build a block with empty transactions via Engine API.
+    // In dev mode, the payload builder pulls from the txpool.
+    let payload_envelope = build_block_with_transactions(
+        &mut env,
+        &mut parent_hash,
+        &mut parent_number,
+        &mut parent_timestamp,
+        None,
+        vec![],
+        Address::random(),
+    )
+    .await?;
+
+    let block_txs = &payload_envelope
+        .execution_payload
+        .payload_inner
+        .payload_inner
+        .transactions;
+    assert!(
+        !block_txs.is_empty(),
+        "dev mode should pull transaction from txpool when attributes are empty"
     );
 
     Ok(())
