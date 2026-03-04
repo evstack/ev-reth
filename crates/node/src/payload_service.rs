@@ -182,10 +182,9 @@ where
             }
         }
 
-        // In dev mode, pull pending transactions from the txpool when the Engine API
-        // attributes contain none (LocalMiner sends empty attributes).
-        // In production this is disabled to prevent non-deterministic block contents.
-        let transactions = if self.dev_mode && attributes.transactions.is_empty() {
+        // In dev mode, pull pending transactions from the txpool.
+        // In production, transactions come exclusively from Engine API attributes.
+        let transactions = if self.dev_mode {
             let pool_txs: Vec<TransactionSigned> = self
                 .pool
                 .pending_transactions()
