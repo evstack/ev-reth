@@ -63,6 +63,7 @@ where
     pub(crate) evolve_builder: Arc<EvolvePayloadBuilder<Client>>,
     pub(crate) config: EvolvePayloadBuilderConfig,
     pub(crate) pool: Pool,
+    pub(crate) dev_mode: bool,
 }
 
 impl<Node, Pool> PayloadBuilderBuilder<Node, Pool, EvolveEvmConfig> for EvolvePayloadBuilderBuilder
@@ -105,7 +106,6 @@ where
                 self.config.mint_precompile_activation_height;
         }
 
-        config.dev_mode = ctx.is_dev();
         config.validate()?;
 
         let evolve_builder = Arc::new(EvolvePayloadBuilder::new(
@@ -118,6 +118,7 @@ where
             evolve_builder,
             config,
             pool,
+            dev_mode: ctx.is_dev(),
         })
     }
 }
@@ -184,7 +185,7 @@ where
         // In dev mode, pull pending transactions from the txpool when the Engine API
         // attributes contain none (LocalMiner sends empty attributes).
         // In production this is disabled to prevent non-deterministic block contents.
-        let transactions = if self.config.dev_mode && attributes.transactions.is_empty() {
+        let transactions = if self.dev_mode && attributes.transactions.is_empty() {
             let pool_txs: Vec<TransactionSigned> = self
                 .pool
                 .pending_transactions()
@@ -384,6 +385,7 @@ mod tests {
             evolve_builder,
             config,
             pool: NoopTransactionPool::<EvPooledTransaction>::new(),
+            dev_mode: false,
         };
 
         let rpc_attrs = RpcPayloadAttributes {
@@ -474,6 +476,7 @@ mod tests {
             evolve_builder,
             config,
             pool: NoopTransactionPool::<EvPooledTransaction>::new(),
+            dev_mode: false,
         };
 
         let rpc_attrs = RpcPayloadAttributes {

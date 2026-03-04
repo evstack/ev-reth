@@ -59,9 +59,6 @@ pub struct EvolvePayloadBuilderConfig {
     /// Block height at which deploy allowlist enforcement activates.
     #[serde(default)]
     pub deploy_allowlist_activation_height: Option<u64>,
-    /// Enables dev-mode behaviour (e.g. pulling txpool transactions into blocks).
-    #[serde(default)]
-    pub dev_mode: bool,
 }
 
 impl EvolvePayloadBuilderConfig {
@@ -76,7 +73,6 @@ impl EvolvePayloadBuilderConfig {
             contract_size_limit_activation_height: None,
             deploy_allowlist: Vec::new(),
             deploy_allowlist_activation_height: None,
-            dev_mode: false,
         }
     }
 
