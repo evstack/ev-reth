@@ -118,7 +118,6 @@ impl EvolvePayloadBuilderConfig {
                     config.deploy_allowlist_activation_height = Some(0);
                 }
             }
-
         }
 
         Ok(config)

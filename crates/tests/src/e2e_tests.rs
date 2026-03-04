@@ -2029,7 +2029,7 @@ async fn test_e2e_deploy_allowlist_blocks_unauthorized_deploys() -> Result<()> {
 /// When running with `--dev` flag, the payload builder should pull pending
 /// transactions from the txpool when Engine API attributes contain no
 /// transactions. This validates the full flow:
-///   --dev flag → ctx.is_dev() → dev_mode on payload builder → txpool fallback
+///   `--dev` flag → `ctx.is_dev()` → `dev_mode` on payload builder → txpool fallback
 #[tokio::test(flavor = "multi_thread")]
 async fn test_e2e_dev_mode_txpool_fallback() -> Result<()> {
     reth_tracing::init_test_tracing();
