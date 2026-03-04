@@ -105,6 +105,7 @@ where
                 self.config.mint_precompile_activation_height;
         }
 
+        config.dev_mode = ctx.is_dev();
         config.validate()?;
 
         let evolve_builder = Arc::new(EvolvePayloadBuilder::new(
@@ -180,9 +181,10 @@ where
             }
         }
 
-        // Use transactions from Engine API attributes if provided, otherwise pull from the pool
-        // (e.g. in --dev mode where LocalMiner sends empty attributes).
-        let transactions = if attributes.transactions.is_empty() {
+        // In dev mode, pull pending transactions from the txpool when the Engine API
+        // attributes contain none (LocalMiner sends empty attributes).
+        // In production this is disabled to prevent non-deterministic block contents.
+        let transactions = if self.config.dev_mode && attributes.transactions.is_empty() {
             let pool_txs: Vec<TransactionSigned> = self
                 .pool
                 .pending_transactions()
@@ -192,7 +194,7 @@ where
             if !pool_txs.is_empty() {
                 info!(
                     pool_tx_count = pool_txs.len(),
-                    "pulling transactions from pool"
+                    "pulling transactions from pool (dev mode)"
                 );
             }
             pool_txs
