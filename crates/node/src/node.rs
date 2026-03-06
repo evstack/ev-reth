@@ -64,13 +64,17 @@ impl EngineTypes for EvolveEngineTypes {
 
 /// Evolve node type.
 #[derive(Debug, Clone, Default)]
-#[non_exhaustive]
-pub struct EvolveNode {}
+pub struct EvolveNode {
+    /// Block height at which the Eden WTIA storage hardfork activates.
+    pub eden_hardfork_height: Option<u64>,
+}
 
 impl EvolveNode {
     /// Create a new evolve node with the given arguments.
-    pub const fn new() -> Self {
-        Self {}
+    pub const fn new(eden_hardfork_height: Option<u64>) -> Self {
+        Self {
+            eden_hardfork_height,
+        }
     }
 }
 
@@ -102,7 +106,7 @@ where
         ComponentsBuilder::default()
             .node_types::<N>()
             .pool(EthereumPoolBuilder::default())
-            .executor(EvolveExecutorBuilder::default())
+            .executor(EvolveExecutorBuilder::new(self.eden_hardfork_height))
             .payload(BasicPayloadServiceBuilder::new(
                 EvolvePayloadBuilderBuilder::new(),
             ))

@@ -25,7 +25,7 @@ use tracing::info;
 
 use crate::{
     attributes::EvolveEnginePayloadBuilderAttributes, builder::EvolvePayloadBuilder,
-    config::EvolvePayloadBuilderConfig, executor::EvolveEvmConfig, node::EvolveEngineTypes,
+    config::EvolvePayloadBuilderConfig, hardfork::EdenEvmConfig, node::EvolveEngineTypes,
 };
 
 use evolve_ev_reth::config::set_current_block_gas_limit;
@@ -62,7 +62,7 @@ where
     pub(crate) config: EvolvePayloadBuilderConfig,
 }
 
-impl<Node, Pool> PayloadBuilderBuilder<Node, Pool, EvolveEvmConfig> for EvolvePayloadBuilderBuilder
+impl<Node, Pool> PayloadBuilderBuilder<Node, Pool, EdenEvmConfig> for EvolvePayloadBuilderBuilder
 where
     Node: FullNodeTypes<
         Types: NodeTypes<
@@ -81,7 +81,7 @@ where
         self,
         ctx: &BuilderContext<Node>,
         _pool: Pool,
-        evm_config: EvolveEvmConfig,
+        evm_config: EdenEvmConfig,
     ) -> eyre::Result<Self::PayloadBuilder> {
         let chain_spec = ctx.chain_spec();
         let mut config = EvolvePayloadBuilderConfig::from_chain_spec(&chain_spec)

@@ -21,7 +21,7 @@ use reth_provider::test_utils::{ExtendedAccount, MockEthProvider};
 use serde_json::json;
 use tempfile::TempDir;
 
-use ev_node::{EvolvePayloadBuilder, EvolvePayloadBuilderConfig};
+use ev_node::{EdenEvmConfig, EvolvePayloadBuilder, EvolvePayloadBuilderConfig};
 use evolve_ev_reth::EvolvePayloadAttributes;
 
 // Test constants
@@ -165,7 +165,8 @@ impl EvolveTestFixture {
             contract_size_limit,
         );
 
-        let builder = EvolvePayloadBuilder::new(Arc::new(provider.clone()), wrapped_evm, config);
+        let eden_evm = EdenEvmConfig::new(wrapped_evm, None);
+        let builder = EvolvePayloadBuilder::new(Arc::new(provider.clone()), eden_evm, config);
 
         let fixture = Self {
             builder,

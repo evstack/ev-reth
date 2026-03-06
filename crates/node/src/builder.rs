@@ -1,8 +1,6 @@
 use crate::config::EvolvePayloadBuilderConfig;
 use alloy_consensus::transaction::Transaction;
-use alloy_evm::eth::EthEvmFactory;
 use alloy_primitives::Address;
-use ev_revm::EvEvmFactory;
 use evolve_ev_reth::EvolvePayloadAttributes;
 use reth_chainspec::{ChainSpec, ChainSpecProvider};
 use reth_errors::RethError;
@@ -10,7 +8,6 @@ use reth_evm::{
     execute::{BlockBuilder, BlockBuilderOutcome},
     ConfigureEvm, NextBlockEnvAttributes,
 };
-use reth_evm_ethereum::EthEvmConfig;
 use reth_payload_builder_primitives::PayloadBuilderError;
 use reth_primitives::{transaction::SignedTransaction, Header, SealedBlock, SealedHeader};
 use reth_provider::{HeaderProvider, StateProviderFactory};
@@ -18,7 +15,9 @@ use reth_revm::{database::StateProviderDatabase, State};
 use std::sync::Arc;
 use tracing::{debug, info};
 
-type EvolveEthEvmConfig = EthEvmConfig<ChainSpec, EvEvmFactory<EthEvmFactory>>;
+use crate::hardfork::EdenEvmConfig;
+
+type EvolveEthEvmConfig = EdenEvmConfig;
 
 /// Payload builder for Evolve Reth node
 #[derive(Debug)]

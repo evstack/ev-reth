@@ -19,6 +19,8 @@ pub mod config;
 pub mod error;
 /// Executor wiring for EV aware execution.
 pub mod executor;
+/// Eden mainnet hardfork: WTIA storage injection.
+pub mod hardfork;
 /// Node composition and payload types.
 pub mod node;
 /// Payload service integration.
@@ -34,6 +36,7 @@ pub use chainspec::EvolveChainSpecParser;
 pub use config::{ConfigError, EvolvePayloadBuilderConfig};
 pub use error::EvolveEngineError;
 pub use executor::{build_evm_config, EvolveEvmConfig, EvolveExecutorBuilder};
+pub use hardfork::EdenEvmConfig;
 pub use node::{log_startup, EvolveEngineTypes, EvolveNode, EvolveNodeAddOns};
 pub use payload_service::{EvolveEnginePayloadBuilder, EvolvePayloadBuilderBuilder};
 pub use validator::{EvolveEngineValidator, EvolveEngineValidatorBuilder};

@@ -48,10 +48,10 @@ fn main() {
     }
 
     if let Err(err) =
-        Cli::<EvolveChainSpecParser, EvolveArgs>::parse().run(|builder, _evolve_args| async move {
+        Cli::<EvolveChainSpecParser, EvolveArgs>::parse().run(|builder, evolve_args| async move {
             log_startup();
             let handle = builder
-                .node(EvolveNode::new())
+                .node(EvolveNode::new(evolve_args.eden_hardfork_height))
                 .extend_rpc_modules(move |ctx| {
                     // Build custom txpool RPC with config + optional CLI/env override
                     let evolve_cfg = EvolveConfig::default();

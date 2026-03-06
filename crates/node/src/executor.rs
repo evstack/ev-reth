@@ -18,9 +18,9 @@ use reth_ethereum_forks::Hardforks;
 use reth_node_builder::PayloadBuilderConfig;
 use tracing::info;
 
-use crate::{config::EvolvePayloadBuilderConfig, EvolveNode};
+use crate::{config::EvolvePayloadBuilderConfig, hardfork::EdenEvmConfig, EvolveNode};
 
-/// Type alias for the EV-aware EVM config we install into the node.
+/// Type alias for the EV-aware EVM config (without Eden hardfork wrapper).
 pub type EvolveEvmConfig = EthEvmConfig<ChainSpec, EvEvmFactory<EthEvmFactory>>;
 
 /// Builds the EV-aware EVM configuration by wrapping the default config with the EV handler.
@@ -88,18 +88,35 @@ where
 }
 
 /// Thin wrapper so we can plug the EV executor into the node components builder.
-#[derive(Debug, Default, Clone, Copy)]
-#[non_exhaustive]
-pub struct EvolveExecutorBuilder;
+#[derive(Debug, Clone, Copy)]
+pub struct EvolveExecutorBuilder {
+    eden_hardfork_height: Option<u64>,
+}
+
+impl EvolveExecutorBuilder {
+    /// Creates a new executor builder with the given hardfork height.
+    pub const fn new(eden_hardfork_height: Option<u64>) -> Self {
+        Self {
+            eden_hardfork_height,
+        }
+    }
+}
+
+impl Default for EvolveExecutorBuilder {
+    fn default() -> Self {
+        Self::new(None)
+    }
+}
 
 impl<Node> RethExecutorBuilder<Node> for EvolveExecutorBuilder
 where
     Node: FullNodeTypes<Types = EvolveNode>,
     ChainSpec: Hardforks + EthExecutorSpec + EthereumHardforks,
 {
-    type EVM = EvolveEvmConfig;
+    type EVM = EdenEvmConfig;
 
     async fn build_evm(self, ctx: &BuilderContext<Node>) -> eyre::Result<Self::EVM> {
-        build_evm_config(ctx)
+        let inner = build_evm_config(ctx)?;
+        Ok(EdenEvmConfig::new(inner, self.eden_hardfork_height))
     }
 }

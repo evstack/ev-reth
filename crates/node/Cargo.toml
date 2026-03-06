@@ -45,6 +45,7 @@ reth-rpc-api.workspace = true
 reth-rpc-engine-api.workspace = true
 reth-engine-primitives.workspace = true
 reth-ethereum-primitives.workspace = true
+revm.workspace = true
 
 # Alloy dependencies
 alloy-rpc-types.workspace = true
