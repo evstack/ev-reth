@@ -13,7 +13,7 @@ use evolve_ev_reth::{
 use reth_ethereum_cli::Cli;
 use reth_tracing_otlp::{OtlpConfig, OtlpProtocol};
 use tracing::info;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
 use url::Url;
 
 use ev_node::{log_startup, EvolveArgs, EvolveChainSpecParser, EvolveNode};
@@ -43,21 +43,43 @@ fn otlp_config_from_env() -> Option<OtlpConfig> {
     OtlpConfig::new("ev-reth", endpoint_url, protocol, None).ok()
 }
 
-/// Initialize tracing with optional OTLP support.
-fn init_tracing() {
-    let registry = tracing_subscriber::registry()
-        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
-        .with(tracing_subscriber::fmt::layer().with_target(false));
+const EV_TRACE_LEVEL_ENV: &str = "EV_TRACE_LEVEL";
 
+/// Initialize tracing with optional OTLP support.
+///
+/// When OTLP is enabled, per-layer filtering is applied so that stdout logs
+/// are controlled by `RUST_LOG` while the OTLP span exporter is controlled
+/// by `EV_TRACE_LEVEL` (falling back to `RUST_LOG`, then `"info"`).
+fn init_tracing() {
     if let Some(config) = otlp_config_from_env() {
         if let Ok(otlp_layer) = reth_tracing_otlp::span_layer(config) {
-            registry.with(otlp_layer).init();
+            let log_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into());
+
+            let trace_filter = std::env::var(EV_TRACE_LEVEL_ENV)
+                .ok()
+                .and_then(|val| EnvFilter::try_new(val).ok())
+                .unwrap_or_else(|| {
+                    EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into())
+                });
+
+            tracing_subscriber::registry()
+                .with(
+                    tracing_subscriber::fmt::layer()
+                        .with_target(false)
+                        .with_filter(log_filter),
+                )
+                .with(otlp_layer.with_filter(trace_filter))
+                .init();
+
             info!("OTLP tracing initialized for service: ev-reth");
             return;
         }
     }
 
-    registry.init();
+    tracing_subscriber::registry()
+        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
+        .with(tracing_subscriber::fmt::layer().with_target(false))
+        .init();
 }
 
 fn main() {
