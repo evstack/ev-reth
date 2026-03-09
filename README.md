@@ -592,6 +592,31 @@ Enable detailed logging:
 RUST_LOG=debug,ev-reth=trace ./target/release/ev-reth node
 ```
 
+### OTLP Tracing
+
+When OTLP is enabled (via `OTEL_EXPORTER_OTLP_ENDPOINT`), you can control the span export level independently from stdout log verbosity using `EV_TRACE_LEVEL`:
+
+| Variable | Controls | Default |
+|----------|----------|---------|
+| `RUST_LOG` | stdout log verbosity | `info` |
+| `EV_TRACE_LEVEL` | OTLP span export level | falls back to `RUST_LOG` |
+
+```bash
+# Clean stdout logs + debug-level spans exported to Jaeger
+RUST_LOG=info \
+EV_TRACE_LEVEL=debug \
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 \
+./target/release/ev-reth node --chain dev
+
+# Fine-grained: only debug spans for the ev_node module
+EV_TRACE_LEVEL="info,ev_node=debug"
+
+# Default behavior (no EV_TRACE_LEVEL): both use RUST_LOG
+RUST_LOG=info \
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 \
+./target/release/ev-reth node --chain dev
+```
+
 ## Contributing
 
 Contributions are welcome! Please:
