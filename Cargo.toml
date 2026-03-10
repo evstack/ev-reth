@@ -84,7 +84,7 @@ reth-db = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.11.2", de
 reth-tasks = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.11.2", default-features = false }
 
 revm = { version = "34.0.0", default-features = false }
-revm-context-interface = { version = "14.0.0", default-features = false }
+revm-context-interface = { version = "16.0.0", default-features = false }
 
 # Alloy dependencies (aligned to reth v1.11.2)
 alloy = { version = "1.6.3", features = [
