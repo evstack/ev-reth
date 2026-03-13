@@ -1,0 +1,53 @@
+name: EV Deployer CI
+
+on:
+  push:
+    paths:
+      - 'contracts/src/**'
+      - 'contracts/foundry.toml'
+      - 'bin/ev-deployer/**'
+  pull_request:
+    paths:
+      - 'contracts/src/**'
+      - 'contracts/foundry.toml'
+      - 'bin/ev-deployer/**'
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  verify-bytecodes:
+    name: EV Deployer bytecode verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+
+      - name: Run bytecode verification tests
+        run: cargo test -p ev-deployer -- --ignored --test-threads=1
+
+  unit-tests:
+    name: EV Deployer unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Run unit tests
+        run: cargo test -p ev-deployer
