@@ -34,6 +34,10 @@ build-maxperf:
 build-all:
     {{cargo}} build --workspace --release
 
+# Build the ev-deployer binary in release mode
+build-deployer:
+    {{cargo}} build --release --bin ev-deployer
+
 # Testing ──────────────────────────────────────────────
 
 # Run all tests
@@ -63,6 +67,10 @@ test-evolve:
 # Test only the common crate
 test-common:
     {{cargo}} test -p ev-common
+
+# Test the deployer crate
+test-deployer:
+    {{cargo}} test -p ev-deployer
 
 # Development ──────────────────────────────────────────
 
