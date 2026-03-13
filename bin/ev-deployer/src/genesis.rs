@@ -42,9 +42,7 @@ pub(crate) fn merge_into(
     let new_alloc = alloc.as_object().unwrap();
     for (addr, entry) in new_alloc {
         if genesis_alloc.contains_key(addr) && !force {
-            eyre::bail!(
-                "address collision at {addr}; use --force to overwrite"
-            );
+            eyre::bail!("address collision at {addr}; use --force to overwrite");
         }
         genesis_alloc.insert(addr.clone(), entry.clone());
     }
@@ -67,7 +65,10 @@ fn insert_contract(alloc: &mut Map<String, Value>, contract: &GenesisContract) {
     entry.insert("balance".to_string(), Value::String("0x0".to_string()));
     entry.insert(
         "code".to_string(),
-        Value::String(format!("0x{}", alloy_primitives::hex::encode(&contract.code))),
+        Value::String(format!(
+            "0x{}",
+            alloy_primitives::hex::encode(&contract.code)
+        )),
     );
     entry.insert("storage".to_string(), Value::Object(storage_map));
 
@@ -154,7 +155,10 @@ mod tests {
 
         let result = merge_into(&test_config(), tmp.path(), false);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("address collision"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("address collision"));
     }
 
     #[test]

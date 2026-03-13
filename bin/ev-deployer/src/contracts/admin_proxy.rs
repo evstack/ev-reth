@@ -14,9 +14,7 @@ pub(crate) fn build(config: &AdminProxyConfig) -> GenesisContract {
     let mut storage = BTreeMap::new();
 
     // Slot 0: owner (address left-padded to 32 bytes)
-    let owner_value = B256::from(U256::from_be_bytes(
-        config.owner.into_word().0,
-    ));
+    let owner_value = B256::from(U256::from_be_bytes(config.owner.into_word().0));
     storage.insert(B256::ZERO, owner_value);
 
     GenesisContract {
@@ -63,7 +61,11 @@ mod tests {
             .output()
             .expect("forge not found");
 
-        assert!(output.status.success(), "forge inspect failed: {}", String::from_utf8_lossy(&output.stderr));
+        assert!(
+            output.status.success(),
+            "forge inspect failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
 
         let forge_hex = String::from_utf8(output.stdout)
             .unwrap()

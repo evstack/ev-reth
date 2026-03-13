@@ -14,7 +14,11 @@ pub(crate) fn build(config: &FeeVaultConfig) -> GenesisContract {
     let mut storage = BTreeMap::new();
 
     // Apply constructor default: bps 0 -> 10000
-    let effective_bps = if config.bridge_share_bps == 0 { 10000 } else { config.bridge_share_bps };
+    let effective_bps = if config.bridge_share_bps == 0 {
+        10000
+    } else {
+        config.bridge_share_bps
+    };
 
     // Slot 0: hypNativeMinter (address)
     storage.insert(
@@ -25,7 +29,10 @@ pub(crate) fn build(config: &FeeVaultConfig) -> GenesisContract {
     // Slot 1: owner (lower 160 bits) + destinationDomain (shifted left 160 bits)
     let owner_u256 = U256::from_be_bytes(config.owner.into_word().0);
     let domain_u256 = U256::from(config.destination_domain) << 160;
-    storage.insert(B256::with_last_byte(1), B256::from(owner_u256 | domain_u256));
+    storage.insert(
+        B256::with_last_byte(1),
+        B256::from(owner_u256 | domain_u256),
+    );
 
     // Slot 2: recipientAddress (bytes32)
     storage.insert(B256::with_last_byte(2), config.recipient_address);
@@ -134,7 +141,9 @@ mod tests {
 
         // slot1 = (42 << 160) | owner
         let owner_u256 = U256::from_be_bytes(
-            address!("f39Fd6e51aad88F6F4ce6aB8827279cffFb92266").into_word().0,
+            address!("f39Fd6e51aad88F6F4ce6aB8827279cffFb92266")
+                .into_word()
+                .0,
         );
         let expected = B256::from((U256::from(42u32) << 160) | owner_u256);
         assert_eq!(contract.storage[&B256::with_last_byte(1)], expected);
@@ -155,7 +164,11 @@ mod tests {
             .output()
             .expect("forge not found");
 
-        assert!(output.status.success(), "forge inspect failed: {}", String::from_utf8_lossy(&output.stderr));
+        assert!(
+            output.status.success(),
+            "forge inspect failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
 
         let forge_hex = String::from_utf8(output.stdout)
             .unwrap()

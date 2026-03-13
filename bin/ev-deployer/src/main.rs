@@ -10,7 +10,10 @@ use std::path::PathBuf;
 
 /// EV Deployer: generate genesis alloc entries for ev-reth contracts.
 #[derive(Parser)]
-#[command(name = "ev-deployer", about = "Generate genesis alloc for ev-reth contracts")]
+#[command(
+    name = "ev-deployer",
+    about = "Generate genesis alloc for ev-reth contracts"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Command,
