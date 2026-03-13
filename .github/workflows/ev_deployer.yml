@@ -35,7 +35,7 @@ jobs:
         uses: foundry-rs/foundry-toolchain@v1
 
       - name: Run bytecode verification tests
-        run: cargo test -p ev-deployer -- --ignored
+        run: cargo test -p ev-deployer -- --ignored --test-threads=1
 
       - name: Run unit tests
         run: cargo test -p ev-deployer
