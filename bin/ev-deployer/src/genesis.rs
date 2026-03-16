@@ -1,7 +1,9 @@
 //! Genesis alloc JSON builder.
 
-use crate::config::DeployConfig;
-use crate::contracts::{self, GenesisContract};
+use crate::{
+    config::DeployConfig,
+    contracts::{self, GenesisContract},
+};
 use alloy_primitives::B256;
 use serde_json::{Map, Value};
 use std::path::Path;
