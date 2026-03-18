@@ -35,7 +35,7 @@ reth-trie-db = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.11.2
 reth-trie-common = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.11.2" }
 reth-rpc-eth-types = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.11.2" }
 reth-primitives-traits = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.11.2" }
-reth-provider = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.11.2" }
+reth-provider = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.11.3" }
 reth-storage-api = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.11.2" }
 reth-tracing = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.11.2" }
 reth-transaction-pool = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.11.2", default-features = false }
