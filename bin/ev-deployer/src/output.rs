@@ -21,5 +21,12 @@ pub(crate) fn build_manifest(config: &DeployConfig) -> Value {
         );
     }
 
+    if let Some(ref mth) = config.contracts.merkle_tree_hook {
+        manifest.insert(
+            "merkle_tree_hook".to_string(),
+            Value::String(format!("{}", mth.address)),
+        );
+    }
+
     Value::Object(manifest)
 }

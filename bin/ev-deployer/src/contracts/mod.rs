@@ -2,6 +2,8 @@
 
 pub(crate) mod admin_proxy;
 pub(crate) mod fee_vault;
+pub(crate) mod immutables;
+pub(crate) mod merkle_tree_hook;
 
 use alloy_primitives::{Address, Bytes, B256};
 use std::collections::BTreeMap;

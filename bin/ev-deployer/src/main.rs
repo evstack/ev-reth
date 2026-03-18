@@ -109,6 +109,12 @@ fn main() -> eyre::Result<()> {
                     .as_ref()
                     .map(|c| c.address)
                     .ok_or_else(|| eyre::eyre!("fee_vault not configured"))?,
+                "merkle_tree_hook" => cfg
+                    .contracts
+                    .merkle_tree_hook
+                    .as_ref()
+                    .map(|c| c.address)
+                    .ok_or_else(|| eyre::eyre!("merkle_tree_hook not configured"))?,
                 other => eyre::bail!("unknown contract: {other}"),
             };
 
