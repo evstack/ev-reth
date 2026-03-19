@@ -7,8 +7,8 @@
 //!
 //! | Variable                    | Type    | Offset |
 //! |-----------------------------|---------|--------|
-//! | `_CACHED_CHAIN_ID`          | uint256 | [6945] |
-//! | `_CACHED_DOMAIN_SEPARATOR`  | bytes32 | [6983] |
+//! | `_CACHED_CHAIN_ID`          | uint256 | \[6945\] |
+//! | `_CACHED_DOMAIN_SEPARATOR`  | bytes32 | \[6983\] |
 //!
 //! Both come from the EIP-712 base contract (`src/EIP712.sol`).  The
 //! constructor normally caches `block.chainid` and the resulting domain
@@ -32,7 +32,7 @@ use alloy_primitives::{hex, keccak256, Bytes, B256, U256};
 use std::collections::BTreeMap;
 
 /// `Permit2` runtime bytecode compiled from Uniswap/permit2 (commit cc56ad0)
-/// with solc 0.8.17 (via-ir, optimizer 1_000_000 runs, `bytecode_hash="none"`).
+/// with solc 0.8.17 (via-ir, optimizer `1_000_000` runs, `bytecode_hash="none"`).
 ///
 /// Compiled with placeholder immutables (all zeros).  Actual values are patched
 /// at genesis time via [`build`].
@@ -83,7 +83,11 @@ pub(crate) fn build(config: &Permit2Config, chain_id: u64) -> GenesisContract {
     buf[64..96].copy_from_slice(&B256::from(chain_id_u256).0);
     buf[96..128].copy_from_slice(config.address.into_word().as_slice());
     let domain_separator = keccak256(buf);
-    patch_bytes(&mut bytecode, CACHED_DOMAIN_SEPARATOR_REFS, &domain_separator.0);
+    patch_bytes(
+        &mut bytecode,
+        CACHED_DOMAIN_SEPARATOR_REFS,
+        &domain_separator.0,
+    );
 
     GenesisContract {
         address: config.address,
@@ -149,7 +153,10 @@ mod tests {
 
         let ds1 = &c1.code[6983..6983 + 32];
         let ds2 = &c2.code[6983..6983 + 32];
-        assert_ne!(ds1, ds2, "different chain IDs should produce different domain separators");
+        assert_ne!(
+            ds1, ds2,
+            "different chain IDs should produce different domain separators"
+        );
     }
 
     #[test]
@@ -169,7 +176,10 @@ mod tests {
 
         let ds1 = &c1.code[6983..6983 + 32];
         let ds2 = &c2.code[6983..6983 + 32];
-        assert_ne!(ds1, ds2, "different addresses should produce different domain separators");
+        assert_ne!(
+            ds1, ds2,
+            "different addresses should produce different domain separators"
+        );
     }
 
     #[test]
