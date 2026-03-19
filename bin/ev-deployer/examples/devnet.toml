@@ -22,4 +22,6 @@ owner = "0x000000000000000000000000000000000000Ad00"
 mailbox = "0x0000000000000000000000000000000000001200"
 
 [contracts.permit2]
+# Canonical Uniswap Permit2 address (same on all chains via CREATE2).
+# Using it here so frontends, SDKs and routers work out of the box.
 address = "0x000000000022D473030F116dDEE9F6B43aC78BA3"
