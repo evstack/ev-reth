@@ -68,7 +68,7 @@ const HASHED_NAME: B256 = B256::new(hex!(
 ));
 
 /// Build a genesis alloc entry for `Permit2`.
-pub(crate) fn build(config: &Permit2Config, chain_id: u64) -> GenesisContract {
+pub fn build(config: &Permit2Config, chain_id: u64) -> GenesisContract {
     let mut bytecode = PERMIT2_BYTECODE.to_vec();
 
     // Patch _CACHED_CHAIN_ID
