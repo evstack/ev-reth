@@ -83,7 +83,7 @@ ev-deployer genesis --config deploy.toml --output alloc.json
 
 ### Merge into an existing genesis file
 
-Insert the generated entries into an existing `genesis.json`. This modifies the `alloc` field in-place and writes the full result:
+Insert the generated entries into an existing `genesis.json`. The merged result is written to `--output` (or stdout if `--output` is omitted):
 
 ```bash
 ev-deployer genesis --config deploy.toml --merge-into genesis.json --output genesis-out.json

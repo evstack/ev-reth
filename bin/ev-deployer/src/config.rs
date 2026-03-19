@@ -182,6 +182,13 @@ impl DeployConfig {
             );
         }
 
+        if let (Some(ap), Some(fv)) = (&self.contracts.admin_proxy, &self.contracts.fee_vault) {
+            eyre::ensure!(
+                ap.address != fv.address,
+                "contracts.admin_proxy.address and contracts.fee_vault.address must be distinct"
+            );
+        }
+
         Ok(())
     }
 }
@@ -274,6 +281,24 @@ chain_id = 1
 [contracts.merkle_tree_hook]
 address = "0x0000000000000000000000000000000000001100"
 mailbox = "0x0000000000000000000000000000000000000000"
+"#;
+        let config: DeployConfig = toml::from_str(toml).unwrap();
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn reject_duplicate_addresses() {
+        let toml = r#"
+[chain]
+chain_id = 1
+
+[contracts.admin_proxy]
+address = "0x000000000000000000000000000000000000Ad00"
+owner = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+
+[contracts.fee_vault]
+address = "0x000000000000000000000000000000000000Ad00"
+owner = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
 "#;
         let config: DeployConfig = toml::from_str(toml).unwrap();
         assert!(config.validate().is_err());
