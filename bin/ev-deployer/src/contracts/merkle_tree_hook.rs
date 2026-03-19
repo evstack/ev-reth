@@ -77,7 +77,7 @@ const LOCAL_DOMAIN_REFS: &[ImmutableRef] = &[ImmutableRef {
 }];
 
 /// Build a genesis alloc entry for `MerkleTreeHook`.
-pub(crate) fn build(config: &MerkleTreeHookConfig, local_domain: u32) -> GenesisContract {
+pub fn build(config: &MerkleTreeHookConfig, local_domain: u32) -> GenesisContract {
     let mut bytecode = MERKLE_TREE_HOOK_BYTECODE.to_vec();
 
     // Patch immutables

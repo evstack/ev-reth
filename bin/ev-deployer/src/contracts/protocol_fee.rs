@@ -56,7 +56,7 @@ const MAX_PROTOCOL_FEE_REFS: &[ImmutableRef] = &[
 ];
 
 /// Build a genesis alloc entry for `ProtocolFee`.
-pub(crate) fn build(config: &ProtocolFeeConfig) -> GenesisContract {
+pub fn build(config: &ProtocolFeeConfig) -> GenesisContract {
     let mut bytecode = PROTOCOL_FEE_BYTECODE.to_vec();
 
     // Patch immutables

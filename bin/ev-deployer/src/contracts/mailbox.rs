@@ -74,7 +74,7 @@ const LOCAL_DOMAIN_REFS: &[ImmutableRef] = &[
 ];
 
 /// Build a genesis alloc entry for `Mailbox`.
-pub(crate) fn build(config: &MailboxConfig, local_domain: u32) -> GenesisContract {
+pub fn build(config: &MailboxConfig, local_domain: u32) -> GenesisContract {
     let mut bytecode = MAILBOX_BYTECODE.to_vec();
 
     // Patch immutables

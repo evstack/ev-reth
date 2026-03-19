@@ -7,7 +7,7 @@ use std::path::Path;
 /// Top-level deploy configuration.
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
-pub(crate) struct DeployConfig {
+pub struct DeployConfig {
     /// Chain configuration.
     pub chain: ChainConfig,
     /// Contract configurations.
@@ -17,14 +17,14 @@ pub(crate) struct DeployConfig {
 /// Chain-level settings.
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
-pub(crate) struct ChainConfig {
+pub struct ChainConfig {
     /// The chain ID.
     pub chain_id: u64,
 }
 
 /// All contract configurations.
 #[derive(Debug, Deserialize)]
-pub(crate) struct ContractsConfig {
+pub struct ContractsConfig {
     /// `AdminProxy` contract config (optional).
     pub admin_proxy: Option<AdminProxyConfig>,
     /// `FeeVault` contract config (optional).
@@ -43,7 +43,7 @@ pub(crate) struct ContractsConfig {
 
 /// `AdminProxy` configuration.
 #[derive(Debug, Deserialize)]
-pub(crate) struct AdminProxyConfig {
+pub struct AdminProxyConfig {
     /// Address to deploy at.
     pub address: Address,
     /// Owner address.
@@ -52,7 +52,7 @@ pub(crate) struct AdminProxyConfig {
 
 /// `FeeVault` configuration.
 #[derive(Debug, Deserialize)]
-pub(crate) struct FeeVaultConfig {
+pub struct FeeVaultConfig {
     /// Address to deploy at.
     pub address: Address,
     /// Owner address.
@@ -82,7 +82,7 @@ pub(crate) struct FeeVaultConfig {
 
 /// `MerkleTreeHook` configuration (Hyperlane required hook).
 #[derive(Debug, Deserialize)]
-pub(crate) struct MerkleTreeHookConfig {
+pub struct MerkleTreeHookConfig {
     /// Address to deploy at.
     pub address: Address,
     /// Owner address (for post-genesis hook/ISM changes).
@@ -94,7 +94,7 @@ pub(crate) struct MerkleTreeHookConfig {
 
 /// `MailboxConfig` configuration (Hyperlane core messaging hub).
 #[derive(Debug, Deserialize)]
-pub(crate) struct MailboxConfig {
+pub struct MailboxConfig {
     /// Address to deploy at.
     pub address: Address,
     /// Owner address.
@@ -113,21 +113,21 @@ pub(crate) struct MailboxConfig {
 
 /// `NoopIsm` configuration (Hyperlane ISM that accepts all messages).
 #[derive(Debug, Deserialize)]
-pub(crate) struct NoopIsmConfig {
+pub struct NoopIsmConfig {
     /// Address to deploy at.
     pub address: Address,
 }
 
 /// `Permit2` configuration (Uniswap token approval manager).
 #[derive(Debug, Deserialize)]
-pub(crate) struct Permit2Config {
+pub struct Permit2Config {
     /// Address to deploy at.
     pub address: Address,
 }
 
 /// `ProtocolFee` configuration (Hyperlane post-dispatch hook that charges a protocol fee).
 #[derive(Debug, Deserialize)]
-pub(crate) struct ProtocolFeeConfig {
+pub struct ProtocolFeeConfig {
     /// Address to deploy at.
     pub address: Address,
     /// Owner address.
@@ -145,7 +145,7 @@ pub(crate) struct ProtocolFeeConfig {
 
 impl DeployConfig {
     /// Load and validate config from a TOML file.
-    pub(crate) fn load(path: &Path) -> eyre::Result<Self> {
+    pub fn load(path: &Path) -> eyre::Result<Self> {
         let content = std::fs::read_to_string(path)?;
         let config: Self = toml::from_str(&content)?;
         config.validate()?;

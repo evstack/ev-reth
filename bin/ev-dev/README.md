@@ -28,6 +28,7 @@ ev-dev [OPTIONS]
 | `--block-time` | `1` | Block time in seconds (`0` = mine on transaction) |
 | `--silent` | `false` | Suppress the startup banner |
 | `--accounts` | `10` | Number of accounts to display (1-20) |
+| `--deploy-config` | — | Path to an ev-deployer TOML config to deploy contracts at genesis |
 
 ### Examples
 
@@ -40,7 +41,37 @@ ev-dev --host 0.0.0.0
 
 # Custom port, faster blocks
 ev-dev --port 9545 --block-time 2
+
+# Start with genesis contracts deployed
+ev-dev --deploy-config bin/ev-deployer/examples/devnet.toml
 ```
+
+## Genesis Contract Deployment
+
+You can deploy contracts into the genesis state by passing a `--deploy-config` flag pointing to an [ev-deployer](../ev-deployer/README.md) TOML config file.
+
+```bash
+ev-dev --deploy-config path/to/deploy.toml
+```
+
+When a deploy config is provided, ev-dev will:
+
+1. Load and validate the config
+2. Override the config's `chain_id` to match the devnet genesis (a warning is printed if they differ)
+3. Merge the contract alloc entries into the genesis state before starting the node
+4. Print the deployed contract addresses in the startup banner
+
+The startup banner will show an extra section:
+
+```
+Genesis Contracts (from path/to/deploy.toml)
+==================
+  admin_proxy          "0x000000000000000000000000000000000000Ad00"
+  fee_vault            "0x000000000000000000000000000000000000FE00"
+  ...
+```
+
+See the [ev-deployer README](../ev-deployer/README.md) for full config reference and available contracts.
 
 ## Chain Details
 
@@ -204,9 +235,10 @@ ev-dev includes all Evolve customizations out of the box:
 
 ev-dev is a thin wrapper around the full `ev-reth` node. On startup it:
 
-1. Writes the embedded devnet genesis to a temp file
-2. Creates a temporary data directory (clean state every run)
-3. Launches `ev-reth` in `--dev` mode with networking disabled
-4. Exposes HTTP and WebSocket RPC on the configured host/port
+1. If `--deploy-config` is provided, loads the config and merges contract alloc entries into the genesis
+2. Writes the (possibly extended) devnet genesis to a temp file
+3. Creates a temporary data directory (clean state every run)
+4. Launches `ev-reth` in `--dev` mode with networking disabled
+5. Exposes HTTP and WebSocket RPC on the configured host/port
 
 Each run starts from a fresh genesis — there is no persistent state between restarts.
