@@ -83,8 +83,10 @@ grep -q "000000000000000000000000000000000000FE00" "$GENESIS" \
     || fail "FeeVault address not found in genesis"
 grep -q "0000000000000000000000000000000000001100" "$GENESIS" \
     || fail "MerkleTreeHook address not found in genesis"
+grep -q "000000000022D473030F116dDEE9F6B43aC78BA3" "$GENESIS" \
+    || fail "Permit2 address not found in genesis"
 
-pass "genesis contains all three contract addresses"
+pass "genesis contains all contract addresses"
 
 # ── Step 3: Start ev-reth ────────────────────────────────
 
@@ -238,6 +240,26 @@ check_immutable "localDomain" 644 "$domain_word"
 # deployedBlock = 0 → 32 zero bytes
 deployed_block_word="0000000000000000000000000000000000000000000000000000000000000000"
 check_immutable "deployedBlock" 578 "$deployed_block_word"
+
+# ── Step 7: Verify Permit2 ─────────────────────────────
+
+PERMIT2="0x000000000022D473030F116dDEE9F6B43aC78BA3"
+
+echo "=== Verifying Permit2 at $PERMIT2 ==="
+
+# Check code is present
+p2_code=$(rpc_call "eth_getCode" "[\"$PERMIT2\", \"latest\"]")
+[[ "$p2_code" != "0x" && "$p2_code" != "0x0" && ${#p2_code} -gt 10 ]] \
+    || fail "Permit2 has no bytecode (got: $p2_code)"
+pass "Permit2 has bytecode (${#p2_code} hex chars)"
+
+# Call DOMAIN_SEPARATOR() — selector 0x3644e515
+# Should return the cached domain separator matching chain_id=1234 and the contract address
+p2_domain_sep=$(rpc_call "eth_call" "[{\"to\":\"$PERMIT2\",\"data\":\"0x3644e515\"}, \"latest\"]")
+expected_domain_sep="0x6cda538cafce36292a6ef27740629597f85f6716f5694d26d5c59fc1d07cfd95"
+[[ "$(echo "$p2_domain_sep" | tr '[:upper:]' '[:lower:]')" == "$(echo "$expected_domain_sep" | tr '[:upper:]' '[:lower:]')" ]] \
+    || fail "Permit2 DOMAIN_SEPARATOR() mismatch: got $p2_domain_sep, expected $expected_domain_sep"
+pass "Permit2 DOMAIN_SEPARATOR() correct for chain_id=1234"
 
 # ── Done ─────────────────────────────────────────────────
 

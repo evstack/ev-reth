@@ -39,6 +39,11 @@ pub(crate) fn build_alloc(config: &DeployConfig) -> Value {
         insert_contract(&mut alloc, &contract);
     }
 
+    if let Some(ref p2_config) = config.contracts.permit2 {
+        let contract = contracts::permit2::build(p2_config, config.chain.chain_id);
+        insert_contract(&mut alloc, &contract);
+    }
+
     if let Some(ref pf_config) = config.contracts.protocol_fee {
         let contract = contracts::protocol_fee::build(pf_config);
         insert_contract(&mut alloc, &contract);
@@ -123,6 +128,7 @@ mod tests {
                 merkle_tree_hook: None,
                 mailbox: None,
                 noop_ism: None,
+                permit2: None,
                 protocol_fee: None,
             },
         }

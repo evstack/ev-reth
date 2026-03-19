@@ -127,6 +127,12 @@ fn main() -> eyre::Result<()> {
                     .as_ref()
                     .map(|c| c.address)
                     .ok_or_else(|| eyre::eyre!("noop_ism not configured"))?,
+                "permit2" => cfg
+                    .contracts
+                    .permit2
+                    .as_ref()
+                    .map(|c| c.address)
+                    .ok_or_else(|| eyre::eyre!("permit2 not configured"))?,
                 "protocol_fee" => cfg
                     .contracts
                     .protocol_fee

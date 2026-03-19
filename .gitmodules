@@ -4,3 +4,6 @@
 [submodule "contracts/lib/hyperlane-monorepo"]
 	path = contracts/lib/hyperlane-monorepo
 	url = https://github.com/hyperlane-xyz/hyperlane-monorepo.git
+[submodule "contracts/lib/permit2"]
+	path = contracts/lib/permit2
+	url = https://github.com/Uniswap/permit2

@@ -6,6 +6,7 @@ pub(crate) mod immutables;
 pub(crate) mod mailbox;
 pub(crate) mod merkle_tree_hook;
 pub(crate) mod noop_ism;
+pub(crate) mod permit2;
 pub(crate) mod protocol_fee;
 
 use alloy_primitives::{Address, Bytes, B256};
