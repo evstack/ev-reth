@@ -34,6 +34,9 @@ jobs:
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
 
+      - name: Install Hyperlane soldeer dependencies
+        run: cd contracts/lib/hyperlane-monorepo/solidity && forge soldeer install
+
       - name: Run bytecode verification tests
         run: cargo test -p ev-deployer -- --ignored --test-threads=1
 
