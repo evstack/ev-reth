@@ -31,8 +31,14 @@ pub(crate) struct ContractsConfig {
     pub fee_vault: Option<FeeVaultConfig>,
     /// `MerkleTreeHook` contract config (optional).
     pub merkle_tree_hook: Option<MerkleTreeHookConfig>,
+    /// `Mailbox` contract config (optional).
+    pub mailbox: Option<MailboxConfig>,
+    /// `NoopIsm` contract config (optional).
+    pub noop_ism: Option<NoopIsmConfig>,
     /// `Permit2` contract config (optional).
     pub permit2: Option<Permit2Config>,
+    /// `ProtocolFee` contract config (optional).
+    pub protocol_fee: Option<ProtocolFeeConfig>,
 }
 
 /// `AdminProxy` configuration.
@@ -86,11 +92,55 @@ pub(crate) struct MerkleTreeHookConfig {
     pub mailbox: Address,
 }
 
+/// `MailboxConfig` configuration (Hyperlane core messaging hub).
+#[derive(Debug, Deserialize)]
+pub(crate) struct MailboxConfig {
+    /// Address to deploy at.
+    pub address: Address,
+    /// Owner address.
+    #[serde(default)]
+    pub owner: Address,
+    /// Default interchain security module.
+    #[serde(default)]
+    pub default_ism: Address,
+    /// Default post-dispatch hook.
+    #[serde(default)]
+    pub default_hook: Address,
+    /// Required post-dispatch hook (e.g. `MerkleTreeHook`).
+    #[serde(default)]
+    pub required_hook: Address,
+}
+
+/// `NoopIsm` configuration (Hyperlane ISM that accepts all messages).
+#[derive(Debug, Deserialize)]
+pub(crate) struct NoopIsmConfig {
+    /// Address to deploy at.
+    pub address: Address,
+}
+
 /// `Permit2` configuration (Uniswap token approval manager).
 #[derive(Debug, Deserialize)]
 pub(crate) struct Permit2Config {
     /// Address to deploy at.
     pub address: Address,
+}
+
+/// `ProtocolFee` configuration (Hyperlane post-dispatch hook that charges a protocol fee).
+#[derive(Debug, Deserialize)]
+pub(crate) struct ProtocolFeeConfig {
+    /// Address to deploy at.
+    pub address: Address,
+    /// Owner address.
+    #[serde(default)]
+    pub owner: Address,
+    /// Maximum protocol fee in wei.
+    pub max_protocol_fee: u64,
+    /// Protocol fee charged per dispatch in wei.
+    #[serde(default)]
+    pub protocol_fee: u64,
+    /// Beneficiary address that receives collected fees.
+    #[serde(default)]
+    pub beneficiary: Address,
 }
 
 impl DeployConfig {
@@ -127,6 +177,17 @@ impl DeployConfig {
             eyre::ensure!(
                 !mth.mailbox.is_zero(),
                 "merkle_tree_hook.mailbox must not be the zero address"
+            );
+        }
+
+        if let Some(ref pf) = self.contracts.protocol_fee {
+            eyre::ensure!(
+                !pf.owner.is_zero(),
+                "protocol_fee.owner must not be the zero address"
+            );
+            eyre::ensure!(
+                !pf.beneficiary.is_zero(),
+                "protocol_fee.beneficiary must not be the zero address"
             );
         }
 
