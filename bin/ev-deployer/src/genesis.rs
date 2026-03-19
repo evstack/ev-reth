@@ -22,6 +22,28 @@ pub(crate) fn build_alloc(config: &DeployConfig) -> Value {
         insert_contract(&mut alloc, &contract);
     }
 
+    if let Some(ref mth_config) = config.contracts.merkle_tree_hook {
+        let local_domain = config.chain.chain_id as u32;
+        let contract = contracts::merkle_tree_hook::build(mth_config, local_domain);
+        insert_contract(&mut alloc, &contract);
+    }
+
+    if let Some(ref mb_config) = config.contracts.mailbox {
+        let local_domain = config.chain.chain_id as u32;
+        let contract = contracts::mailbox::build(mb_config, local_domain);
+        insert_contract(&mut alloc, &contract);
+    }
+
+    if let Some(ref ni_config) = config.contracts.noop_ism {
+        let contract = contracts::noop_ism::build(ni_config);
+        insert_contract(&mut alloc, &contract);
+    }
+
+    if let Some(ref pf_config) = config.contracts.protocol_fee {
+        let contract = contracts::protocol_fee::build(pf_config);
+        insert_contract(&mut alloc, &contract);
+    }
+
     Value::Object(alloc)
 }
 
@@ -98,6 +120,10 @@ mod tests {
                     owner: address!("f39Fd6e51aad88F6F4ce6aB8827279cffFb92266"),
                 }),
                 fee_vault: None,
+                merkle_tree_hook: None,
+                mailbox: None,
+                noop_ism: None,
+                protocol_fee: None,
             },
         }
     }

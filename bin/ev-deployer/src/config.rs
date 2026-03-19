@@ -29,6 +29,14 @@ pub(crate) struct ContractsConfig {
     pub admin_proxy: Option<AdminProxyConfig>,
     /// `FeeVault` contract config (optional).
     pub fee_vault: Option<FeeVaultConfig>,
+    /// `MerkleTreeHook` contract config (optional).
+    pub merkle_tree_hook: Option<MerkleTreeHookConfig>,
+    /// `Mailbox` contract config (optional).
+    pub mailbox: Option<MailboxConfig>,
+    /// `NoopIsm` contract config (optional).
+    pub noop_ism: Option<NoopIsmConfig>,
+    /// `ProtocolFee` contract config (optional).
+    pub protocol_fee: Option<ProtocolFeeConfig>,
 }
 
 /// `AdminProxy` configuration.
@@ -70,6 +78,62 @@ pub(crate) struct FeeVaultConfig {
     pub hyp_native_minter: Address,
 }
 
+/// `MerkleTreeHook` configuration (Hyperlane required hook).
+#[derive(Debug, Deserialize)]
+pub(crate) struct MerkleTreeHookConfig {
+    /// Address to deploy at.
+    pub address: Address,
+    /// Owner address (for post-genesis hook/ISM changes).
+    #[serde(default)]
+    pub owner: Address,
+    /// Mailbox address (patched into bytecode as immutable).
+    pub mailbox: Address,
+}
+
+/// `ProtocolFee` configuration (Hyperlane post-dispatch hook that charges a protocol fee).
+#[derive(Debug, Deserialize)]
+pub(crate) struct ProtocolFeeConfig {
+    /// Address to deploy at.
+    pub address: Address,
+    /// Owner address.
+    #[serde(default)]
+    pub owner: Address,
+    /// Maximum protocol fee in wei.
+    pub max_protocol_fee: u64,
+    /// Protocol fee charged per dispatch in wei.
+    #[serde(default)]
+    pub protocol_fee: u64,
+    /// Beneficiary address that receives collected fees.
+    #[serde(default)]
+    pub beneficiary: Address,
+}
+
+/// `Mailbox` configuration (Hyperlane core messaging hub).
+#[derive(Debug, Deserialize)]
+pub(crate) struct MailboxConfig {
+    /// Address to deploy at.
+    pub address: Address,
+    /// Owner address.
+    #[serde(default)]
+    pub owner: Address,
+    /// Default interchain security module.
+    #[serde(default)]
+    pub default_ism: Address,
+    /// Default post-dispatch hook.
+    #[serde(default)]
+    pub default_hook: Address,
+    /// Required post-dispatch hook (e.g. `MerkleTreeHook`).
+    #[serde(default)]
+    pub required_hook: Address,
+}
+
+/// `NoopIsm` configuration (Hyperlane ISM that accepts all messages).
+#[derive(Debug, Deserialize)]
+pub(crate) struct NoopIsmConfig {
+    /// Address to deploy at.
+    pub address: Address,
+}
+
 impl DeployConfig {
     /// Load and validate config from a TOML file.
     pub(crate) fn load(path: &Path) -> eyre::Result<Self> {
@@ -97,6 +161,24 @@ impl DeployConfig {
                 fv.bridge_share_bps <= 10000,
                 "fee_vault.bridge_share_bps must be 0-10000, got {}",
                 fv.bridge_share_bps
+            );
+        }
+
+        if let Some(ref mth) = self.contracts.merkle_tree_hook {
+            eyre::ensure!(
+                !mth.mailbox.is_zero(),
+                "merkle_tree_hook.mailbox must not be the zero address"
+            );
+        }
+
+        if let Some(ref pf) = self.contracts.protocol_fee {
+            eyre::ensure!(
+                !pf.owner.is_zero(),
+                "protocol_fee.owner must not be the zero address"
+            );
+            eyre::ensure!(
+                !pf.beneficiary.is_zero(),
+                "protocol_fee.beneficiary must not be the zero address"
             );
         }
 
@@ -167,6 +249,38 @@ chain_id = 1
 address = "0x000000000000000000000000000000000000FE00"
 owner = "0x000000000000000000000000000000000000Ad00"
 bridge_share_bps = 10001
+"#;
+        let config: DeployConfig = toml::from_str(toml).unwrap();
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn parse_merkle_tree_hook_config() {
+        let toml = r#"
+[chain]
+chain_id = 1234
+
+[contracts.merkle_tree_hook]
+address = "0x0000000000000000000000000000000000001100"
+owner = "0x000000000000000000000000000000000000ad00"
+mailbox = "0x0000000000000000000000000000000000001200"
+"#;
+        let config: DeployConfig = toml::from_str(toml).unwrap();
+        config.validate().unwrap();
+        assert!(config.contracts.merkle_tree_hook.is_some());
+        let mth = config.contracts.merkle_tree_hook.unwrap();
+        assert!(!mth.mailbox.is_zero());
+    }
+
+    #[test]
+    fn reject_zero_mailbox_merkle_tree_hook() {
+        let toml = r#"
+[chain]
+chain_id = 1
+
+[contracts.merkle_tree_hook]
+address = "0x0000000000000000000000000000000000001100"
+mailbox = "0x0000000000000000000000000000000000000000"
 "#;
         let config: DeployConfig = toml::from_str(toml).unwrap();
         assert!(config.validate().is_err());
