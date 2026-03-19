@@ -8,9 +8,9 @@
 //!
 //! | Variable      | Type    | Offsets             |
 //! |---------------|---------|---------------------|
-//! | `mailbox`     | address | [904, 3300]         |
-//! | `localDomain` | uint32  | [644]               |
-//! | `deployedBlock`| uint256| [578]               |
+//! | `mailbox`     | address | \[904, 3300\]       |
+//! | `localDomain` | uint32  | \[644\]             |
+//! | `deployedBlock`| uint256| \[578\]             |
 //!
 //! ## Storage layout (from `forge inspect MerkleTreeHook storageLayout`)
 //!
@@ -23,7 +23,7 @@
 //! | 101  | `hook`                      | address |
 //! | 102  | `_interchainSecurityModule` | address |
 //! | 103-150| `__GAP` (MailboxClient)   | —       |
-//! | 151-182| `_tree.branch[0..31]`     | bytes32[32] |
+//! | 151-182| `_tree.branch\[0..31\]`   | bytes32\[32\] |
 //! | 183  | `_tree.count`               | uint256 |
 
 use crate::{
