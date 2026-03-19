@@ -81,6 +81,8 @@ grep -q "000000000000000000000000000000000000Ad00" "$GENESIS" \
     || fail "AdminProxy address not found in genesis"
 grep -q "000000000000000000000000000000000000FE00" "$GENESIS" \
     || fail "FeeVault address not found in genesis"
+grep -q "0000000000000000000000000000000000001100" "$GENESIS" \
+    || fail "MerkleTreeHook address not found in genesis"
 grep -q "000000000022D473030F116dDEE9F6B43aC78BA3" "$GENESIS" \
     || fail "Permit2 address not found in genesis"
 
@@ -164,7 +166,82 @@ expected_slot6="0x00000000000000000000000000000000000000000000000000000000000027
     || fail "FeeVault slot 6 (bridgeShareBps) mismatch: got $fv_slot6, expected $expected_slot6"
 pass "FeeVault slot 6 (bridgeShareBps) = 10000"
 
-# ── Step 6: Verify Permit2 ─────────────────────────────
+# ── Step 6: Verify MerkleTreeHook ────────────────────────
+
+MERKLE_TREE_HOOK="0x0000000000000000000000000000000000001100"
+MERKLE_TREE_HOOK_OWNER="0x000000000000000000000000000000000000Ad00"
+MERKLE_TREE_HOOK_MAILBOX="0x0000000000000000000000000000000000001200"
+
+echo "=== Verifying MerkleTreeHook at $MERKLE_TREE_HOOK ==="
+
+# Check code is present
+mth_code=$(rpc_call "eth_getCode" "[\"$MERKLE_TREE_HOOK\", \"latest\"]")
+[[ "$mth_code" != "0x" && "$mth_code" != "0x0" && ${#mth_code} -gt 10 ]] \
+    || fail "MerkleTreeHook has no bytecode (got: $mth_code)"
+pass "MerkleTreeHook has bytecode (${#mth_code} hex chars)"
+
+# Compare full bytecode against genesis JSON
+# Extract expected code from genesis for the MerkleTreeHook address
+expected_mth_code=$(python3 -c "
+import json, sys
+with open('$GENESIS') as f:
+    genesis = json.load(f)
+alloc = genesis['alloc']
+# Address key is checksummed without 0x prefix
+entry = alloc.get('0000000000000000000000000000000000001100')
+print(entry['code'])
+")
+[[ "$(echo "$mth_code" | tr '[:upper:]' '[:lower:]')" == "$(echo "$expected_mth_code" | tr '[:upper:]' '[:lower:]')" ]] \
+    || fail "MerkleTreeHook bytecode from node does not match genesis JSON"
+pass "MerkleTreeHook bytecode matches genesis JSON"
+
+# Slot 0: _initialized = 1 (OZ v4 Initializable)
+mth_slot0=$(rpc_call "eth_getStorageAt" "[\"$MERKLE_TREE_HOOK\", \"0x0\", \"latest\"]")
+expected_init="0x0000000000000000000000000000000000000000000000000000000000000001"
+[[ "$(echo "$mth_slot0" | tr '[:upper:]' '[:lower:]')" == "$(echo "$expected_init" | tr '[:upper:]' '[:lower:]')" ]] \
+    || fail "MerkleTreeHook slot 0 (_initialized) mismatch: got $mth_slot0, expected $expected_init"
+pass "MerkleTreeHook slot 0 (_initialized) = 1"
+
+# Slot 51 (0x33): _owner
+mth_slot51=$(rpc_call "eth_getStorageAt" "[\"$MERKLE_TREE_HOOK\", \"0x33\", \"latest\"]")
+expected_owner="0x000000000000000000000000000000000000000000000000000000000000ad00"
+[[ "$(echo "$mth_slot51" | tr '[:upper:]' '[:lower:]')" == "$(echo "$expected_owner" | tr '[:upper:]' '[:lower:]')" ]] \
+    || fail "MerkleTreeHook slot 51 (_owner) mismatch: got $mth_slot51, expected $expected_owner"
+pass "MerkleTreeHook slot 51 (_owner) = $MERKLE_TREE_HOOK_OWNER"
+
+# Verify immutables are patched in bytecode:
+# mailbox address at byte offsets 904 and 3300 (each is a 32-byte word, address in last 20 bytes)
+# localDomain (chain_id=1234=0x04d2) at byte offset 644
+# The hex string has "0x" prefix, so byte N in the bytecode = hex chars at positions 2+2N..2+2N+2
+mth_hex="${mth_code#0x}"
+
+check_immutable() {
+    local name="$1"
+    local byte_offset="$2"
+    local expected_hex="$3"
+    local hex_offset=$((byte_offset * 2))
+    local hex_len=${#expected_hex}
+    local actual="${mth_hex:$hex_offset:$hex_len}"
+    [[ "$(echo "$actual" | tr '[:upper:]' '[:lower:]')" == "$(echo "$expected_hex" | tr '[:upper:]' '[:lower:]')" ]] \
+        || fail "$name at byte offset $byte_offset mismatch: got $actual, expected $expected_hex"
+    pass "$name patched correctly at byte offset $byte_offset"
+}
+
+# mailbox = 0x...1200 → 32-byte word with address in last 20 bytes
+# Full 32-byte word: 000000000000000000000000 + 0000000000000000000000000000000000001200
+mailbox_word="0000000000000000000000000000000000000000000000000000000000001200"
+check_immutable "mailbox" 904 "$mailbox_word"
+check_immutable "mailbox (second ref)" 3300 "$mailbox_word"
+
+# localDomain = chain_id 1234 = 0x04d2 → 32-byte word
+domain_word="00000000000000000000000000000000000000000000000000000000000004d2"
+check_immutable "localDomain" 644 "$domain_word"
+
+# deployedBlock = 0 → 32 zero bytes
+deployed_block_word="0000000000000000000000000000000000000000000000000000000000000000"
+check_immutable "deployedBlock" 578 "$deployed_block_word"
+
+# ── Step 7: Verify Permit2 ─────────────────────────────
 
 PERMIT2="0x000000000022D473030F116dDEE9F6B43aC78BA3"
 
