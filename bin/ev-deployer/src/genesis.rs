@@ -77,15 +77,10 @@ fn insert_contract(alloc: &mut Map<String, Value>, contract: &GenesisContract) {
     alloc.insert(addr_key.to_string(), Value::Object(entry));
 }
 
-/// Format a storage slot key in the compact form used by existing genesis files.
-/// `B256::ZERO` -> "0x0", `B256::with_last_byte(1)` -> "0x1", etc.
+/// Format a storage slot key as a full 32-byte hex string.
+/// `B256::ZERO` -> "0x0000000000000000000000000000000000000000000000000000000000000000"
 fn format_slot_key(slot: &B256) -> String {
-    let u = alloy_primitives::U256::from_be_bytes(slot.0);
-    if u.is_zero() {
-        "0x0".to_string()
-    } else {
-        format!("0x{u:x}")
-    }
+    format!("{slot}")
 }
 
 #[cfg(test)]
@@ -137,16 +132,25 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            storage["0x0"],
+            storage["0x0000000000000000000000000000000000000000000000000000000000000000"],
             "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266"
         );
     }
 
     #[test]
     fn slot_key_formatting() {
-        assert_eq!(format_slot_key(&B256::ZERO), "0x0");
-        assert_eq!(format_slot_key(&B256::with_last_byte(1)), "0x1");
-        assert_eq!(format_slot_key(&B256::with_last_byte(6)), "0x6");
+        assert_eq!(
+            format_slot_key(&B256::ZERO),
+            "0x0000000000000000000000000000000000000000000000000000000000000000"
+        );
+        assert_eq!(
+            format_slot_key(&B256::with_last_byte(1)),
+            "0x0000000000000000000000000000000000000000000000000000000000000001"
+        );
+        assert_eq!(
+            format_slot_key(&B256::with_last_byte(6)),
+            "0x0000000000000000000000000000000000000000000000000000000000000006"
+        );
     }
 
     #[test]
