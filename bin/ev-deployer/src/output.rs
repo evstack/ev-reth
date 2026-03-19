@@ -28,5 +28,26 @@ pub(crate) fn build_manifest(config: &DeployConfig) -> Value {
         );
     }
 
+    if let Some(ref mb) = config.contracts.mailbox {
+        manifest.insert(
+            "mailbox".to_string(),
+            Value::String(format!("{}", mb.address)),
+        );
+    }
+
+    if let Some(ref ni) = config.contracts.noop_ism {
+        manifest.insert(
+            "noop_ism".to_string(),
+            Value::String(format!("{}", ni.address)),
+        );
+    }
+
+    if let Some(ref pf) = config.contracts.protocol_fee {
+        manifest.insert(
+            "protocol_fee".to_string(),
+            Value::String(format!("{}", pf.address)),
+        );
+    }
+
     Value::Object(manifest)
 }

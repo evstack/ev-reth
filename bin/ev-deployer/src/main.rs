@@ -115,6 +115,24 @@ fn main() -> eyre::Result<()> {
                     .as_ref()
                     .map(|c| c.address)
                     .ok_or_else(|| eyre::eyre!("merkle_tree_hook not configured"))?,
+                "mailbox" => cfg
+                    .contracts
+                    .mailbox
+                    .as_ref()
+                    .map(|c| c.address)
+                    .ok_or_else(|| eyre::eyre!("mailbox not configured"))?,
+                "noop_ism" => cfg
+                    .contracts
+                    .noop_ism
+                    .as_ref()
+                    .map(|c| c.address)
+                    .ok_or_else(|| eyre::eyre!("noop_ism not configured"))?,
+                "protocol_fee" => cfg
+                    .contracts
+                    .protocol_fee
+                    .as_ref()
+                    .map(|c| c.address)
+                    .ok_or_else(|| eyre::eyre!("protocol_fee not configured"))?,
                 other => eyre::bail!("unknown contract: {other}"),
             };
 
