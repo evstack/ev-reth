@@ -1,0 +1,156 @@
+use std::{collections::VecDeque, time::Instant};
+
+use tokio::sync::mpsc;
+
+const MAX_LOGS: usize = 1000;
+const MAX_BLOCKS: usize = 200;
+
+#[derive(Debug, Clone)]
+pub(crate) struct BlockInfo {
+    pub(crate) number: u64,
+    pub(crate) hash: String,
+    pub(crate) tx_count: u64,
+    pub(crate) gas_used: u64,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct LogEntry {
+    pub(crate) level: tracing::Level,
+    pub(crate) target: String,
+    pub(crate) message: String,
+    pub(crate) fields: Vec<(String, String)>,
+    pub(crate) timestamp: Instant,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Panel {
+    Blocks,
+    Logs,
+    Accounts,
+}
+
+pub(crate) struct App {
+    // Static
+    pub(crate) chain_id: u64,
+    pub(crate) rpc_url: String,
+    pub(crate) block_time: u64,
+    pub(crate) accounts: Vec<(String, String)>,
+    pub(crate) deploy_contracts: Option<Vec<(String, String)>>,
+
+    // Dynamic
+    pub(crate) blocks: VecDeque<BlockInfo>,
+    pub(crate) logs: VecDeque<LogEntry>,
+    pub(crate) current_block: u64,
+    pub(crate) start_time: Instant,
+
+    // UI state
+    pub(crate) active_panel: Panel,
+    pub(crate) log_scroll: usize,
+    pub(crate) block_scroll: usize,
+    pub(crate) should_quit: bool,
+
+    // Channel
+    pub(crate) log_rx: mpsc::Receiver<LogEntry>,
+}
+
+impl App {
+    pub(crate) fn new(
+        chain_id: u64,
+        rpc_url: String,
+        block_time: u64,
+        accounts: Vec<(String, String)>,
+        deploy_contracts: Option<Vec<(String, String)>>,
+        log_rx: mpsc::Receiver<LogEntry>,
+    ) -> Self {
+        Self {
+            chain_id,
+            rpc_url,
+            block_time,
+            accounts,
+            deploy_contracts,
+            blocks: VecDeque::new(),
+            logs: VecDeque::new(),
+            current_block: 0,
+            start_time: Instant::now(),
+            active_panel: Panel::Logs,
+            log_scroll: 0,
+            block_scroll: 0,
+            should_quit: false,
+            log_rx,
+        }
+    }
+
+    pub(crate) fn drain_logs(&mut self) {
+        while let Ok(entry) = self.log_rx.try_recv() {
+            if entry.message == "built block" {
+                if let Some(block) = self.parse_block_from_fields(&entry.fields) {
+                    self.current_block = block.number;
+                    self.blocks.push_front(block);
+                    if self.blocks.len() > MAX_BLOCKS {
+                        self.blocks.pop_back();
+                    }
+                }
+            }
+
+            self.logs.push_back(entry);
+            if self.logs.len() > MAX_LOGS {
+                self.logs.pop_front();
+            }
+        }
+    }
+
+    fn parse_block_from_fields(&self, fields: &[(String, String)]) -> Option<BlockInfo> {
+        let mut number = None;
+        let mut hash = String::new();
+        let mut tx_count = 0;
+        let mut gas_used = 0;
+
+        for (k, v) in fields {
+            match k.as_str() {
+                "block_number" => number = v.parse().ok(),
+                "block_hash" => {
+                    let h = v.trim_matches('"');
+                    hash = if h.len() > 10 {
+                        format!("{}..{}", &h[..6], &h[h.len() - 4..])
+                    } else {
+                        h.to_string()
+                    };
+                }
+                "tx_count" => tx_count = v.parse().unwrap_or(0),
+                "gas_used" => gas_used = v.parse().unwrap_or(0),
+                _ => {}
+            }
+        }
+
+        number.map(|n| BlockInfo {
+            number: n,
+            hash,
+            tx_count,
+            gas_used,
+        })
+    }
+
+    pub(crate) fn next_panel(&mut self) {
+        self.active_panel = match self.active_panel {
+            Panel::Blocks => Panel::Logs,
+            Panel::Logs => Panel::Accounts,
+            Panel::Accounts => Panel::Blocks,
+        };
+    }
+
+    pub(crate) fn scroll_up(&mut self) {
+        match self.active_panel {
+            Panel::Logs => self.log_scroll = self.log_scroll.saturating_add(1),
+            Panel::Blocks => self.block_scroll = self.block_scroll.saturating_add(1),
+            Panel::Accounts => {}
+        }
+    }
+
+    pub(crate) fn scroll_down(&mut self) {
+        match self.active_panel {
+            Panel::Logs => self.log_scroll = self.log_scroll.saturating_sub(1),
+            Panel::Blocks => self.block_scroll = self.block_scroll.saturating_sub(1),
+            Panel::Accounts => {}
+        }
+    }
+}
