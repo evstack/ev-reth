@@ -60,7 +60,7 @@ url.workspace = true
 
 # Reth OTLP tracing
 reth-tracing-otlp.workspace = true
-tracing-subscriber = { version = "0.3.20", features = ["env-filter", "fmt"] }
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt"] }
 
 [lints]
 workspace = true
