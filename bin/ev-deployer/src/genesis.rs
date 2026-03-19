@@ -28,6 +28,11 @@ pub(crate) fn build_alloc(config: &DeployConfig) -> Value {
         insert_contract(&mut alloc, &contract);
     }
 
+    if let Some(ref p2_config) = config.contracts.permit2 {
+        let contract = contracts::permit2::build(p2_config, config.chain.chain_id);
+        insert_contract(&mut alloc, &contract);
+    }
+
     Value::Object(alloc)
 }
 
@@ -105,6 +110,7 @@ mod tests {
                 }),
                 fee_vault: None,
                 merkle_tree_hook: None,
+                permit2: None,
             },
         }
     }

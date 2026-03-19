@@ -31,6 +31,8 @@ pub(crate) struct ContractsConfig {
     pub fee_vault: Option<FeeVaultConfig>,
     /// `MerkleTreeHook` contract config (optional).
     pub merkle_tree_hook: Option<MerkleTreeHookConfig>,
+    /// `Permit2` contract config (optional).
+    pub permit2: Option<Permit2Config>,
 }
 
 /// `AdminProxy` configuration.
@@ -82,6 +84,13 @@ pub(crate) struct MerkleTreeHookConfig {
     pub owner: Address,
     /// Mailbox address (patched into bytecode as immutable).
     pub mailbox: Address,
+}
+
+/// `Permit2` configuration (Uniswap token approval manager).
+#[derive(Debug, Deserialize)]
+pub(crate) struct Permit2Config {
+    /// Address to deploy at.
+    pub address: Address,
 }
 
 impl DeployConfig {

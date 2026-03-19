@@ -28,5 +28,12 @@ pub(crate) fn build_manifest(config: &DeployConfig) -> Value {
         );
     }
 
+    if let Some(ref p2) = config.contracts.permit2 {
+        manifest.insert(
+            "permit2".to_string(),
+            Value::String(format!("{}", p2.address)),
+        );
+    }
+
     Value::Object(manifest)
 }

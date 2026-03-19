@@ -115,6 +115,12 @@ fn main() -> eyre::Result<()> {
                     .as_ref()
                     .map(|c| c.address)
                     .ok_or_else(|| eyre::eyre!("merkle_tree_hook not configured"))?,
+                "permit2" => cfg
+                    .contracts
+                    .permit2
+                    .as_ref()
+                    .map(|c| c.address)
+                    .ok_or_else(|| eyre::eyre!("permit2 not configured"))?,
                 other => eyre::bail!("unknown contract: {other}"),
             };
 
