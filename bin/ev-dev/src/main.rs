@@ -5,6 +5,8 @@
 
 #![allow(missing_docs, rustdoc::missing_crate_level_docs)]
 
+mod tui;
+
 use alloy_signer_local::{coins_bip39::English, MnemonicBuilder};
 use clap::Parser;
 use ev_deployer::{config::DeployConfig, genesis::merge_alloc, output::build_manifest};
@@ -15,6 +17,7 @@ use evolve_ev_reth::{
 use reth_ethereum_cli::Cli;
 use std::{io::Write, path::PathBuf};
 use tracing::info;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 use ev_node::{EvolveArgs, EvolveChainSpecParser, EvolveNode};
 
@@ -60,6 +63,10 @@ struct EvDevArgs {
     /// Path to an ev-deployer TOML config to deploy contracts at genesis.
     #[arg(long, value_name = "PATH")]
     deploy_config: Option<PathBuf>,
+
+    /// Launch with terminal UI instead of plain log output
+    #[arg(long, default_value_t = false)]
+    tui: bool,
 }
 
 fn derive_keys(count: usize) -> Vec<(String, String)> {
@@ -148,59 +155,11 @@ fn print_banner(args: &EvDevArgs, deploy_cfg: Option<&DeployConfig>) {
     println!();
 }
 
-fn main() {
-    reth_cli_util::sigsegv_handler::install();
-
-    if std::env::var_os("RUST_BACKTRACE").is_none() {
-        std::env::set_var("RUST_BACKTRACE", "1");
-    }
-
-    let dev_args = EvDevArgs::parse();
-
-    let deploy_cfg = dev_args.deploy_config.as_ref().map(|config_path| {
-        let mut cfg = DeployConfig::load(config_path)
-            .unwrap_or_else(|e| panic!("failed to load deploy config: {e}"));
-
-        let genesis_chain_id = chain_id_from_genesis();
-        if cfg.chain.chain_id != genesis_chain_id {
-            eprintln!(
-                "WARNING: deploy config chain_id ({}) differs from devnet genesis ({}), overriding to {}",
-                cfg.chain.chain_id, genesis_chain_id, genesis_chain_id
-            );
-            cfg.chain.chain_id = genesis_chain_id;
-        }
-        cfg
-    });
-
-    if !dev_args.silent {
-        print_banner(&dev_args, deploy_cfg.as_ref());
-    }
-
-    let genesis_json = if let Some(ref cfg) = deploy_cfg {
-        let mut genesis: serde_json::Value =
-            serde_json::from_str(DEVNET_GENESIS).expect("valid genesis JSON");
-        merge_alloc(cfg, &mut genesis, true).expect("failed to merge deploy config into genesis");
-        serde_json::to_string(&genesis).expect("failed to serialize merged genesis")
-    } else {
-        DEVNET_GENESIS.to_string()
-    };
-
-    // Write genesis to a temp file that lives for the process duration
-    let mut genesis_file =
-        tempfile::NamedTempFile::new().expect("failed to create temp genesis file");
-    genesis_file
-        .write_all(genesis_json.as_bytes())
-        .expect("failed to write genesis");
-    let genesis_path = genesis_file
-        .path()
-        .to_str()
-        .expect("valid path")
-        .to_string();
-
-    // Use a temp data directory so each run starts with clean state
-    let datadir = tempfile::TempDir::new().expect("failed to create temp data dir");
-    let datadir_path = datadir.path().to_str().expect("valid path").to_string();
-
+fn build_reth_args(
+    dev_args: &EvDevArgs,
+    genesis_path: String,
+    datadir_path: String,
+) -> Vec<String> {
     let mut args = vec![
         "ev-dev".to_string(),
         "node".to_string(),
@@ -236,6 +195,94 @@ fn main() {
         args.push(format!("{}s", dev_args.block_time));
     }
 
+    args
+}
+
+fn prepare_genesis(
+    deploy_cfg: &Option<DeployConfig>,
+) -> (tempfile::NamedTempFile, tempfile::TempDir) {
+    let genesis_json = if let Some(ref cfg) = deploy_cfg {
+        let mut genesis: serde_json::Value =
+            serde_json::from_str(DEVNET_GENESIS).expect("valid genesis JSON");
+        merge_alloc(cfg, &mut genesis, true).expect("failed to merge deploy config into genesis");
+        serde_json::to_string(&genesis).expect("failed to serialize merged genesis")
+    } else {
+        DEVNET_GENESIS.to_string()
+    };
+
+    let mut genesis_file =
+        tempfile::NamedTempFile::new().expect("failed to create temp genesis file");
+    genesis_file
+        .write_all(genesis_json.as_bytes())
+        .expect("failed to write genesis");
+
+    let datadir = tempfile::TempDir::new().expect("failed to create temp data dir");
+
+    (genesis_file, datadir)
+}
+
+fn load_deploy_config(dev_args: &EvDevArgs) -> Option<DeployConfig> {
+    dev_args.deploy_config.as_ref().map(|config_path| {
+        let mut cfg = DeployConfig::load(config_path)
+            .unwrap_or_else(|e| panic!("failed to load deploy config: {e}"));
+
+        let genesis_chain_id = chain_id_from_genesis();
+        if cfg.chain.chain_id != genesis_chain_id {
+            eprintln!(
+                "WARNING: deploy config chain_id ({}) differs from devnet genesis ({}), overriding to {}",
+                cfg.chain.chain_id, genesis_chain_id, genesis_chain_id
+            );
+            cfg.chain.chain_id = genesis_chain_id;
+        }
+        cfg
+    })
+}
+
+fn deploy_contracts_list(deploy_cfg: &Option<DeployConfig>) -> Option<Vec<(String, String)>> {
+    deploy_cfg.as_ref().map(|cfg| {
+        let manifest = build_manifest(cfg);
+        manifest
+            .as_object()
+            .map(|obj| {
+                obj.iter()
+                    .map(|(name, addr)| (name.clone(), addr.as_str().unwrap_or("").to_string()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    })
+}
+
+fn main() {
+    reth_cli_util::sigsegv_handler::install();
+
+    if std::env::var_os("RUST_BACKTRACE").is_none() {
+        std::env::set_var("RUST_BACKTRACE", "1");
+    }
+
+    let dev_args = EvDevArgs::parse();
+    let deploy_cfg = load_deploy_config(&dev_args);
+
+    if dev_args.tui {
+        run_with_tui(dev_args, deploy_cfg);
+    } else {
+        run_without_tui(dev_args, deploy_cfg);
+    }
+}
+
+fn run_without_tui(dev_args: EvDevArgs, deploy_cfg: Option<DeployConfig>) {
+    if !dev_args.silent {
+        print_banner(&dev_args, deploy_cfg.as_ref());
+    }
+
+    let (genesis_file, datadir) = prepare_genesis(&deploy_cfg);
+    let genesis_path = genesis_file
+        .path()
+        .to_str()
+        .expect("valid path")
+        .to_string();
+    let datadir_path = datadir.path().to_str().expect("valid path").to_string();
+    let args = build_reth_args(&dev_args, genesis_path, datadir_path);
+
     let cli = match Cli::<EvolveChainSpecParser, EvolveArgs>::try_parse_from(args) {
         Ok(cli) => cli,
         Err(err) => {
@@ -261,6 +308,81 @@ fn main() {
         info!("=== EV-DEV: Local chain running - RPC ready ===");
         handle.node_exit_future.await
     }) {
+        eprintln!("Error: {err:?}");
+        std::process::exit(1);
+    }
+}
+
+fn run_with_tui(dev_args: EvDevArgs, deploy_cfg: Option<DeployConfig>) {
+    let (log_tx, log_rx) = tokio::sync::mpsc::channel(10_000);
+
+    // Install our tracing subscriber with the TUI layer BEFORE cli.run().
+    // When reth's internal init_tracing calls try_init(), it will find a
+    // subscriber already installed and silently skip its own setup.
+    let tui_layer = tui::TuiTracingLayer::new(log_tx);
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into());
+
+    tracing_subscriber::registry()
+        .with(filter)
+        .with(tui_layer)
+        .init();
+
+    let chain_id = chain_id_from_genesis();
+    let rpc_url = format!("http://{}:{}", dev_args.host, dev_args.port);
+    let block_time = dev_args.block_time;
+    let accounts = derive_keys(dev_args.accounts);
+    let contracts = deploy_contracts_list(&deploy_cfg);
+
+    let (balance_tx, balance_rx) = tokio::sync::mpsc::channel(16);
+    let app = tui::App::new(
+        chain_id,
+        rpc_url.clone(),
+        block_time,
+        accounts.clone(),
+        contracts,
+        log_rx,
+        balance_rx,
+    );
+
+    let (genesis_file, datadir) = prepare_genesis(&deploy_cfg);
+    let genesis_path = genesis_file
+        .path()
+        .to_str()
+        .expect("valid path")
+        .to_string();
+    let datadir_path = datadir.path().to_str().expect("valid path").to_string();
+    let args = build_reth_args(&dev_args, genesis_path, datadir_path);
+
+    let cli = match Cli::<EvolveChainSpecParser, EvolveArgs>::try_parse_from(args) {
+        Ok(cli) => cli,
+        Err(err) => {
+            eprintln!("{err}");
+            std::process::exit(2);
+        }
+    };
+
+    if let Err(err) = cli.run(|builder, _evolve_args| async move {
+        info!("=== EV-DEV: Starting local development chain (TUI) ===");
+        let _handle = builder
+            .node(EvolveNode::new())
+            .extend_rpc_modules(move |ctx| {
+                let evolve_cfg = EvolveConfig::default();
+                let evolve_txpool =
+                    EvolveTxpoolApiImpl::new(ctx.pool().clone(), evolve_cfg.max_txpool_bytes);
+                ctx.modules.merge_configured(evolve_txpool.into_rpc())?;
+                Ok(())
+            })
+            .launch_with_debug_capabilities()
+            .await?;
+
+        info!("=== EV-DEV: Local chain running - RPC ready ===");
+
+        tui::spawn_balance_poller(rpc_url, accounts, balance_tx);
+        tui::run(app).await?;
+
+        Ok(())
+    }) {
+        let _ = tui::restore_terminal();
         eprintln!("Error: {err:?}");
         std::process::exit(1);
     }

@@ -25,6 +25,10 @@ reth-ethereum-cli.workspace = true
 # Alloy dependencies
 alloy-signer-local.workspace = true
 alloy-primitives.workspace = true
+alloy-provider.workspace = true
+
+# Reth tracing (for Layers type)
+reth-tracing.workspace = true
 
 # Core dependencies
 eyre.workspace = true
@@ -33,6 +37,12 @@ tokio = { workspace = true, features = ["full"] }
 clap = { workspace = true, features = ["derive", "env"] }
 tempfile.workspace = true
 serde_json.workspace = true
+futures.workspace = true
+
+# TUI
+ratatui = "0.30"
+crossterm = { version = "0.29", features = ["event-stream"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "registry"] }
 
 [lints]
 workspace = true
