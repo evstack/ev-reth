@@ -1,5 +1,6 @@
 use std::{collections::VecDeque, time::Instant};
 
+use alloy_primitives::{Address, U256};
 use tokio::sync::mpsc;
 
 const MAX_LOGS: usize = 1000;
@@ -42,6 +43,7 @@ pub(crate) struct App {
     pub(crate) logs: VecDeque<LogEntry>,
     pub(crate) current_block: u64,
     pub(crate) start_time: Instant,
+    pub(crate) balances: Vec<String>,
 
     // UI state
     pub(crate) active_panel: Panel,
@@ -49,8 +51,9 @@ pub(crate) struct App {
     pub(crate) block_scroll: usize,
     pub(crate) should_quit: bool,
 
-    // Channel
+    // Channels
     pub(crate) log_rx: mpsc::Receiver<LogEntry>,
+    pub(crate) balance_rx: mpsc::Receiver<Vec<String>>,
 }
 
 impl App {
@@ -61,7 +64,10 @@ impl App {
         accounts: Vec<(String, String)>,
         deploy_contracts: Option<Vec<(String, String)>>,
         log_rx: mpsc::Receiver<LogEntry>,
+        balance_rx: mpsc::Receiver<Vec<String>>,
     ) -> Self {
+        let initial_balance = "1000000 ETH".to_string();
+        let balances = vec![initial_balance; accounts.len()];
         Self {
             chain_id,
             rpc_url,
@@ -72,11 +78,19 @@ impl App {
             logs: VecDeque::new(),
             current_block: 0,
             start_time: Instant::now(),
+            balances,
             active_panel: Panel::Logs,
             log_scroll: 0,
             block_scroll: 0,
             should_quit: false,
             log_rx,
+            balance_rx,
+        }
+    }
+
+    pub(crate) fn drain_balances(&mut self) {
+        while let Ok(new_balances) = self.balance_rx.try_recv() {
+            self.balances = new_balances;
         }
     }
 
@@ -153,4 +167,59 @@ impl App {
             Panel::Accounts => {}
         }
     }
+}
+
+fn format_ether(wei: U256) -> String {
+    let ether_unit = U256::from(10u64).pow(U256::from(18));
+    let whole = wei / ether_unit;
+    let remainder = wei % ether_unit;
+
+    let frac_digits = 4;
+    let frac_unit = U256::from(10u64).pow(U256::from(18 - frac_digits));
+    let frac = remainder / frac_unit;
+
+    let frac_val: u64 = frac.try_into().unwrap_or(0);
+    let formatted = format!("{whole}.{frac_val:0>4}");
+    // Trim trailing zeros but keep at least one decimal
+    let trimmed = formatted.trim_end_matches('0');
+    let trimmed = trimmed.trim_end_matches('.');
+    format!("{trimmed} ETH")
+}
+
+pub(crate) fn spawn_balance_poller(
+    rpc_url: String,
+    accounts: Vec<(String, String)>,
+    tx: mpsc::Sender<Vec<String>>,
+) {
+    let addresses: Vec<Address> = accounts
+        .iter()
+        .filter_map(|(addr, _)| addr.parse().ok())
+        .collect();
+
+    tokio::spawn(async move {
+        use alloy_provider::{Provider, ProviderBuilder};
+
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(2));
+        loop {
+            interval.tick().await;
+
+            let provider = match ProviderBuilder::new()
+                .connect_http(rpc_url.parse().expect("valid RPC URL"))
+            {
+                provider => provider,
+            };
+
+            let mut balances = Vec::with_capacity(addresses.len());
+            for addr in &addresses {
+                match provider.get_balance(*addr).await {
+                    Ok(bal) => balances.push(format_ether(bal)),
+                    Err(_) => balances.push("? ETH".to_string()),
+                }
+            }
+
+            if tx.send(balances).await.is_err() {
+                break;
+            }
+        }
+    });
 }

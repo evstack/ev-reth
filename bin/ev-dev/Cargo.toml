@@ -25,6 +25,7 @@ reth-ethereum-cli.workspace = true
 # Alloy dependencies
 alloy-signer-local.workspace = true
 alloy-primitives.workspace = true
+alloy-provider.workspace = true
 
 # Reth tracing (for Layers type)
 reth-tracing.workspace = true

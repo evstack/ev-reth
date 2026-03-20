@@ -165,10 +165,15 @@ fn draw_accounts(frame: &mut Frame<'_>, app: &App, area: Rect) {
             } else {
                 addr.clone()
             };
+            let balance = app
+                .balances
+                .get(i)
+                .cloned()
+                .unwrap_or_else(|| "? ETH".to_string());
             ListItem::new(Line::from(vec![
                 Span::styled(format!("({i}) "), Style::default().fg(Color::DarkGray)),
                 Span::styled(truncated, Style::default().fg(Color::White)),
-                Span::styled(" 1000000 ETH", Style::default().fg(Color::Green)),
+                Span::styled(format!(" {balance}"), Style::default().fg(Color::Green)),
             ]))
         })
         .collect();

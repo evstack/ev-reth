@@ -3,7 +3,7 @@ mod events;
 mod tracing_layer;
 mod ui;
 
-pub(crate) use app::App;
+pub(crate) use app::{spawn_balance_poller, App};
 pub(crate) use tracing_layer::TuiTracingLayer;
 
 use std::io::{self, stdout};
@@ -51,6 +51,7 @@ pub(crate) async fn run(mut app: App) -> eyre::Result<()> {
         tokio::select! {
             _ = tick.tick() => {
                 app.drain_logs();
+                app.drain_balances();
                 terminal.draw(|frame| ui::draw(frame, &app))?;
             }
             maybe_event = event_stream.next() => {

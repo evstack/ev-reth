@@ -2985,6 +2985,7 @@ name = "ev-dev"
 version = "0.1.0"
 dependencies = [
  "alloy-primitives",
+ "alloy-provider",
  "alloy-signer-local",
  "clap",
  "crossterm",

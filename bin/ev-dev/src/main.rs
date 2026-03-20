@@ -333,7 +333,16 @@ fn run_with_tui(dev_args: EvDevArgs, deploy_cfg: Option<DeployConfig>) {
     let accounts = derive_keys(dev_args.accounts);
     let contracts = deploy_contracts_list(&deploy_cfg);
 
-    let app = tui::App::new(chain_id, rpc_url, block_time, accounts, contracts, log_rx);
+    let (balance_tx, balance_rx) = tokio::sync::mpsc::channel(16);
+    let app = tui::App::new(
+        chain_id,
+        rpc_url.clone(),
+        block_time,
+        accounts.clone(),
+        contracts,
+        log_rx,
+        balance_rx,
+    );
 
     let (genesis_file, datadir) = prepare_genesis(&deploy_cfg);
     let genesis_path = genesis_file
@@ -368,6 +377,7 @@ fn run_with_tui(dev_args: EvDevArgs, deploy_cfg: Option<DeployConfig>) {
 
         info!("=== EV-DEV: Local chain running - RPC ready ===");
 
+        tui::spawn_balance_poller(rpc_url, accounts, balance_tx);
         tui::run(app).await?;
 
         Ok(())
