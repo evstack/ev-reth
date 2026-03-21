@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package exex.remote.v1;
+
+service RemoteExEx {
+  rpc Subscribe(SubscribeRequest) returns (stream NotificationEnvelope);
+}
+
+message SubscribeRequest {}
+
+message NotificationEnvelope {
+  uint32 schema_version = 1;
+  string encoding = 2;
+  bytes payload = 3;
+}
+

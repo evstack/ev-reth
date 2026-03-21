@@ -4,6 +4,7 @@ members = [
   "bin/ev-dev",
   "bin/ev-reth",
     "crates/common",
+    "crates/exex-remote",
     "crates/ev-primitives",
     "crates/evolve",
     "crates/node",
@@ -68,9 +69,11 @@ reth-rpc-engine-api = { git = "https://github.com/paradigmxyz/reth.git", tag = "
 reth-rpc = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.11.3" }
 reth-rpc-convert = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.11.3" }
 reth-codecs = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.11.3" }
+reth-exex = { git = "https://github.com/paradigmxyz/reth.git", tag = "v1.11.3", features = ["serde"] }
 
 ev-revm = { path = "crates/ev-revm" }
 ev-primitives = { path = "crates/ev-primitives" }
+ev-exex-remote = { path = "crates/exex-remote" }
 
 
 # Consensus dependencies
@@ -150,6 +153,11 @@ rand = "0.10"
 tempfile = "3.10"
 hex = "0.4"
 url = "2.5"
+bincode = "1.3.3"
+prost = "0.13"
+tokio-stream = "0.1"
+tonic = { version = "0.12", features = ["transport"] }
+tonic-build = "0.12"
 
 [workspace.lints]
 rust.missing_debug_implementations = "warn"
