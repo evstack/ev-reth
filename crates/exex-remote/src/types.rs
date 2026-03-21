@@ -1,3 +1,11 @@
+//! Versioned wire types for the remote `ExEx` stream.
+//!
+//! These types deliberately mirror only the externally relevant execution data.
+//! They are not aliases of ev-reth's in-process `Chain<EvPrimitives>` or receipt/transaction
+//! structs because the stream needs a stable, consumer-facing schema with explicit semantics.
+//! The remote forms can therefore evolve independently while still preserving raw transaction
+//! bytes and EV-specific derived metadata.
+
 use alloy_primitives::{Address, Bytes, B256, U256};
 use serde::{Deserialize, Serialize};
 

@@ -2,6 +2,16 @@
 //!
 //! This crate provides a minimal gRPC service definition plus serde-friendly
 //! wire types for transporting canonical block execution events.
+//!
+//! The transport intentionally does not reuse ev-reth's internal execution types directly.
+//! This is a wire contract for external consumers such as Atlas, not an in-process API.
+//! Using dedicated remote types keeps the stream versionable and decoupled from ev-reth's
+//! internal crate graph, serde layout, and exact Reth version.
+//!
+//! The remote schema is also narrower and consumer-oriented. It preserves explicit
+//! commit/reorg/revert semantics and carries EV-specific derived fields that Atlas needs
+//! directly, such as paired receipts/logs, recovered fee-payer metadata, batch-call data,
+//! and raw EIP-2718 transaction bytes for fallback decoding.
 
 mod codec;
 mod error;

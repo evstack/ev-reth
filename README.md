@@ -241,6 +241,21 @@ let mut client = RemoteExExClient::connect("http://127.0.0.1:10000")
     .max_decoding_message_size(usize::MAX);
 ```
 
+The stream intentionally uses ev-reth-owned wire types instead of exposing raw internal Reth or
+EV structs directly:
+
+- The gRPC boundary is a contract for consumers such as Atlas, not an in-process Rust API.
+- Reusing `Chain<EvPrimitives>`, `EvTxEnvelope`, or raw receipt types directly would couple
+  Atlas to ev-reth's internal crate graph, serde layout, and exact Reth version.
+- The remote types are narrower and Atlas-oriented: they preserve commit/reorg/revert semantics
+  and include fields Atlas needs directly, such as paired receipts/logs, recovered `feePayer`,
+  and batch-call metadata.
+- The envelope keeps protobuf small and versioned while still carrying `raw_2718` bytes, so
+  consumers can fall back to full transaction decoding when needed.
+
+In short, the dedicated wire schema exists to make the push stream explicit and evolvable, while
+leaving ev-reth free to change internal execution types without silently breaking Atlas.
+
 Operationally, the stream should be treated as best-effort:
 
 - The node should emit `FinishedHeight` after enqueueing the notification, not after client ack.
