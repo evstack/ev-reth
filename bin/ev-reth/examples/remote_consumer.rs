@@ -1,7 +1,6 @@
 //! Minimal remote `ExEx` consumer example for ev-reth.
 use ev_exex_remote::{
-    decode_notification_envelope, wire::RemoteNotificationV1, NotificationEnvelope,
-    RemoteExExClient, SubscribeRequest,
+    decode_notification_envelope, wire::RemoteNotificationV1, RemoteExExClient, SubscribeRequest,
 };
 use tracing::info;
 
@@ -64,14 +63,14 @@ async fn main() -> eyre::Result<()> {
     let endpoint = std::env::var("REMOTE_EXEX_ENDPOINT")
         .unwrap_or_else(|_| "http://127.0.0.1:10000".to_string());
 
+    const MAX_GRPC_MESSAGE_SIZE: usize = 64 * 1024 * 1024;
     let mut client = RemoteExExClient::connect(endpoint)
         .await?
-        .max_encoding_message_size(usize::MAX)
-        .max_decoding_message_size(usize::MAX);
+        .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE)
+        .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE);
 
     let mut stream = client.subscribe(SubscribeRequest {}).await?.into_inner();
     while let Some(message) = stream.message().await? {
-        let message: NotificationEnvelope = message;
         let notification = decode_notification_envelope(&message)?;
         let (kind, block_count, tx_count, sponsor_count) = summarize(&notification);
 

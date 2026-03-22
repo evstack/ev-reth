@@ -22,9 +22,12 @@ pub struct RemoteBlockRangeV1 {
 }
 
 impl RemoteBlockRangeV1 {
-    /// Creates a new block range and asserts the bounds are ordered.
+    /// Creates a new block range.
+    ///
+    /// # Panics (debug builds only)
+    /// Panics if `start_block > end_block`.
     pub const fn new(start_block: u64, end_block: u64) -> Self {
-        assert!(start_block <= end_block, "start block must be <= end block");
+        debug_assert!(start_block <= end_block, "start block must be <= end block");
         Self {
             start_block,
             end_block,
@@ -206,13 +209,16 @@ pub struct RemoteBlockV1 {
 }
 
 impl RemoteBlockV1 {
-    /// Creates a block payload and asserts the transaction/receipt counts match.
+    /// Creates a block payload.
+    ///
+    /// # Panics (debug builds only)
+    /// Panics if `transactions.len() != receipts.len()`.
     pub fn new(
         metadata: RemoteBlockMetadataV1,
         transactions: Vec<RemoteTransactionV1>,
         receipts: Vec<RemoteReceiptV1>,
     ) -> Self {
-        assert_eq!(
+        debug_assert_eq!(
             transactions.len(),
             receipts.len(),
             "transactions and receipts must have matching lengths"

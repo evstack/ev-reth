@@ -1,9 +1,13 @@
 
 [package]
 name = "ev-precompiles"
-version = "0.1.0"
-edition = "2021"
-license = "MIT"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+description = "Custom EVM precompiles for ev-reth"
 
 [dependencies]
 # Reth
@@ -18,8 +22,8 @@ revm = { workspace = true }
 alloy-primitives = { workspace = true }
 alloy-evm = { workspace = true }
 alloy = { workspace = true }
-bytes = "1.5.0"
+bytes = { workspace = true }
 
 # Tooling
-eyre = "0.6.11"
+eyre = { workspace = true }
 tracing = { workspace = true }

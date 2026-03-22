@@ -68,7 +68,7 @@ alloy-consensus-any.workspace = true
 alloy-evm.workspace = true
 alloy-genesis.workspace = true
 alloy-network.workspace = true
-c-kzg = "2.1.6"
+c-kzg.workspace = true
 
 # Core dependencies
 eyre.workspace = true
@@ -93,11 +93,11 @@ reth-consensus.workspace = true
 reth-tasks.workspace = true
 reth-tracing.workspace = true
 tempfile.workspace = true
-hex = "0.4"
+hex.workspace = true
 alloy-rlp.workspace = true
 alloy-signer.workspace = true
 alloy-signer-local.workspace = true
-tracing-subscriber = "0.3.23"
+tracing-subscriber.workspace = true
 
 [lints]
 workspace = true

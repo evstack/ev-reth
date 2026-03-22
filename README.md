@@ -232,13 +232,14 @@ Enable it with:
 ```
 
 The stream carries full blocks, receipts, logs, and EvNode sponsor metadata, so the consumer
-should raise gRPC limits aggressively:
+should raise gRPC message size limits:
 
 ```rust
+const MAX_GRPC_MESSAGE_SIZE: usize = 64 * 1024 * 1024; // 64 MiB
 let mut client = RemoteExExClient::connect("http://127.0.0.1:10000")
     .await?
-    .max_encoding_message_size(usize::MAX)
-    .max_decoding_message_size(usize::MAX);
+    .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE)
+    .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE);
 ```
 
 The stream intentionally uses ev-reth-owned wire types instead of exposing raw internal Reth or

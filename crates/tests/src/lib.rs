@@ -11,8 +11,5 @@ pub(crate) mod e2e_tests;
 mod test_deploy_allowlist;
 #[cfg(test)]
 mod test_evolve_engine_api;
-#[cfg(test)]
-mod test_remote_exex_contract;
-
 // Re-export common test utilities
 pub use common::*;

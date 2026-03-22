@@ -3,16 +3,14 @@ use crate::{
     proto::NotificationEnvelope,
     types::{RemoteNotificationV1, REMOTE_EXEX_SCHEMA_VERSION_V1},
 };
-use bincode::Options;
 
 /// Bincode encoding identifier stored in the transport envelope.
-pub const REMOTE_EXEX_ENCODING_BINCODE_V1: &str = "bincode/v1";
+pub const REMOTE_EXEX_ENCODING_BINCODE: &str = "bincode/v2";
 /// Schema version for the v1 remote notification payload.
 pub const REMOTE_EXEX_SCHEMA_VERSION: u32 = REMOTE_EXEX_SCHEMA_VERSION_V1;
 
-fn bincode_options() -> impl Options {
-    bincode::DefaultOptions::new().with_fixint_encoding()
-}
+/// Bincode configuration for the wire format.
+const BINCODE_CONFIG: bincode::config::Configuration = bincode::config::standard();
 
 /// Returns the schema version used by the remote `ExEx` payloads.
 pub const fn remote_notification_schema_version() -> u32 {
@@ -23,12 +21,13 @@ pub const fn remote_notification_schema_version() -> u32 {
 pub fn encode_remote_notification(
     notification: &RemoteNotificationV1,
 ) -> Result<Vec<u8>, CodecError> {
-    Ok(bincode_options().serialize(notification)?)
+    Ok(bincode::serde::encode_to_vec(notification, BINCODE_CONFIG)?)
 }
 
 /// Decodes a remote notification from a bincode byte slice.
 pub fn decode_remote_notification(bytes: &[u8]) -> Result<RemoteNotificationV1, CodecError> {
-    Ok(bincode_options().deserialize(bytes)?)
+    let (value, _len) = bincode::serde::decode_from_slice(bytes, BINCODE_CONFIG)?;
+    Ok(value)
 }
 
 /// Wraps a remote notification in the protobuf envelope.
@@ -37,7 +36,7 @@ pub fn encode_notification_envelope(
 ) -> Result<NotificationEnvelope, CodecError> {
     Ok(NotificationEnvelope {
         schema_version: REMOTE_EXEX_SCHEMA_VERSION,
-        encoding: REMOTE_EXEX_ENCODING_BINCODE_V1.to_string(),
+        encoding: REMOTE_EXEX_ENCODING_BINCODE.to_string(),
         payload: encode_remote_notification(notification)?,
     })
 }
@@ -49,7 +48,7 @@ pub fn decode_notification_envelope(
     if envelope.schema_version != REMOTE_EXEX_SCHEMA_VERSION {
         return Err(CodecError::InvalidEnvelope("unexpected schema version"));
     }
-    if envelope.encoding != REMOTE_EXEX_ENCODING_BINCODE_V1 {
+    if envelope.encoding != REMOTE_EXEX_ENCODING_BINCODE {
         return Err(CodecError::InvalidEnvelope("unexpected encoding"));
     }
     decode_remote_notification(&envelope.payload)
@@ -134,7 +133,7 @@ mod tests {
         let notification = sample_notification();
         let envelope = encode_notification_envelope(&notification).expect("envelope");
         assert_eq!(envelope.schema_version, REMOTE_EXEX_SCHEMA_VERSION);
-        assert_eq!(envelope.encoding, REMOTE_EXEX_ENCODING_BINCODE_V1);
+        assert_eq!(envelope.encoding, REMOTE_EXEX_ENCODING_BINCODE);
 
         let decoded = decode_notification_envelope(&envelope).expect("decode envelope");
         assert_eq!(notification, decoded);

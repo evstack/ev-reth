@@ -29,6 +29,10 @@ use tracing::{debug, info};
 /// Stable identifier used when installing the built-in Atlas-style remote `ExEx`.
 pub const REMOTE_EXEX_ID: &str = "atlas-remote-exex";
 
+/// Maximum gRPC message size (64 MiB). Blocks with many transactions can exceed
+/// the tonic default of 4 MiB, so both server and client must raise the limit.
+const MAX_GRPC_MESSAGE_SIZE: usize = 64 * 1024 * 1024;
+
 /// Shared best-effort notification fan-out for connected remote `ExEx` subscribers.
 pub type RemoteNotificationSender = Arc<broadcast::Sender<NotificationEnvelope>>;
 
@@ -65,7 +69,7 @@ impl RemoteExEx for RemoteExExService {
         _request: Request<SubscribeRequest>,
     ) -> Result<Response<Self::SubscribeStream>, Status> {
         let mut notifications = self.notifications.subscribe();
-        let (tx, rx) = mpsc::channel(1);
+        let (tx, rx) = mpsc::channel(32);
 
         tokio::spawn(async move {
             loop {
@@ -98,14 +102,11 @@ pub fn spawn_remote_exex_grpc_server(
     notifications: RemoteNotificationSender,
 ) {
     let listen_addr = config.grpc_listen_addr;
-    task_executor.spawn_critical_task(
-        "remote exex grpc server",
-        Box::pin(async move {
-            if let Err(err) = serve_remote_exex_grpc_server(listen_addr, notifications).await {
-                tracing::error!(%listen_addr, error = ?err, "remote exex gRPC server exited");
-            }
-        }),
-    );
+    task_executor.spawn_task(Box::pin(async move {
+        if let Err(err) = serve_remote_exex_grpc_server(listen_addr, notifications).await {
+            tracing::error!(%listen_addr, error = ?err, "remote exex gRPC server exited");
+        }
+    }));
 }
 
 async fn serve_remote_exex_grpc_server(
@@ -114,8 +115,12 @@ async fn serve_remote_exex_grpc_server(
 ) -> Result<()> {
     info!(%listen_addr, "starting remote exex gRPC server");
 
+    let service = RemoteExExServer::new(RemoteExExService { notifications })
+        .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE)
+        .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE);
+
     Server::builder()
-        .add_service(RemoteExExServer::new(RemoteExExService { notifications }))
+        .add_service(service)
         .serve(listen_addr)
         .await?;
 
@@ -438,7 +443,7 @@ mod tests {
         notifications
             .send(NotificationEnvelope {
                 schema_version: 1,
-                encoding: "bincode/v1".to_string(),
+                encoding: "bincode/v2".to_string(),
                 payload: vec![1],
             })
             .expect("first notification");
@@ -447,7 +452,7 @@ mod tests {
         notifications
             .send(NotificationEnvelope {
                 schema_version: 1,
-                encoding: "bincode/v1".to_string(),
+                encoding: "bincode/v2".to_string(),
                 payload: vec![2],
             })
             .expect("second notification");
@@ -456,14 +461,14 @@ mod tests {
         notifications
             .send(NotificationEnvelope {
                 schema_version: 1,
-                encoding: "bincode/v1".to_string(),
+                encoding: "bincode/v2".to_string(),
                 payload: vec![3],
             })
             .expect("third notification");
         notifications
             .send(NotificationEnvelope {
                 schema_version: 1,
-                encoding: "bincode/v1".to_string(),
+                encoding: "bincode/v2".to_string(),
                 payload: vec![4],
             })
             .expect("fourth notification");

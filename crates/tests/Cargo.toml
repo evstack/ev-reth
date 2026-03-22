@@ -60,10 +60,10 @@ alloy-sol-types.workspace = true
 
 # Core dependencies
 tempfile.workspace = true
-hex = "0.4"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "http2"] }
-chrono = { version = "0.4", features = ["serde"] }
-rand = "0.10"
+hex.workspace = true
+reqwest.workspace = true
+chrono.workspace = true
+rand.workspace = true
 tokio = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
