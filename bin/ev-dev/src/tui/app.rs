@@ -203,11 +203,8 @@ pub(crate) fn spawn_balance_poller(
         loop {
             interval.tick().await;
 
-            let provider = match ProviderBuilder::new()
-                .connect_http(rpc_url.parse().expect("valid RPC URL"))
-            {
-                provider => provider,
-            };
+            let provider =
+                ProviderBuilder::new().connect_http(rpc_url.parse().expect("valid RPC URL"));
 
             let mut balances = Vec::with_capacity(addresses.len());
             for addr in &addresses {
