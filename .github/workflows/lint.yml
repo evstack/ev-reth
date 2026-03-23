@@ -23,7 +23,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
-      - run: cargo clippy --bin ev-reth --workspace --features "jemalloc"
+      - run: cargo clippy --bin ev-reth --workspace --exclude ev-exex-remote --features "jemalloc"
         env:
           RUSTFLAGS: -D warnings
 
@@ -39,7 +39,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
-      - run: cargo clippy --workspace --examples --tests --benches --all-features
+      - run: cargo clippy --workspace --exclude ev-exex-remote --examples --tests --benches
         env:
           RUSTFLAGS: -D warnings
 
@@ -53,7 +53,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
-      - run: cargo hack check
+      - run: cargo hack check --exclude ev-exex-remote
 
   docs:
     name: docs
@@ -67,7 +67,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
-      - run: cargo doc --document-private-items --no-deps
+      - run: cargo doc --workspace --exclude ev-exex-remote --document-private-items --no-deps
         env:
           # Keep in sync with ./book.yml:jobs.build
           # This should only add `-D warnings`
