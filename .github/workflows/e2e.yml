@@ -38,6 +38,7 @@ jobs:
           cargo nextest run \
             --locked \
             --workspace \
+            --exclude ev-exex-remote \
             -E "package(ev-tests)" \
             --no-capture
         env:

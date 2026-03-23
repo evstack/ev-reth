@@ -217,6 +217,60 @@ curl -X POST http://localhost:8545 \
 }
 ```
 
+### Remote ExEx Streaming
+
+ev-reth now includes an opt-in remote ExEx stream for Atlas-style consumers. The goal is to push
+canonical execution notifications instead of forcing Atlas to poll `eth_getBlockByNumber` and
+`eth_getBlockReceipts` for every block.
+
+Enable it with:
+
+```bash
+./target/release/ev-reth node \
+    --remote-exex-grpc-listen-addr 127.0.0.1:10000 \
+    --remote-exex-buffer 64
+```
+
+The stream carries full blocks, receipts, logs, and EvNode sponsor metadata, so the consumer
+should raise gRPC message size limits:
+
+```rust
+const MAX_GRPC_MESSAGE_SIZE: usize = 64 * 1024 * 1024; // 64 MiB
+let mut client = RemoteExExClient::connect("http://127.0.0.1:10000")
+    .await?
+    .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE)
+    .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE);
+```
+
+The stream intentionally uses ev-reth-owned wire types instead of exposing raw internal Reth or
+EV structs directly:
+
+- The gRPC boundary is a contract for consumers such as Atlas, not an in-process Rust API.
+- Reusing `Chain<EvPrimitives>`, `EvTxEnvelope`, or raw receipt types directly would couple
+  Atlas to ev-reth's internal crate graph, serde layout, and exact Reth version.
+- The remote types are narrower and Atlas-oriented: they preserve commit/reorg/revert semantics
+  and include fields Atlas needs directly, such as paired receipts/logs, recovered `feePayer`,
+  and batch-call metadata.
+- The envelope keeps protobuf small and versioned while still carrying `raw_2718` bytes, so
+  consumers can fall back to full transaction decoding when needed.
+
+In short, the dedicated wire schema exists to make the push stream explicit and evolvable, while
+leaving ev-reth free to change internal execution types without silently breaking Atlas.
+
+Operationally, the stream should be treated as best-effort:
+
+- The node should emit `FinishedHeight` after enqueueing the notification, not after client ack.
+- Slow subscribers should be bounded by a finite buffer and dropped instead of blocking block production.
+- Atlas should keep its existing polling path as a fallback during rollout.
+
+Atlas-oriented notes:
+
+- The pushed notification should preserve `EvTxEnvelope` transactions and recovered `feePayer` metadata.
+- Reorg and revert notifications must remain explicit, so Atlas does not assume append-only delivery.
+- DA enrichment stays out of scope for the first version.
+- See `bin/ev-reth/examples/block_logger.rs` for a minimal in-process ExEx example.
+- See `bin/ev-reth/examples/remote_consumer.rs` for a minimal gRPC subscriber example.
+
 ## Architecture
 
 ### Modular Design

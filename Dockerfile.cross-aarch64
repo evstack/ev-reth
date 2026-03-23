@@ -11,7 +11,8 @@ RUN apt-get update && \
         pkg-config-aarch64-linux-gnu \
         build-essential \
         clang \
-        libclang-dev && \
+        libclang-dev \
+        protobuf-compiler && \
     rm -rf /var/lib/apt/lists/*
 
 # Set up environment variables for ARM64 cross-compilation

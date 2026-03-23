@@ -35,6 +35,7 @@ jobs:
           cargo nextest run \
             --locked \
             --workspace \
+            --exclude ev-exex-remote \
             -E "(kind(lib) | kind(bin) | kind(proc-macro))" \
             --no-tests=warn
 
@@ -67,7 +68,7 @@ jobs:
         with:
           cache-on-failure: true
       - name: Run doctests
-        run: cargo test --doc --workspace
+        run: cargo test --doc --workspace --exclude ev-exex-remote
 
   unit-success:
     name: unit success

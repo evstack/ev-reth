@@ -17,6 +17,8 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilte
 use url::Url;
 
 use ev_node::{log_startup, EvolveArgs, EvolveChainSpecParser, EvolveNode};
+#[cfg(feature = "remote-exex")]
+use ev_node::{remote_exex_task, spawn_remote_exex_grpc_server, RemoteExExConfig, REMOTE_EXEX_ID};
 
 #[global_allocator]
 static ALLOC: reth_cli_util::allocator::Allocator = reth_cli_util::allocator::new_allocator();
@@ -96,9 +98,23 @@ fn main() {
     init_tracing();
 
     if let Err(err) =
-        Cli::<EvolveChainSpecParser, EvolveArgs>::parse().run(|builder, _evolve_args| async move {
+        Cli::<EvolveChainSpecParser, EvolveArgs>::parse().run(|builder, evolve_args| async move {
             log_startup();
-            let handle = builder
+            #[cfg(not(feature = "remote-exex"))]
+            let _ = evolve_args;
+
+            #[cfg(feature = "remote-exex")]
+            let remote_exex_config = evolve_args.remote_exex_grpc_listen_addr.map(|listen_addr| {
+                RemoteExExConfig::new(listen_addr, evolve_args.remote_exex_buffer)
+            });
+            #[cfg(feature = "remote-exex")]
+            let remote_notifications = remote_exex_config.as_ref().map(|config| {
+                std::sync::Arc::new(tokio::sync::broadcast::channel(config.buffer).0)
+            });
+            #[cfg(feature = "remote-exex")]
+            let remote_notifications_for_exex = remote_notifications.clone();
+
+            let builder = builder
                 .node(EvolveNode::new())
                 .extend_rpc_modules(move |ctx| {
                     // Build custom txpool RPC with config + optional CLI/env override
@@ -109,9 +125,23 @@ fn main() {
                     // Merge into all enabled transports (HTTP / WS)
                     ctx.modules.merge_configured(evolve_txpool.into_rpc())?;
                     Ok(())
-                })
-                .launch()
-                .await?;
+                });
+
+            #[cfg(feature = "remote-exex")]
+            let builder =
+                builder.install_exex_if(remote_exex_config.is_some(), REMOTE_EXEX_ID, move |ctx| {
+                    let notifications = remote_notifications_for_exex
+                        .expect("remote exex notifications should be configured");
+                    async move { Ok(remote_exex_task(ctx, notifications)) }
+                });
+
+            let handle = builder.launch().await?;
+
+            #[cfg(feature = "remote-exex")]
+            if let (Some(config), Some(notifications)) = (remote_exex_config, remote_notifications)
+            {
+                spawn_remote_exex_grpc_server(&handle.node.task_executor, config, notifications);
+            }
 
             info!("=== EV-RETH: Node launched successfully with ev-reth payload builder ===");
             handle.node_exit_future.await

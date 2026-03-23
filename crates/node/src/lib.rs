@@ -21,6 +21,9 @@ pub mod error;
 pub mod evm_executor;
 /// Executor wiring for EV aware execution.
 pub mod executor;
+/// Execution extension support for remote consumers.
+#[cfg(feature = "remote-exex")]
+pub mod exex;
 /// Node composition and payload types.
 pub mod node;
 /// Payload service integration.
@@ -47,6 +50,8 @@ pub use chainspec::EvolveChainSpecParser;
 pub use config::{ConfigError, EvolvePayloadBuilderConfig};
 pub use error::EvolveEngineError;
 pub use executor::{build_evm_config, EvolveEvmConfig, EvolveExecutorBuilder};
+#[cfg(feature = "remote-exex")]
+pub use exex::{remote_exex_task, spawn_remote_exex_grpc_server, RemoteExExConfig, REMOTE_EXEX_ID};
 pub use node::{log_startup, EvolveEngineTypes, EvolveNode, EvolveNodeAddOns};
 pub use payload_service::{EvolveEnginePayloadBuilder, EvolvePayloadBuilderBuilder};
 pub use payload_types::EvBuiltPayload;

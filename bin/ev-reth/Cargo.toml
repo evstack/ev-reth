@@ -12,12 +12,18 @@ description = "Ev-reth node binary"
 name = "ev-reth"
 path = "src/main.rs"
 
+[[example]]
+name = "remote_consumer"
+required-features = ["remote-exex"]
+
 [dependencies]
 # Core evolve crates
 ev-node = { path = "../../crates/node" }
 ev-common = { path = "../../crates/common" }
 ev-revm.workspace = true
 evolve-ev-reth = { path = "../../crates/evolve" }
+ev-exex-remote = { workspace = true, optional = true }
+ev-primitives.workspace = true
 
 ev-precompiles = { path = "../../crates/ev-precompiles" }
 
@@ -40,6 +46,7 @@ reth-trie-db.workspace = true
 reth-consensus.workspace = true
 reth-ethereum-primitives.workspace = true
 reth-ethereum-forks.workspace = true
+reth-exex.workspace = true
 
 # Alloy dependencies
 alloy-network.workspace = true
@@ -57,6 +64,7 @@ clap = { workspace = true, features = ["derive", "env"] }
 serde = { workspace = true, features = ["derive"] }
 thiserror.workspace = true
 url.workspace = true
+futures.workspace = true
 
 # Reth OTLP tracing
 reth-tracing-otlp.workspace = true
@@ -73,6 +81,8 @@ jemalloc-prof = ["reth-cli-util/jemalloc-prof"]
 tracy-allocator = ["reth-cli-util/tracy-allocator"]
 
 asm-keccak = ["reth-ethereum-cli/asm-keccak"]
+
+remote-exex = ["ev-node/remote-exex", "dep:ev-exex-remote"]
 
 dev = ["reth-ethereum-cli/dev", "reth-ethereum/arbitrary"]
 
