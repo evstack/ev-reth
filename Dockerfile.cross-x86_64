@@ -8,7 +8,8 @@ RUN apt-get update && \
         jq \
         pkg-config \
         libclang-dev \
-        clang && \
+        clang \
+        protobuf-compiler && \
     rm -rf /var/lib/apt/lists/*
 
 # Set up environment variables for x86_64 cross-compilation

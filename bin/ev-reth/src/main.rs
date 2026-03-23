@@ -18,9 +18,7 @@ use url::Url;
 
 use ev_node::{log_startup, EvolveArgs, EvolveChainSpecParser, EvolveNode};
 #[cfg(feature = "remote-exex")]
-use ev_node::{
-    remote_exex_task, spawn_remote_exex_grpc_server, RemoteExExConfig, REMOTE_EXEX_ID,
-};
+use ev_node::{remote_exex_task, spawn_remote_exex_grpc_server, RemoteExExConfig, REMOTE_EXEX_ID};
 
 #[global_allocator]
 static ALLOC: reth_cli_util::allocator::Allocator = reth_cli_util::allocator::new_allocator();
@@ -106,12 +104,9 @@ fn main() {
             let _ = evolve_args;
 
             #[cfg(feature = "remote-exex")]
-            let remote_exex_config =
-                evolve_args
-                    .remote_exex_grpc_listen_addr
-                    .map(|listen_addr| {
-                        RemoteExExConfig::new(listen_addr, evolve_args.remote_exex_buffer)
-                    });
+            let remote_exex_config = evolve_args.remote_exex_grpc_listen_addr.map(|listen_addr| {
+                RemoteExExConfig::new(listen_addr, evolve_args.remote_exex_buffer)
+            });
             #[cfg(feature = "remote-exex")]
             let remote_notifications = remote_exex_config.as_ref().map(|config| {
                 std::sync::Arc::new(tokio::sync::broadcast::channel(config.buffer).0)
