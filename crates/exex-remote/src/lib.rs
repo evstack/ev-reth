@@ -41,8 +41,8 @@ pub mod wire {
 
 pub use codec::{
     decode_notification_envelope, decode_remote_notification, encode_notification_envelope,
-    encode_remote_notification, remote_notification_schema_version,
-    REMOTE_EXEX_ENCODING_BINCODE, REMOTE_EXEX_SCHEMA_VERSION,
+    encode_remote_notification, remote_notification_schema_version, REMOTE_EXEX_ENCODING_BINCODE,
+    REMOTE_EXEX_SCHEMA_VERSION,
 };
 pub use error::{CodecError, DecodeError};
 pub use proto::{
