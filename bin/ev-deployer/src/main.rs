@@ -21,6 +21,12 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Generate a starter config file with all supported contracts commented out.
+    Init {
+        /// Write config to this file instead of stdout.
+        #[arg(long)]
+        output: Option<PathBuf>,
+    },
     /// Generate genesis alloc JSON from a deploy config.
     Genesis {
         /// Path to the deploy TOML config.
@@ -43,19 +49,13 @@ enum Command {
         #[arg(long)]
         addresses_out: Option<PathBuf>,
     },
-    /// Generate a starter config file with all supported contracts commented out.
-    Init {
-        /// Write config to this file instead of stdout.
-        #[arg(long)]
-        output: Option<PathBuf>,
-    },
     /// Compute the address for a configured contract.
     ComputeAddress {
         /// Path to the deploy TOML config.
         #[arg(long)]
         config: PathBuf,
 
-        /// Contract name (`admin_proxy` or `fee_vault`).
+        /// Contract name (e.g. `admin_proxy`).
         #[arg(long)]
         contract: String,
     },
