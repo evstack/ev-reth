@@ -257,9 +257,10 @@ impl App {
                     .map(|t| {
                         let hash = format!("{}", t.tx_hash());
                         let from = format!("{}", t.from());
-                        let to = t.to().map_or("Contract Creation".into(), |a| {
-                            truncate_hex(&format!("{a}"))
-                        });
+                        let to = t.to().map_or_else(
+                            || "Contract Creation".into(),
+                            |a| truncate_hex(&format!("{a}")),
+                        );
                         let value = format_ether(t.value());
                         TxInfo {
                             hash: truncate_hex(&hash),
