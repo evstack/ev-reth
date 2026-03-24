@@ -49,5 +49,6 @@ pub(crate) fn build_manifest(config: &DeployConfig) -> Value {
         );
     }
 
+
     Value::Object(manifest)
 }

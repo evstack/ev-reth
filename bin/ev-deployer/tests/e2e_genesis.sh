@@ -76,7 +76,7 @@ echo "=== Generating genesis with ev-deployer ==="
 
 echo "Genesis written to $GENESIS"
 
-# Quick sanity: addresses should be in the alloc
+# Quick sanity: address should be in the alloc
 grep -q "000000000000000000000000000000000000Ad00" "$GENESIS" \
     || fail "AdminProxy address not found in genesis"
 grep -q "000000000000000000000000000000000000FE00" "$GENESIS" \
@@ -238,6 +238,7 @@ check_immutable "localDomain" 644 "$domain_word"
 # deployedBlock = 0 → 32 zero bytes
 deployed_block_word="0000000000000000000000000000000000000000000000000000000000000000"
 check_immutable "deployedBlock" 578 "$deployed_block_word"
+
 
 # ── Done ─────────────────────────────────────────────────
 

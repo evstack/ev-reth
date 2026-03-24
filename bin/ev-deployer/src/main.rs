@@ -21,6 +21,12 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Generate a starter config file with all supported contracts commented out.
+    Init {
+        /// Write config to this file instead of stdout.
+        #[arg(long)]
+        output: Option<PathBuf>,
+    },
     /// Generate genesis alloc JSON from a deploy config.
     Genesis {
         /// Path to the deploy TOML config.
@@ -49,7 +55,7 @@ enum Command {
         #[arg(long)]
         config: PathBuf,
 
-        /// Contract name (`admin_proxy` or `fee_vault`).
+        /// Contract name (e.g. `admin_proxy`).
         #[arg(long)]
         contract: String,
     },
@@ -88,6 +94,16 @@ fn main() -> eyre::Result<()> {
                 let manifest_json = serde_json::to_string_pretty(&manifest)?;
                 std::fs::write(addr_path, &manifest_json)?;
                 eprintln!("Wrote address manifest to {}", addr_path.display());
+            }
+        }
+        Command::Init { output } => {
+            let template = include_str!("init_template.toml");
+
+            if let Some(ref out_path) = output {
+                std::fs::write(out_path, template)?;
+                eprintln!("Wrote config to {}", out_path.display());
+            } else {
+                print!("{template}");
             }
         }
         Command::ComputeAddress {

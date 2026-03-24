@@ -44,6 +44,7 @@ pub(crate) fn build_alloc(config: &DeployConfig) -> Value {
         insert_contract(&mut alloc, &contract);
     }
 
+
     Value::Object(alloc)
 }
 

@@ -11,6 +11,7 @@ pub(crate) struct DeployConfig {
     /// Chain configuration.
     pub chain: ChainConfig,
     /// Contract configurations.
+    #[serde(default)]
     pub contracts: ContractsConfig,
 }
 
@@ -23,7 +24,7 @@ pub(crate) struct ChainConfig {
 }
 
 /// All contract configurations.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 pub(crate) struct ContractsConfig {
     /// `AdminProxy` contract config (optional).
     pub admin_proxy: Option<AdminProxyConfig>,
@@ -134,6 +135,7 @@ pub(crate) struct NoopIsmConfig {
     pub address: Address,
 }
 
+
 impl DeployConfig {
     /// Load and validate config from a TOML file.
     pub(crate) fn load(path: &Path) -> eyre::Result<Self> {
@@ -189,6 +191,7 @@ impl DeployConfig {
             );
         }
 
+
         Ok(())
     }
 }
@@ -206,22 +209,10 @@ chain_id = 1234
 [contracts.admin_proxy]
 address = "0x000000000000000000000000000000000000Ad00"
 owner = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
-
-[contracts.fee_vault]
-address = "0x000000000000000000000000000000000000FE00"
-owner = "0x000000000000000000000000000000000000Ad00"
-destination_domain = 0
-recipient_address = "0x0000000000000000000000000000000000000000000000000000000000000000"
-minimum_amount = 0
-call_fee = 0
-bridge_share_bps = 10000
-other_recipient = "0x0000000000000000000000000000000000000000"
-hyp_native_minter = "0x0000000000000000000000000000000000000000"
 "#;
         let config: DeployConfig = toml::from_str(toml).unwrap();
         assert_eq!(config.chain.chain_id, 1234);
         assert!(config.contracts.admin_proxy.is_some());
-        assert!(config.contracts.fee_vault.is_some());
         config.validate().unwrap();
     }
 
@@ -240,18 +231,14 @@ owner = "0x0000000000000000000000000000000000000000"
     }
 
     #[test]
-    fn reject_bps_over_10000() {
+    fn no_contracts_section() {
         let toml = r#"
 [chain]
 chain_id = 1
-
-[contracts.fee_vault]
-address = "0x000000000000000000000000000000000000FE00"
-owner = "0x000000000000000000000000000000000000Ad00"
-bridge_share_bps = 10001
 "#;
         let config: DeployConfig = toml::from_str(toml).unwrap();
-        assert!(config.validate().is_err());
+        config.validate().unwrap();
+        assert!(config.contracts.admin_proxy.is_none());
     }
 
     #[test]
@@ -317,6 +304,5 @@ owner = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
         let config: DeployConfig = toml::from_str(toml).unwrap();
         config.validate().unwrap();
         assert!(config.contracts.admin_proxy.is_some());
-        assert!(config.contracts.fee_vault.is_none());
     }
 }
