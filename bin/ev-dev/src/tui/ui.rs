@@ -295,11 +295,7 @@ fn draw_block_detail(frame: &mut Frame<'_>, detail: &BlockDetail, area: Rect) {
     let popup = centered_rect(80, 60, area);
     frame.render_widget(Clear, popup);
 
-    let title = format!(
-        " Block #{} ({} txs) ",
-        detail.number,
-        detail.txs.len()
-    );
+    let title = format!(" Block #{} ({} txs) ", detail.number, detail.txs.len());
 
     let block = Block::default()
         .borders(Borders::ALL)
@@ -312,12 +308,10 @@ fn draw_block_detail(frame: &mut Frame<'_>, detail: &BlockDetail, area: Rect) {
         .border_style(Style::default().fg(Color::Cyan));
 
     if detail.txs.is_empty() {
-        let text = Paragraph::new(Line::from(vec![
-            Span::styled(
-                "  No transactions in this block",
-                Style::default().fg(Color::DarkGray),
-            ),
-        ]))
+        let text = Paragraph::new(Line::from(vec![Span::styled(
+            "  No transactions in this block",
+            Style::default().fg(Color::DarkGray),
+        )]))
         .block(block);
         frame.render_widget(text, popup);
     } else {

@@ -194,8 +194,7 @@ impl App {
             Panel::Logs => self.log_scroll = self.log_scroll.saturating_sub(1),
             Panel::Blocks => {
                 if !self.blocks.is_empty() {
-                    self.block_selected =
-                        (self.block_selected + 1).min(self.blocks.len() - 1);
+                    self.block_selected = (self.block_selected + 1).min(self.blocks.len() - 1);
                 }
             }
             Panel::Accounts => {
@@ -216,8 +215,7 @@ impl App {
                 } else {
                     addr.clone()
                 };
-                self.clipboard_msg =
-                    Some((format!("Copied address {truncated}"), Instant::now()));
+                self.clipboard_msg = Some((format!("Copied address {truncated}"), Instant::now()));
             }
         }
     }
@@ -226,8 +224,7 @@ impl App {
         if let Some((_, key)) = self.accounts.get(self.account_selected) {
             if let Ok(mut clipboard) = arboard::Clipboard::new() {
                 let _ = clipboard.set_text(key.clone());
-                self.clipboard_msg =
-                    Some(("Copied private key".to_string(), Instant::now()));
+                self.clipboard_msg = Some(("Copied private key".to_string(), Instant::now()));
             }
         }
     }
@@ -260,9 +257,9 @@ impl App {
                     .map(|t| {
                         let hash = format!("{}", t.tx_hash());
                         let from = format!("{}", t.from());
-                        let to = t
-                            .to()
-                            .map_or("Contract Creation".into(), |a| truncate_hex(&format!("{a}")));
+                        let to = t.to().map_or("Contract Creation".into(), |a| {
+                            truncate_hex(&format!("{a}"))
+                        });
                         let value = format_ether(t.value());
                         TxInfo {
                             hash: truncate_hex(&hash),
@@ -275,7 +272,12 @@ impl App {
                 _ => vec![],
             };
 
-            let _ = tx.send(BlockDetail { number: block_num, txs }).await;
+            let _ = tx
+                .send(BlockDetail {
+                    number: block_num,
+                    txs,
+                })
+                .await;
         });
     }
 
