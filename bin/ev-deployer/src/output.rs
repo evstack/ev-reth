@@ -14,12 +14,5 @@ pub(crate) fn build_manifest(config: &DeployConfig) -> Value {
         );
     }
 
-    if let Some(ref fv) = config.contracts.fee_vault {
-        manifest.insert(
-            "fee_vault".to_string(),
-            Value::String(format!("{}", fv.address)),
-        );
-    }
-
     Value::Object(manifest)
 }

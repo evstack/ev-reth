@@ -21,20 +21,7 @@ chain_id = 1234
 [contracts.admin_proxy]
 address = "0x000000000000000000000000000000000000Ad00"
 owner = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
-
-[contracts.fee_vault]
-address = "0x000000000000000000000000000000000000FE00"
-owner = "0x000000000000000000000000000000000000Ad00"
-destination_domain = 0
-recipient_address = "0x0000000000000000000000000000000000000000000000000000000000000000"
-minimum_amount = 0
-call_fee = 0
-bridge_share_bps = 10000
-other_recipient = "0x0000000000000000000000000000000000000000"
-hyp_native_minter = "0x0000000000000000000000000000000000000000"
 ```
-
-Both contracts are optional — include only the sections you need.
 
 ### Config reference
 
@@ -50,20 +37,6 @@ Both contracts are optional — include only the sections you need.
 |-----------|---------|---------------------------|
 | `address` | address | Address to deploy at      |
 | `owner`   | address | Owner (must not be zero)  |
-
-#### `[contracts.fee_vault]`
-
-| Field                | Type    | Default | Description                                    |
-|----------------------|---------|---------|------------------------------------------------|
-| `address`            | address | —       | Address to deploy at                           |
-| `owner`              | address | —       | Owner (must not be zero)                       |
-| `destination_domain` | u32     | 0       | Hyperlane destination domain                   |
-| `recipient_address`  | bytes32 | 0x0…0   | Hyperlane recipient                            |
-| `minimum_amount`     | u64     | 0       | Minimum amount for bridging                    |
-| `call_fee`           | u64     | 0       | Fee for sendToCelestia                         |
-| `bridge_share_bps`   | u64     | 0       | Bridge share in basis points (0–10000). 0 maps to 10000 |
-| `other_recipient`    | address | 0x0…0   | Split accounting recipient                     |
-| `hyp_native_minter`  | address | 0x0…0   | HypNativeMinter address                        |
 
 ## Usage
 
@@ -107,8 +80,7 @@ Output:
 
 ```json
 {
-  "admin_proxy": "0x000000000000000000000000000000000000Ad00",
-  "fee_vault": "0x000000000000000000000000000000000000FE00"
+  "admin_proxy": "0x000000000000000000000000000000000000Ad00"
 }
 ```
 
@@ -123,7 +95,6 @@ ev-deployer compute-address --config deploy.toml --contract admin_proxy
 | Contract       | Description                                         |
 |----------------|-----------------------------------------------------|
 | `admin_proxy`  | Proxy contract with owner-based access control      |
-| `fee_vault`    | Fee vault with Hyperlane bridge integration          |
 
 Runtime bytecodes are embedded in the binary — no external toolchain is needed at deploy time.
 

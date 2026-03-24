@@ -76,13 +76,11 @@ echo "=== Generating genesis with ev-deployer ==="
 
 echo "Genesis written to $GENESIS"
 
-# Quick sanity: addresses should be in the alloc
+# Quick sanity: address should be in the alloc
 grep -q "000000000000000000000000000000000000Ad00" "$GENESIS" \
     || fail "AdminProxy address not found in genesis"
-grep -q "000000000000000000000000000000000000FE00" "$GENESIS" \
-    || fail "FeeVault address not found in genesis"
 
-pass "genesis contains both contract addresses"
+pass "genesis contains AdminProxy address"
 
 # ── Step 3: Start ev-reth ────────────────────────────────
 
@@ -126,41 +124,6 @@ expected_owner_slot="0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cff
 [[ "$(echo "$admin_slot0" | tr '[:upper:]' '[:lower:]')" == "$(echo "$expected_owner_slot" | tr '[:upper:]' '[:lower:]')" ]] \
     || fail "AdminProxy slot 0 (owner) mismatch: got $admin_slot0, expected $expected_owner_slot"
 pass "AdminProxy owner slot 0 = $ADMIN_OWNER"
-
-# ── Step 5: Verify FeeVault ──────────────────────────────
-
-FEE_VAULT="0x000000000000000000000000000000000000FE00"
-FEE_VAULT_OWNER="0x000000000000000000000000000000000000Ad00"
-
-echo "=== Verifying FeeVault at $FEE_VAULT ==="
-
-# Check code is present
-fv_code=$(rpc_call "eth_getCode" "[\"$FEE_VAULT\", \"latest\"]")
-[[ "$fv_code" != "0x" && "$fv_code" != "0x0" && ${#fv_code} -gt 10 ]] \
-    || fail "FeeVault has no bytecode (got: $fv_code)"
-pass "FeeVault has bytecode (${#fv_code} hex chars)"
-
-# Slot 0: hypNativeMinter (should be zero)
-fv_slot0=$(rpc_call "eth_getStorageAt" "[\"$FEE_VAULT\", \"0x0\", \"latest\"]")
-expected_zero="0x0000000000000000000000000000000000000000000000000000000000000000"
-[[ "$(echo "$fv_slot0" | tr '[:upper:]' '[:lower:]')" == "$(echo "$expected_zero" | tr '[:upper:]' '[:lower:]')" ]] \
-    || fail "FeeVault slot 0 (hypNativeMinter) should be zero, got $fv_slot0"
-pass "FeeVault slot 0 (hypNativeMinter) = zero"
-
-# Slot 1: owner (lower 160 bits) + destinationDomain (upper bits)
-# With domain=0 and owner=0x...Ad00, it's just the owner padded
-fv_slot1=$(rpc_call "eth_getStorageAt" "[\"$FEE_VAULT\", \"0x1\", \"latest\"]")
-expected_slot1="0x000000000000000000000000000000000000000000000000000000000000ad00"
-[[ "$(echo "$fv_slot1" | tr '[:upper:]' '[:lower:]')" == "$(echo "$expected_slot1" | tr '[:upper:]' '[:lower:]')" ]] \
-    || fail "FeeVault slot 1 (owner|domain) mismatch: got $fv_slot1, expected $expected_slot1"
-pass "FeeVault slot 1 (owner|domain) correct"
-
-# Slot 6: bridgeShareBps = 10000 = 0x2710
-fv_slot6=$(rpc_call "eth_getStorageAt" "[\"$FEE_VAULT\", \"0x6\", \"latest\"]")
-expected_slot6="0x0000000000000000000000000000000000000000000000000000000000002710"
-[[ "$(echo "$fv_slot6" | tr '[:upper:]' '[:lower:]')" == "$(echo "$expected_slot6" | tr '[:upper:]' '[:lower:]')" ]] \
-    || fail "FeeVault slot 6 (bridgeShareBps) mismatch: got $fv_slot6, expected $expected_slot6"
-pass "FeeVault slot 6 (bridgeShareBps) = 10000"
 
 # ── Done ─────────────────────────────────────────────────
 

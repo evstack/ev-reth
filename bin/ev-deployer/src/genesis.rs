@@ -17,11 +17,6 @@ pub(crate) fn build_alloc(config: &DeployConfig) -> Value {
         insert_contract(&mut alloc, &contract);
     }
 
-    if let Some(ref fv_config) = config.contracts.fee_vault {
-        let contract = contracts::fee_vault::build(fv_config);
-        insert_contract(&mut alloc, &contract);
-    }
-
     Value::Object(alloc)
 }
 
@@ -97,7 +92,6 @@ mod tests {
                     address: address!("000000000000000000000000000000000000Ad00"),
                     owner: address!("f39Fd6e51aad88F6F4ce6aB8827279cffFb92266"),
                 }),
-                fee_vault: None,
             },
         }
     }

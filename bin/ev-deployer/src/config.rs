@@ -1,6 +1,6 @@
 //! TOML config types, parsing, and validation.
 
-use alloy_primitives::{Address, B256};
+use alloy_primitives::Address;
 use serde::Deserialize;
 use std::path::Path;
 
@@ -27,8 +27,6 @@ pub(crate) struct ChainConfig {
 pub(crate) struct ContractsConfig {
     /// `AdminProxy` contract config (optional).
     pub admin_proxy: Option<AdminProxyConfig>,
-    /// `FeeVault` contract config (optional).
-    pub fee_vault: Option<FeeVaultConfig>,
 }
 
 /// `AdminProxy` configuration.
@@ -38,36 +36,6 @@ pub(crate) struct AdminProxyConfig {
     pub address: Address,
     /// Owner address.
     pub owner: Address,
-}
-
-/// `FeeVault` configuration.
-#[derive(Debug, Deserialize)]
-pub(crate) struct FeeVaultConfig {
-    /// Address to deploy at.
-    pub address: Address,
-    /// Owner address.
-    pub owner: Address,
-    /// Hyperlane destination domain.
-    #[serde(default)]
-    pub destination_domain: u32,
-    /// Hyperlane recipient address (bytes32).
-    #[serde(default)]
-    pub recipient_address: B256,
-    /// Minimum amount for bridging.
-    #[serde(default)]
-    pub minimum_amount: u64,
-    /// Call fee for sendToCelestia.
-    #[serde(default)]
-    pub call_fee: u64,
-    /// Basis points for bridge share (0-10000). 0 defaults to 10000.
-    #[serde(default)]
-    pub bridge_share_bps: u64,
-    /// Other recipient for split accounting.
-    #[serde(default)]
-    pub other_recipient: Address,
-    /// `HypNativeMinter` address.
-    #[serde(default)]
-    pub hyp_native_minter: Address,
 }
 
 impl DeployConfig {
@@ -88,25 +56,6 @@ impl DeployConfig {
             );
         }
 
-        if let Some(ref fv) = self.contracts.fee_vault {
-            eyre::ensure!(
-                !fv.owner.is_zero(),
-                "fee_vault.owner must not be the zero address"
-            );
-            eyre::ensure!(
-                fv.bridge_share_bps <= 10000,
-                "fee_vault.bridge_share_bps must be 0-10000, got {}",
-                fv.bridge_share_bps
-            );
-        }
-
-        if let (Some(ap), Some(fv)) = (&self.contracts.admin_proxy, &self.contracts.fee_vault) {
-            eyre::ensure!(
-                ap.address != fv.address,
-                "contracts.admin_proxy.address and contracts.fee_vault.address must be distinct"
-            );
-        }
-
         Ok(())
     }
 }
@@ -124,22 +73,10 @@ chain_id = 1234
 [contracts.admin_proxy]
 address = "0x000000000000000000000000000000000000Ad00"
 owner = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
-
-[contracts.fee_vault]
-address = "0x000000000000000000000000000000000000FE00"
-owner = "0x000000000000000000000000000000000000Ad00"
-destination_domain = 0
-recipient_address = "0x0000000000000000000000000000000000000000000000000000000000000000"
-minimum_amount = 0
-call_fee = 0
-bridge_share_bps = 10000
-other_recipient = "0x0000000000000000000000000000000000000000"
-hyp_native_minter = "0x0000000000000000000000000000000000000000"
 "#;
         let config: DeployConfig = toml::from_str(toml).unwrap();
         assert_eq!(config.chain.chain_id, 1234);
         assert!(config.contracts.admin_proxy.is_some());
-        assert!(config.contracts.fee_vault.is_some());
         config.validate().unwrap();
     }
 
@@ -158,39 +95,6 @@ owner = "0x0000000000000000000000000000000000000000"
     }
 
     #[test]
-    fn reject_bps_over_10000() {
-        let toml = r#"
-[chain]
-chain_id = 1
-
-[contracts.fee_vault]
-address = "0x000000000000000000000000000000000000FE00"
-owner = "0x000000000000000000000000000000000000Ad00"
-bridge_share_bps = 10001
-"#;
-        let config: DeployConfig = toml::from_str(toml).unwrap();
-        assert!(config.validate().is_err());
-    }
-
-    #[test]
-    fn reject_duplicate_addresses() {
-        let toml = r#"
-[chain]
-chain_id = 1
-
-[contracts.admin_proxy]
-address = "0x000000000000000000000000000000000000Ad00"
-owner = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
-
-[contracts.fee_vault]
-address = "0x000000000000000000000000000000000000Ad00"
-owner = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
-"#;
-        let config: DeployConfig = toml::from_str(toml).unwrap();
-        assert!(config.validate().is_err());
-    }
-
-    #[test]
     fn admin_proxy_only() {
         let toml = r#"
 [chain]
@@ -203,6 +107,5 @@ owner = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
         let config: DeployConfig = toml::from_str(toml).unwrap();
         config.validate().unwrap();
         assert!(config.contracts.admin_proxy.is_some());
-        assert!(config.contracts.fee_vault.is_none());
     }
 }

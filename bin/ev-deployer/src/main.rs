@@ -103,12 +103,6 @@ fn main() -> eyre::Result<()> {
                     .as_ref()
                     .map(|c| c.address)
                     .ok_or_else(|| eyre::eyre!("admin_proxy not configured"))?,
-                "fee_vault" => cfg
-                    .contracts
-                    .fee_vault
-                    .as_ref()
-                    .map(|c| c.address)
-                    .ok_or_else(|| eyre::eyre!("fee_vault not configured"))?,
                 other => eyre::bail!("unknown contract: {other}"),
             };
 
