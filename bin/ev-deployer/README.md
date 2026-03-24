@@ -40,6 +40,14 @@ owner = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
 
 ## Usage
 
+### Generate a starter config
+
+```bash
+ev-deployer init --output deploy.toml
+```
+
+This creates a TOML config template with all supported contracts commented out and documented.
+
 ### Generate genesis alloc
 
 Print alloc JSON to stdout:
