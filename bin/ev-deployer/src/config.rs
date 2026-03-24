@@ -1,5 +1,6 @@
 //! TOML config types, parsing, and validation.
 
+use alloy_primitives::Address;
 use serde::Deserialize;
 use std::path::Path;
 
@@ -22,8 +23,20 @@ pub(crate) struct ChainConfig {
 }
 
 /// All contract configurations.
-#[derive(Debug, Deserialize, Default)]
-pub(crate) struct ContractsConfig {}
+#[derive(Debug, Deserialize)]
+pub(crate) struct ContractsConfig {
+    /// `AdminProxy` contract config (optional).
+    pub admin_proxy: Option<AdminProxyConfig>,
+}
+
+/// `AdminProxy` configuration.
+#[derive(Debug, Deserialize)]
+pub(crate) struct AdminProxyConfig {
+    /// Address to deploy at.
+    pub address: Address,
+    /// Owner address.
+    pub owner: Address,
+}
 
 impl DeployConfig {
     /// Load and validate config from a TOML file.
@@ -36,6 +49,13 @@ impl DeployConfig {
 
     /// Validate config values.
     fn validate(&self) -> eyre::Result<()> {
+        if let Some(ref ap) = self.contracts.admin_proxy {
+            eyre::ensure!(
+                !ap.owner.is_zero(),
+                "admin_proxy.owner must not be the zero address"
+            );
+        }
+
         Ok(())
     }
 }
@@ -50,10 +70,42 @@ mod tests {
 [chain]
 chain_id = 1234
 
-[contracts]
+[contracts.admin_proxy]
+address = "0x000000000000000000000000000000000000Ad00"
+owner = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
 "#;
         let config: DeployConfig = toml::from_str(toml).unwrap();
         assert_eq!(config.chain.chain_id, 1234);
+        assert!(config.contracts.admin_proxy.is_some());
         config.validate().unwrap();
+    }
+
+    #[test]
+    fn reject_zero_owner() {
+        let toml = r#"
+[chain]
+chain_id = 1
+
+[contracts.admin_proxy]
+address = "0x000000000000000000000000000000000000Ad00"
+owner = "0x0000000000000000000000000000000000000000"
+"#;
+        let config: DeployConfig = toml::from_str(toml).unwrap();
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn admin_proxy_only() {
+        let toml = r#"
+[chain]
+chain_id = 1
+
+[contracts.admin_proxy]
+address = "0x000000000000000000000000000000000000Ad00"
+owner = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+"#;
+        let config: DeployConfig = toml::from_str(toml).unwrap();
+        config.validate().unwrap();
+        assert!(config.contracts.admin_proxy.is_some());
     }
 }

@@ -1,4 +1,6 @@
 [chain]
 chain_id = 1234
 
-[contracts]
+[contracts.admin_proxy]
+address = "0x000000000000000000000000000000000000Ad00"
+owner = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"

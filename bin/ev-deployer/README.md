@@ -18,7 +18,9 @@ EV Deployer uses a TOML config file to define what contracts to include and how 
 [chain]
 chain_id = 1234
 
-[contracts]
+[contracts.admin_proxy]
+address = "0x000000000000000000000000000000000000Ad00"
+owner = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
 ```
 
 ### Config reference
@@ -28,6 +30,13 @@ chain_id = 1234
 | Field      | Type | Description |
 |------------|------|-------------|
 | `chain_id` | u64  | Chain ID    |
+
+#### `[contracts.admin_proxy]`
+
+| Field     | Type    | Description               |
+|-----------|---------|---------------------------|
+| `address` | address | Address to deploy at      |
+| `owner`   | address | Owner (must not be zero)  |
 
 ## Usage
 
@@ -66,6 +75,28 @@ Write a JSON mapping of contract names to their configured addresses:
 ```bash
 ev-deployer genesis --config deploy.toml --addresses-out addresses.json
 ```
+
+Output:
+
+```json
+{
+  "admin_proxy": "0x000000000000000000000000000000000000Ad00"
+}
+```
+
+### Look up a contract address
+
+```bash
+ev-deployer compute-address --config deploy.toml --contract admin_proxy
+```
+
+## Contracts
+
+| Contract       | Description                                         |
+|----------------|-----------------------------------------------------|
+| `admin_proxy`  | Proxy contract with owner-based access control      |
+
+Runtime bytecodes are embedded in the binary — no external toolchain is needed at deploy time.
 
 ## Testing
 

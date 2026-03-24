@@ -49,7 +49,7 @@ enum Command {
         #[arg(long)]
         config: PathBuf,
 
-        /// Contract name.
+        /// Contract name (`admin_proxy` or `fee_vault`).
         #[arg(long)]
         contract: String,
     },
@@ -91,10 +91,22 @@ fn main() -> eyre::Result<()> {
             }
         }
         Command::ComputeAddress {
-            config: _config_path,
+            config: config_path,
             contract,
         } => {
-            eyre::bail!("unknown contract: {contract}");
+            let cfg = config::DeployConfig::load(&config_path)?;
+
+            let address = match contract.as_str() {
+                "admin_proxy" => cfg
+                    .contracts
+                    .admin_proxy
+                    .as_ref()
+                    .map(|c| c.address)
+                    .ok_or_else(|| eyre::eyre!("admin_proxy not configured"))?,
+                other => eyre::bail!("unknown contract: {other}"),
+            };
+
+            println!("{address}");
         }
     }
 
