@@ -43,6 +43,12 @@ enum Command {
         #[arg(long)]
         addresses_out: Option<PathBuf>,
     },
+    /// Generate a starter config file with all supported contracts commented out.
+    Init {
+        /// Write config to this file instead of stdout.
+        #[arg(long)]
+        output: Option<PathBuf>,
+    },
     /// Compute the address for a configured contract.
     ComputeAddress {
         /// Path to the deploy TOML config.
@@ -88,6 +94,16 @@ fn main() -> eyre::Result<()> {
                 let manifest_json = serde_json::to_string_pretty(&manifest)?;
                 std::fs::write(addr_path, &manifest_json)?;
                 eprintln!("Wrote address manifest to {}", addr_path.display());
+            }
+        }
+        Command::Init { output } => {
+            let template = include_str!("init_template.toml");
+
+            if let Some(ref out_path) = output {
+                std::fs::write(out_path, template)?;
+                eprintln!("Wrote config to {}", out_path.display());
+            } else {
+                print!("{template}");
             }
         }
         Command::ComputeAddress {
