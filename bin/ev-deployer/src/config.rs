@@ -135,7 +135,6 @@ pub(crate) struct NoopIsmConfig {
     pub address: Address,
 }
 
-
 impl DeployConfig {
     /// Load and validate config from a TOML file.
     pub(crate) fn load(path: &Path) -> eyre::Result<Self> {
@@ -190,7 +189,6 @@ impl DeployConfig {
                 "contracts.admin_proxy.address and contracts.fee_vault.address must be distinct"
             );
         }
-
 
         Ok(())
     }
