@@ -2,11 +2,11 @@ use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Cell, List, ListItem, Paragraph, Row, Table},
+    widgets::{Block, Borders, Cell, Clear, List, ListItem, Paragraph, Row, Table},
     Frame,
 };
 
-use super::app::{App, Panel};
+use super::app::{App, BlockDetail, Panel};
 
 fn border_style(app: &App, panel: Panel) -> Style {
     if app.active_panel == panel {
@@ -61,6 +61,10 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &App) {
     draw_header(frame, app, outer[0]);
     draw_main(frame, app, outer[1]);
     draw_footer(frame, app, outer[2]);
+
+    if let Some(ref detail) = app.block_detail {
+        draw_block_detail(frame, detail, area);
+    }
 }
 
 fn draw_header(frame: &mut Frame<'_>, app: &App, area: Rect) {
@@ -112,6 +116,8 @@ fn draw_main(frame: &mut Frame<'_>, app: &App, area: Rect) {
 }
 
 fn draw_blocks(frame: &mut Frame<'_>, app: &App, area: Rect) {
+    let is_focused = app.active_panel == Panel::Blocks;
+
     let block = Block::default()
         .borders(Borders::ALL)
         .title(" Blocks ")
@@ -125,36 +131,53 @@ fn draw_blocks(frame: &mut Frame<'_>, app: &App, area: Rect) {
     ])
     .style(Style::default().fg(Color::DarkGray));
 
+    // Auto-scroll to keep selected block visible
+    let inner_height = area.height.saturating_sub(4) as usize; // borders + header + header separator
+    let scroll = if inner_height > 0 && app.block_selected >= inner_height {
+        app.block_selected - inner_height + 1
+    } else {
+        0
+    };
+
     let rows: Vec<Row<'_>> = app
         .blocks
         .iter()
-        .skip(app.block_scroll)
-        .map(|b| {
+        .enumerate()
+        .skip(scroll)
+        .take(inner_height.max(1))
+        .map(|(i, b)| {
+            let selected = is_focused && i == app.block_selected;
+            let marker = if selected { "▸" } else { " " };
+            let style = if selected {
+                Style::default().fg(Color::Cyan)
+            } else {
+                Style::default()
+            };
+
             Row::new(vec![
-                Cell::from(format!("#{}", b.number)),
+                Cell::from(format!("{marker}#{}", b.number)),
                 Cell::from(b.hash.clone()).style(Style::default().fg(Color::DarkGray)),
                 Cell::from(format!("{}", b.tx_count)),
                 Cell::from(format_gas(b.gas_used)),
             ])
+            .style(style)
         })
         .collect();
 
     let widths = [
-        Constraint::Length(8),
+        Constraint::Length(10),
         Constraint::Length(12),
         Constraint::Length(5),
         Constraint::Min(6),
     ];
 
-    let table = Table::new(rows, widths)
-        .header(header)
-        .block(block)
-        .row_highlight_style(Style::default().fg(Color::Cyan));
+    let table = Table::new(rows, widths).header(header).block(block);
 
     frame.render_widget(table, area);
 }
 
 fn draw_accounts(frame: &mut Frame<'_>, app: &App, area: Rect) {
+    let is_focused = app.active_panel == Panel::Accounts;
     let mut items: Vec<ListItem<'_>> = app
         .accounts
         .iter()
@@ -170,9 +193,15 @@ fn draw_accounts(frame: &mut Frame<'_>, app: &App, area: Rect) {
                 .get(i)
                 .cloned()
                 .unwrap_or_else(|| "? ETH".to_string());
+
+            let selected = is_focused && i == app.account_selected;
+            let marker = if selected { "▸ " } else { "  " };
+            let addr_color = if selected { Color::Cyan } else { Color::White };
+
             ListItem::new(Line::from(vec![
+                Span::styled(marker, Style::default().fg(Color::Cyan)),
                 Span::styled(format!("({i}) "), Style::default().fg(Color::DarkGray)),
-                Span::styled(truncated, Style::default().fg(Color::White)),
+                Span::styled(truncated, Style::default().fg(addr_color)),
                 Span::styled(format!(" {balance}"), Style::default().fg(Color::Green)),
             ]))
         })
@@ -262,10 +291,98 @@ fn draw_logs(frame: &mut Frame<'_>, app: &App, area: Rect) {
     frame.render_widget(list, area);
 }
 
+fn draw_block_detail(frame: &mut Frame<'_>, detail: &BlockDetail, area: Rect) {
+    let popup = centered_rect(80, 60, area);
+    frame.render_widget(Clear, popup);
+
+    let title = format!(
+        " Block #{} ({} txs) ",
+        detail.number,
+        detail.txs.len()
+    );
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(title)
+        .title_style(
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )
+        .border_style(Style::default().fg(Color::Cyan));
+
+    if detail.txs.is_empty() {
+        let text = Paragraph::new(Line::from(vec![
+            Span::styled(
+                "  No transactions in this block",
+                Style::default().fg(Color::DarkGray),
+            ),
+        ]))
+        .block(block);
+        frame.render_widget(text, popup);
+    } else {
+        let header = Row::new(vec![
+            Cell::from("Hash").style(Style::default().add_modifier(Modifier::BOLD)),
+            Cell::from("From").style(Style::default().add_modifier(Modifier::BOLD)),
+            Cell::from("To").style(Style::default().add_modifier(Modifier::BOLD)),
+            Cell::from("Value").style(Style::default().add_modifier(Modifier::BOLD)),
+        ])
+        .style(Style::default().fg(Color::DarkGray));
+
+        let rows: Vec<Row<'_>> = detail
+            .txs
+            .iter()
+            .map(|tx| {
+                Row::new(vec![
+                    Cell::from(tx.hash.clone()).style(Style::default().fg(Color::DarkGray)),
+                    Cell::from(tx.from.clone()),
+                    Cell::from(tx.to.clone()),
+                    Cell::from(tx.value.clone()).style(Style::default().fg(Color::Green)),
+                ])
+            })
+            .collect();
+
+        let widths = [
+            Constraint::Length(14),
+            Constraint::Length(14),
+            Constraint::Length(18),
+            Constraint::Min(10),
+        ];
+
+        let table = Table::new(rows, widths).header(header).block(block);
+        frame.render_widget(table, popup);
+    }
+}
+
+fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
+    let popup_layout = Layout::vertical([
+        Constraint::Percentage((100 - percent_y) / 2),
+        Constraint::Percentage(percent_y),
+        Constraint::Percentage((100 - percent_y) / 2),
+    ])
+    .split(r);
+
+    Layout::horizontal([
+        Constraint::Percentage((100 - percent_x) / 2),
+        Constraint::Percentage(percent_x),
+        Constraint::Percentage((100 - percent_x) / 2),
+    ])
+    .split(popup_layout[1])[1]
+}
+
 fn draw_footer(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let uptime = app.start_time.elapsed().as_secs();
 
-    let text = Line::from(vec![
+    // Check for clipboard flash message (show for 2 seconds)
+    let clipboard_flash = app.clipboard_msg.as_ref().and_then(|(msg, when)| {
+        if when.elapsed().as_secs() < 2 {
+            Some(msg.clone())
+        } else {
+            None
+        }
+    });
+
+    let mut spans = vec![
         Span::styled(" Up: ", Style::default().fg(Color::DarkGray)),
         Span::styled(format_uptime(uptime), Style::default().fg(Color::White)),
         Span::styled("  Block: ", Style::default().fg(Color::DarkGray)),
@@ -278,11 +395,55 @@ fn draw_footer(frame: &mut Frame<'_>, app: &App, area: Rect) {
         Span::styled("uit  ", Style::default().fg(Color::DarkGray)),
         Span::styled("[Tab]", Style::default().fg(Color::Yellow)),
         Span::styled("focus  ", Style::default().fg(Color::DarkGray)),
-        Span::styled("[", Style::default().fg(Color::Yellow)),
-        Span::styled("Up/Down", Style::default().fg(Color::Yellow)),
-        Span::styled("]", Style::default().fg(Color::Yellow)),
-        Span::styled("scroll", Style::default().fg(Color::DarkGray)),
-    ]);
+    ];
+
+    if app.block_detail.is_some() {
+        spans.extend([
+            Span::styled("[Esc]", Style::default().fg(Color::Yellow)),
+            Span::styled("close", Style::default().fg(Color::DarkGray)),
+        ]);
+    } else {
+        match app.active_panel {
+            Panel::Accounts => {
+                spans.extend([
+                    Span::styled("[↑↓]", Style::default().fg(Color::Yellow)),
+                    Span::styled("select  ", Style::default().fg(Color::DarkGray)),
+                    Span::styled("[a]", Style::default().fg(Color::Yellow)),
+                    Span::styled("ddress  ", Style::default().fg(Color::DarkGray)),
+                    Span::styled("[k]", Style::default().fg(Color::Yellow)),
+                    Span::styled("ey", Style::default().fg(Color::DarkGray)),
+                ]);
+            }
+            Panel::Blocks => {
+                spans.extend([
+                    Span::styled("[↑↓]", Style::default().fg(Color::Yellow)),
+                    Span::styled("select  ", Style::default().fg(Color::DarkGray)),
+                    Span::styled("[Enter]", Style::default().fg(Color::Yellow)),
+                    Span::styled("txs", Style::default().fg(Color::DarkGray)),
+                ]);
+            }
+            Panel::Logs => {
+                spans.extend([
+                    Span::styled("[↑↓]", Style::default().fg(Color::Yellow)),
+                    Span::styled("scroll", Style::default().fg(Color::DarkGray)),
+                ]);
+            }
+        }
+    }
+
+    if let Some(msg) = clipboard_flash {
+        spans.extend([
+            Span::styled("  ", Style::default()),
+            Span::styled(
+                format!("✓ {msg}"),
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ]);
+    }
+
+    let text = Line::from(spans);
 
     let block = Block::default()
         .borders(Borders::ALL)

@@ -23,6 +23,20 @@ pub(crate) struct LogEntry {
     pub(crate) timestamp: Instant,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct TxInfo {
+    pub(crate) hash: String,
+    pub(crate) from: String,
+    pub(crate) to: String,
+    pub(crate) value: String,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct BlockDetail {
+    pub(crate) number: u64,
+    pub(crate) txs: Vec<TxInfo>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Panel {
     Blocks,
@@ -48,12 +62,17 @@ pub(crate) struct App {
     // UI state
     pub(crate) active_panel: Panel,
     pub(crate) log_scroll: usize,
-    pub(crate) block_scroll: usize,
+    pub(crate) block_selected: usize,
+    pub(crate) account_selected: usize,
+    pub(crate) clipboard_msg: Option<(String, Instant)>,
+    pub(crate) block_detail: Option<BlockDetail>,
     pub(crate) should_quit: bool,
 
     // Channels
     pub(crate) log_rx: mpsc::Receiver<LogEntry>,
     pub(crate) balance_rx: mpsc::Receiver<Vec<String>>,
+    pub(crate) detail_tx: mpsc::Sender<BlockDetail>,
+    pub(crate) detail_rx: mpsc::Receiver<BlockDetail>,
 }
 
 impl App {
@@ -68,6 +87,7 @@ impl App {
     ) -> Self {
         let initial_balance = "1000000 ETH".to_string();
         let balances = vec![initial_balance; accounts.len()];
+        let (detail_tx, detail_rx) = mpsc::channel(4);
         Self {
             chain_id,
             rpc_url,
@@ -81,10 +101,15 @@ impl App {
             balances,
             active_panel: Panel::Logs,
             log_scroll: 0,
-            block_scroll: 0,
+            block_selected: 0,
+            account_selected: 0,
+            clipboard_msg: None,
+            block_detail: None,
             should_quit: false,
             log_rx,
             balance_rx,
+            detail_tx,
+            detail_rx,
         }
     }
 
@@ -155,17 +180,121 @@ impl App {
     pub(crate) fn scroll_up(&mut self) {
         match self.active_panel {
             Panel::Logs => self.log_scroll = self.log_scroll.saturating_add(1),
-            Panel::Blocks => self.block_scroll = self.block_scroll.saturating_add(1),
-            Panel::Accounts => {}
+            Panel::Blocks => {
+                self.block_selected = self.block_selected.saturating_sub(1);
+            }
+            Panel::Accounts => {
+                self.account_selected = self.account_selected.saturating_sub(1);
+            }
         }
     }
 
     pub(crate) fn scroll_down(&mut self) {
         match self.active_panel {
             Panel::Logs => self.log_scroll = self.log_scroll.saturating_sub(1),
-            Panel::Blocks => self.block_scroll = self.block_scroll.saturating_sub(1),
-            Panel::Accounts => {}
+            Panel::Blocks => {
+                if !self.blocks.is_empty() {
+                    self.block_selected =
+                        (self.block_selected + 1).min(self.blocks.len() - 1);
+                }
+            }
+            Panel::Accounts => {
+                if !self.accounts.is_empty() {
+                    self.account_selected =
+                        (self.account_selected + 1).min(self.accounts.len() - 1);
+                }
+            }
         }
+    }
+
+    pub(crate) fn copy_account_address(&mut self) {
+        if let Some((addr, _)) = self.accounts.get(self.account_selected) {
+            if let Ok(mut clipboard) = arboard::Clipboard::new() {
+                let _ = clipboard.set_text(addr.clone());
+                let truncated = if addr.len() > 10 {
+                    format!("{}..{}", &addr[..6], &addr[addr.len() - 4..])
+                } else {
+                    addr.clone()
+                };
+                self.clipboard_msg =
+                    Some((format!("Copied address {truncated}"), Instant::now()));
+            }
+        }
+    }
+
+    pub(crate) fn copy_account_key(&mut self) {
+        if let Some((_, key)) = self.accounts.get(self.account_selected) {
+            if let Ok(mut clipboard) = arboard::Clipboard::new() {
+                let _ = clipboard.set_text(key.clone());
+                self.clipboard_msg =
+                    Some(("Copied private key".to_string(), Instant::now()));
+            }
+        }
+    }
+
+    pub(crate) fn fetch_block_detail(&self) {
+        let Some(block_info) = self.blocks.get(self.block_selected) else {
+            return;
+        };
+        let tx = self.detail_tx.clone();
+        let rpc_url = self.rpc_url.clone();
+        let block_num = block_info.number;
+
+        tokio::spawn(async move {
+            use alloy_network::TransactionResponse;
+            use alloy_provider::{Provider, ProviderBuilder};
+            use alloy_rpc_types::{BlockNumberOrTag, TransactionTrait};
+
+            let provider =
+                ProviderBuilder::new().connect_http(rpc_url.parse().expect("valid RPC URL"));
+
+            let result = provider
+                .get_block_by_number(BlockNumberOrTag::Number(block_num))
+                .full()
+                .await;
+
+            let txs = match result {
+                Ok(Some(block)) => block
+                    .transactions
+                    .into_transactions()
+                    .map(|t| {
+                        let hash = format!("{}", t.tx_hash());
+                        let from = format!("{}", t.from());
+                        let to = t
+                            .to()
+                            .map_or("Contract Creation".into(), |a| truncate_hex(&format!("{a}")));
+                        let value = format_ether(t.value());
+                        TxInfo {
+                            hash: truncate_hex(&hash),
+                            from: truncate_hex(&from),
+                            to,
+                            value,
+                        }
+                    })
+                    .collect(),
+                _ => vec![],
+            };
+
+            let _ = tx.send(BlockDetail { number: block_num, txs }).await;
+        });
+    }
+
+    pub(crate) fn drain_block_detail(&mut self) {
+        if let Ok(detail) = self.detail_rx.try_recv() {
+            self.block_detail = Some(detail);
+        }
+    }
+
+    pub(crate) fn close_block_detail(&mut self) {
+        self.block_detail = None;
+    }
+}
+
+fn truncate_hex(s: &str) -> String {
+    if s.len() > 10 {
+        format!("{}..{}", &s[..6], &s[s.len() - 4..])
+    } else {
+        s.to_string()
     }
 }
 

@@ -52,6 +52,7 @@ pub(crate) async fn run(mut app: App) -> eyre::Result<()> {
             _ = tick.tick() => {
                 app.drain_logs();
                 app.drain_balances();
+                app.drain_block_detail();
                 terminal.draw(|frame| ui::draw(frame, &app))?;
             }
             maybe_event = event_stream.next() => {

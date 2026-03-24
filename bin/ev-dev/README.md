@@ -2,15 +2,24 @@
 
 One-command local development chain for Evolve. Think of it as the Evolve equivalent of [Hardhat Node](https://hardhat.org/hardhat-network/docs/overview) or [Anvil](https://book.getfoundry.sh/reference/anvil/).
 
+## Installation
+
+```bash
+# Install to ~/.cargo/bin
+just install-ev-dev
+
+# Or build without installing
+just build-ev-dev
+```
+
 ## Quick Start
 
 ```bash
 # Build and run
 just dev-chain
 
-# Or build separately
-just build-ev-dev
-./target/release/ev-dev
+# Or run directly after installing
+ev-dev
 ```
 
 The chain starts immediately with 10 pre-funded accounts, each holding 1,000,000 ETH.
@@ -28,6 +37,31 @@ ev-dev [OPTIONS]
 | `--block-time` | `1` | Block time in seconds (`0` = mine on transaction) |
 | `--silent` | `false` | Suppress the startup banner |
 | `--accounts` | `10` | Number of accounts to display (1-20) |
+| `--deploy-config` | — | Path to an ev-deployer TOML config to deploy contracts at genesis |
+| `--tui` | `false` | Launch with an interactive terminal UI instead of plain log output |
+
+### TUI Mode
+
+Pass `--tui` to launch an interactive terminal dashboard:
+
+```bash
+ev-dev --tui
+```
+
+The TUI shows:
+
+- **Chain info** — chain ID, RPC URL, block time
+- **Accounts** — addresses, private keys, and real-time balances (polled every 2s)
+- **Deployed contracts** — when using `--deploy-config`
+- **Logs** — live node logs with scrollback
+
+Keyboard shortcuts:
+
+| Key | Action |
+|-----|--------|
+| `Tab` | Cycle between panels |
+| `↑` / `↓` | Scroll within the active panel |
+| `q` / `Esc` / `Ctrl+C` | Quit |
 
 ### Examples
 
