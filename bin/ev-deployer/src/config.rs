@@ -11,6 +11,7 @@ pub(crate) struct DeployConfig {
     /// Chain configuration.
     pub chain: ChainConfig,
     /// Contract configurations.
+    #[serde(default)]
     pub contracts: ContractsConfig,
 }
 
@@ -23,7 +24,7 @@ pub(crate) struct ChainConfig {
 }
 
 /// All contract configurations.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 pub(crate) struct ContractsConfig {
     /// `AdminProxy` contract config (optional).
     pub admin_proxy: Option<AdminProxyConfig>,
@@ -92,6 +93,17 @@ owner = "0x0000000000000000000000000000000000000000"
 "#;
         let config: DeployConfig = toml::from_str(toml).unwrap();
         assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn no_contracts_section() {
+        let toml = r#"
+[chain]
+chain_id = 1
+"#;
+        let config: DeployConfig = toml::from_str(toml).unwrap();
+        config.validate().unwrap();
+        assert!(config.contracts.admin_proxy.is_none());
     }
 
     #[test]
