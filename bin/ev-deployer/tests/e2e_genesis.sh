@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# End-to-end test: generate genesis with ev-deployer, boot ev-reth, verify contracts via RPC.
+# End-to-end test: generate genesis with ev-deployer, boot ev-reth, verify merge works via RPC.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
@@ -76,11 +76,11 @@ echo "=== Generating genesis with ev-deployer ==="
 
 echo "Genesis written to $GENESIS"
 
-# Quick sanity: address should be in the alloc
-grep -q "000000000000000000000000000000000000Ad00" "$GENESIS" \
-    || fail "AdminProxy address not found in genesis"
+# Sanity: output should be valid JSON with alloc field
+python3 -c "import sys,json; g=json.load(open('$GENESIS')); assert 'alloc' in g" \
+    || fail "genesis output is not valid JSON or missing alloc"
 
-pass "genesis contains AdminProxy address"
+pass "genesis merge produced valid JSON with alloc"
 
 # ── Step 3: Start ev-reth ────────────────────────────────
 
@@ -104,26 +104,11 @@ echo "Node PID: $NODE_PID, waiting for RPC..."
 wait_for_rpc
 pass "node is up and responding to RPC"
 
-# ── Step 4: Verify AdminProxy ────────────────────────────
+# ── Step 4: Verify node boots with merged genesis ────────
 
-ADMIN_PROXY="0x000000000000000000000000000000000000Ad00"
-ADMIN_OWNER="0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
-
-echo "=== Verifying AdminProxy at $ADMIN_PROXY ==="
-
-# Check code is present
-admin_code=$(rpc_call "eth_getCode" "[\"$ADMIN_PROXY\", \"latest\"]")
-[[ "$admin_code" != "0x" && "$admin_code" != "0x0" && ${#admin_code} -gt 10 ]] \
-    || fail "AdminProxy has no bytecode (got: $admin_code)"
-pass "AdminProxy has bytecode (${#admin_code} hex chars)"
-
-# Check owner in slot 0
-admin_slot0=$(rpc_call "eth_getStorageAt" "[\"$ADMIN_PROXY\", \"0x0\", \"latest\"]")
-# Owner should be in the lower 20 bytes, left-padded to 32 bytes
-expected_owner_slot="0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266"
-[[ "$(echo "$admin_slot0" | tr '[:upper:]' '[:lower:]')" == "$(echo "$expected_owner_slot" | tr '[:upper:]' '[:lower:]')" ]] \
-    || fail "AdminProxy slot 0 (owner) mismatch: got $admin_slot0, expected $expected_owner_slot"
-pass "AdminProxy owner slot 0 = $ADMIN_OWNER"
+block_number=$(rpc_call "eth_blockNumber" "[]")
+[[ -n "$block_number" ]] || fail "could not get block number from node"
+pass "node booted successfully with merged genesis (block: $block_number)"
 
 # ── Done ─────────────────────────────────────────────────
 
