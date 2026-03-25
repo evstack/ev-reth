@@ -68,8 +68,7 @@ mod tests {
         let forge_hex = String::from_utf8(output.stdout)
             .unwrap()
             .trim()
-            .strip_prefix("0x")
-            .unwrap()
+            .trim_start_matches("0x")
             .to_lowercase();
 
         let hardcoded_hex = hex::encode(ADMIN_PROXY_BYTECODE);

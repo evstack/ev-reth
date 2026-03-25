@@ -71,19 +71,29 @@ pub fn merge_alloc(config: &DeployConfig, genesis: &mut Value, force: bool) -> e
 
     let new_alloc = alloc.as_object().unwrap();
     for (addr, entry) in new_alloc {
-        if genesis_alloc.contains_key(addr) && !force {
+        let canonical = normalize_addr(addr);
+        let existing_key = genesis_alloc
+            .keys()
+            .find(|k| normalize_addr(k) == canonical)
+            .cloned();
+        if existing_key.is_some() && !force {
             eyre::bail!("address collision at {addr}; use --force to overwrite");
         }
-        genesis_alloc.insert(addr.clone(), entry.clone());
+        if let Some(key) = existing_key {
+            genesis_alloc.remove(&key);
+        }
+        genesis_alloc.insert(canonical, entry.clone());
     }
 
     Ok(())
 }
 
+fn normalize_addr(addr: &str) -> String {
+    addr.strip_prefix("0x").unwrap_or(addr).to_lowercase()
+}
+
 fn insert_contract(alloc: &mut Map<String, Value>, contract: &GenesisContract) {
-    // Address key without 0x prefix, using checksummed format
-    let addr_hex = format!("{}", contract.address);
-    let addr_key = addr_hex.strip_prefix("0x").unwrap_or(&addr_hex);
+    let addr_key = normalize_addr(&format!("{}", contract.address));
 
     let mut storage_map = Map::new();
     for (slot, value) in &contract.storage {
@@ -102,7 +112,7 @@ fn insert_contract(alloc: &mut Map<String, Value>, contract: &GenesisContract) {
     );
     entry.insert("storage".to_string(), Value::Object(storage_map));
 
-    alloc.insert(addr_key.to_string(), Value::Object(entry));
+    alloc.insert(addr_key, Value::Object(entry));
 }
 
 /// Format a storage slot key as a full 32-byte hex string.
@@ -122,7 +132,7 @@ mod tests {
             chain: ChainConfig { chain_id: 1234 },
             contracts: ContractsConfig {
                 admin_proxy: Some(AdminProxyConfig {
-                    address: address!("000000000000000000000000000000000000Ad00"),
+                    address: address!("000000000000000000000000000000000000ad00"),
                     owner: address!("f39Fd6e51aad88F6F4ce6aB8827279cffFb92266"),
                 }),
                 fee_vault: None,
@@ -139,10 +149,10 @@ mod tests {
     fn alloc_json_structure() {
         let alloc = build_alloc(&test_config());
         let obj = alloc.as_object().unwrap();
-        assert!(obj.contains_key("000000000000000000000000000000000000Ad00"));
+        assert!(obj.contains_key("000000000000000000000000000000000000ad00"));
 
         let entry = obj
-            .get("000000000000000000000000000000000000Ad00")
+            .get("000000000000000000000000000000000000ad00")
             .unwrap()
             .as_object()
             .unwrap();
@@ -157,7 +167,7 @@ mod tests {
         let storage = alloc
             .as_object()
             .unwrap()
-            .get("000000000000000000000000000000000000Ad00")
+            .get("000000000000000000000000000000000000ad00")
             .unwrap()
             .get("storage")
             .unwrap()
@@ -188,7 +198,7 @@ mod tests {
 
     #[test]
     fn merge_detects_collision() {
-        let genesis = r#"{"alloc":{"000000000000000000000000000000000000Ad00":{"balance":"0x0"}}}"#;
+        let genesis = r#"{"alloc":{"000000000000000000000000000000000000ad00":{"balance":"0x0"}}}"#;
         let tmp = tempfile::NamedTempFile::new().unwrap();
         std::fs::write(tmp.path(), genesis).unwrap();
 
@@ -202,11 +212,32 @@ mod tests {
 
     #[test]
     fn merge_force_overwrites() {
-        let genesis = r#"{"alloc":{"000000000000000000000000000000000000Ad00":{"balance":"0x0"}}}"#;
+        let genesis = r#"{"alloc":{"000000000000000000000000000000000000ad00":{"balance":"0x0"}}}"#;
         let tmp = tempfile::NamedTempFile::new().unwrap();
         std::fs::write(tmp.path(), genesis).unwrap();
 
         let result = merge_into(&test_config(), tmp.path(), true);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn merge_detects_collision_with_0x_prefix() {
+        let genesis =
+            r#"{"alloc":{"0x000000000000000000000000000000000000ad00":{"balance":"0x0"}}}"#;
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(tmp.path(), genesis).unwrap();
+
+        let result = merge_into(&test_config(), tmp.path(), false);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn merge_detects_collision_with_mixed_case() {
+        let genesis = r#"{"alloc":{"000000000000000000000000000000000000AD00":{"balance":"0x0"}}}"#;
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(tmp.path(), genesis).unwrap();
+
+        let result = merge_into(&test_config(), tmp.path(), false);
+        assert!(result.is_err());
     }
 }
