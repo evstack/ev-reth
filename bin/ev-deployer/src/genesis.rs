@@ -79,7 +79,7 @@ fn insert_contract(alloc: &mut Map<String, Value>, contract: &GenesisContract) {
     );
     entry.insert("storage".to_string(), Value::Object(storage_map));
 
-    alloc.insert(addr_key.to_string(), Value::Object(entry));
+    alloc.insert(addr_key, Value::Object(entry));
 }
 
 /// Format a storage slot key as a full 32-byte hex string.
@@ -183,7 +183,8 @@ mod tests {
 
     #[test]
     fn merge_detects_collision_with_0x_prefix() {
-        let genesis = r#"{"alloc":{"0x000000000000000000000000000000000000ad00":{"balance":"0x0"}}}"#;
+        let genesis =
+            r#"{"alloc":{"0x000000000000000000000000000000000000ad00":{"balance":"0x0"}}}"#;
         let tmp = tempfile::NamedTempFile::new().unwrap();
         std::fs::write(tmp.path(), genesis).unwrap();
 
