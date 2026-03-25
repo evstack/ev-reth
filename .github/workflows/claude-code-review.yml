@@ -54,9 +54,6 @@ jobs:
           # Optional: Use sticky comments to make Claude reuse the same comment on subsequent pushes to the same PR
           use_sticky_comment: true
 
-          # Allow dependabot PRs to be reviewed
-          allowed_bots: "dependabot[bot]"
-
           # Optional: Customize review based on file types
           # direct_prompt: |
           #   Review this PR focusing on:
