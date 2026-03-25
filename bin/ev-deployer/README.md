@@ -69,6 +69,12 @@ See [`examples/devnet.toml`](examples/devnet.toml) for a complete example with a
 |-----------|---------|----------------------|
 | `address` | address | Address to deploy at |
 
+#### `[contracts.permit2]`
+
+| Field     | Type    | Description                                              |
+|-----------|---------|----------------------------------------------------------|
+| `address` | address | Address to deploy at (canonical: `0x000000000022D473...`) |
+
 #### `[contracts.protocol_fee]`
 
 | Field              | Type    | Description                                       |
@@ -134,6 +140,7 @@ Output:
   "mailbox": "0x0000000000000000000000000000000000001200",
   "merkle_tree_hook": "0x0000000000000000000000000000000000001100",
   "noop_ism": "0x0000000000000000000000000000000000001300",
+  "permit2": "0x000000000022D473030F116dDEE9F6B43aC78BA3",
   "protocol_fee": "0x0000000000000000000000000000000000001400"
 }
 ```
@@ -153,6 +160,7 @@ ev-deployer compute-address --config deploy.toml --contract admin_proxy
 | `mailbox`          | Hyperlane core messaging hub                            |
 | `merkle_tree_hook` | Hyperlane required hook (Merkle tree for messages)      |
 | `noop_ism`         | Hyperlane ISM that accepts all messages                 |
+| `permit2`          | Uniswap canonical token approval manager                |
 | `protocol_fee`     | Hyperlane post-dispatch hook that charges a protocol fee|
 
 Runtime bytecodes are embedded in the binary — no external toolchain is needed at deploy time.

@@ -45,6 +45,10 @@ chain_id = 0
 # [contracts.noop_ism]
 # address = "0x0000000000000000000000000000000000001300"
 
+# Permit2: Uniswap canonical token approval manager.
+# [contracts.permit2]
+# address = "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+
 # ProtocolFee: Hyperlane post-dispatch hook that charges a protocol fee.
 # [contracts.protocol_fee]
 # address = "0x0000000000000000000000000000000000001400"
