@@ -1,0 +1,54 @@
+# EV Deployer configuration
+# See: bin/ev-deployer/README.md
+
+[chain]
+# The chain ID for the target network.
+chain_id = 0
+
+# ── Contracts ────────────────────────────────────────────
+# Uncomment and configure the contracts you want to include
+# in the genesis alloc.
+
+# AdminProxy: transparent proxy with owner-based access control.
+# The owner address is stored in slot 0.
+# [contracts.admin_proxy]
+# address = "0x000000000000000000000000000000000000Ad00"
+# owner = "0x..."
+
+# FeeVault: fee vault with Hyperlane bridging support.
+# [contracts.fee_vault]
+# address = "0x000000000000000000000000000000000000FE00"
+# owner = "0x..."
+# destination_domain = 0
+# recipient_address = "0x0000000000000000000000000000000000000000000000000000000000000000"
+# minimum_amount = 0
+# call_fee = 0
+# bridge_share_bps = 10000
+# other_recipient = "0x0000000000000000000000000000000000000000"
+# hyp_native_minter = "0x0000000000000000000000000000000000000000"
+
+# Mailbox: Hyperlane core messaging hub.
+# [contracts.mailbox]
+# address = "0x0000000000000000000000000000000000001200"
+# owner = "0x..."
+# default_ism = "0x0000000000000000000000000000000000000000"
+# default_hook = "0x0000000000000000000000000000000000000000"
+# required_hook = "0x0000000000000000000000000000000000000000"
+
+# MerkleTreeHook: Hyperlane required hook (Merkle tree for messages).
+# [contracts.merkle_tree_hook]
+# address = "0x0000000000000000000000000000000000001100"
+# owner = "0x..."
+# mailbox = "0x0000000000000000000000000000000000001200"
+
+# NoopIsm: Hyperlane ISM that accepts all messages.
+# [contracts.noop_ism]
+# address = "0x0000000000000000000000000000000000001300"
+
+# ProtocolFee: Hyperlane post-dispatch hook that charges a protocol fee.
+# [contracts.protocol_fee]
+# address = "0x0000000000000000000000000000000000001400"
+# owner = "0x..."
+# max_protocol_fee = 1000000000000000000
+# protocol_fee = 0
+# beneficiary = "0x..."

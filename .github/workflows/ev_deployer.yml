@@ -3,11 +3,17 @@ name: EV Deployer CI
 on:
   push:
     paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/ev_deployer.yml'
       - 'contracts/src/**'
       - 'contracts/foundry.toml'
       - 'bin/ev-deployer/**'
   pull_request:
     paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/ev_deployer.yml'
       - 'contracts/src/**'
       - 'contracts/foundry.toml'
       - 'bin/ev-deployer/**'

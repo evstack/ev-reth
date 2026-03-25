@@ -32,7 +32,7 @@ pass() { echo "PASS: $1"; }
 rpc_call() {
     local method="$1"
     local params="$2"
-    curl -s -X POST "$RPC_URL" \
+    curl -s --connect-timeout 5 --max-time 10 -X POST "$RPC_URL" \
         -H "Content-Type: application/json" \
         -d "{\"jsonrpc\":\"2.0\",\"method\":\"$method\",\"params\":$params,\"id\":1}" \
     | python3 -c "import sys,json; print(json.load(sys.stdin)['result'])"
@@ -41,7 +41,7 @@ rpc_call() {
 wait_for_rpc() {
     local max_attempts=30
     for i in $(seq 1 $max_attempts); do
-        if curl -s -X POST "$RPC_URL" \
+        if curl -s --connect-timeout 1 --max-time 2 -X POST "$RPC_URL" \
             -H "Content-Type: application/json" \
             -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
             2>/dev/null | grep -q result; then
@@ -76,7 +76,7 @@ echo "=== Generating genesis with ev-deployer ==="
 
 echo "Genesis written to $GENESIS"
 
-# Quick sanity: addresses should be in the alloc
+# Quick sanity: address should be in the alloc
 grep -q "000000000000000000000000000000000000Ad00" "$GENESIS" \
     || fail "AdminProxy address not found in genesis"
 grep -q "000000000000000000000000000000000000FE00" "$GENESIS" \
