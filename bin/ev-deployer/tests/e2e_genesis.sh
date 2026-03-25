@@ -77,13 +77,13 @@ echo "=== Generating genesis with ev-deployer ==="
 echo "Genesis written to $GENESIS"
 
 # Quick sanity: address should be in the alloc
-grep -q "000000000000000000000000000000000000Ad00" "$GENESIS" \
+grep -qi "000000000000000000000000000000000000Ad00" "$GENESIS" \
     || fail "AdminProxy address not found in genesis"
-grep -q "000000000000000000000000000000000000FE00" "$GENESIS" \
+grep -qi "000000000000000000000000000000000000FE00" "$GENESIS" \
     || fail "FeeVault address not found in genesis"
-grep -q "0000000000000000000000000000000000001100" "$GENESIS" \
+grep -qi "0000000000000000000000000000000000001100" "$GENESIS" \
     || fail "MerkleTreeHook address not found in genesis"
-grep -q "000000000022D473030F116dDEE9F6B43aC78BA3" "$GENESIS" \
+grep -qi "000000000022D473030F116dDEE9F6B43aC78BA3" "$GENESIS" \
     || fail "Permit2 address not found in genesis"
 
 pass "genesis contains all contract addresses"
