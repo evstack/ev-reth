@@ -79,6 +79,7 @@ See [`examples/devnet.toml`](examples/devnet.toml) for a complete example with a
 | `protocol_fee`     | u64     | Protocol fee charged per dispatch in wei (default: 0) |
 | `beneficiary`      | address | Beneficiary address that receives collected fees (default: zero) |
 
+
 ## Usage
 
 ### Generate a starter config
