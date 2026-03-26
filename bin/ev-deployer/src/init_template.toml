@@ -1,0 +1,16 @@
+# EV Deployer configuration
+# See: bin/ev-deployer/README.md
+
+[chain]
+# The chain ID for the target network.
+chain_id = 0
+
+# ── Contracts ────────────────────────────────────────────
+# Uncomment and configure the contracts you want to include
+# in the genesis alloc.
+
+# AdminProxy: transparent proxy with owner-based access control.
+# The owner address is stored in slot 0.
+# [contracts.admin_proxy]
+# address = "0x000000000000000000000000000000000000Ad00"
+# owner = "0x..."
