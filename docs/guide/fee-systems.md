@@ -5,7 +5,7 @@
 This guide connects three related components that move or manage native token value:
 
 - Base fee redirect: redirects EIP-1559 base fees to a configured sink instead of burning them.
-- FeeVault: a contract that accumulates native tokens and can split and bridge them.
+- FeeVault: a contract that accumulates native tokens and can split and distribute them.
 - Native minting precompile: a privileged mint/burn interface for controlled supply changes.
 
 These components are independent but commonly deployed together. The base fee redirect is a value transfer, not minting. Native minting is explicit supply change and should remain tightly controlled.
@@ -33,13 +33,13 @@ See `docs/adr/ADR-0001-base-fee-redirect.md` for implementation details.
 
 ## FeeVault (contract level)
 
-**Purpose**: Accumulate native tokens and split them between a bridge destination and a secondary recipient.
+**Purpose**: Accumulate native tokens and split them between a bridge recipient and a secondary recipient.
 
 **Mechanics**:
 
 - Receives base fees when `baseFeeSink` is set to the FeeVault address.
-- Anyone can trigger `sendToCelestia` (or equivalent) once the minimum threshold is met.
-- Splits balance by `bridgeShareBps`, sends the bridge share to `HypNativeMinter`, and transfers the remainder to `otherRecipient`.
+- Anyone can trigger `distribute()` once the minimum threshold is met.
+- Splits balance by `bridgeShareBps`, sends the bridge share to `bridgeRecipient`, and transfers the remainder to `otherRecipient`.
 
 **Why it pairs with base fee redirect**: the redirect funnels base fees into the FeeVault automatically, turning burned fees into recoverable value for treasury or bridging.
 
