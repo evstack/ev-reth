@@ -5,7 +5,7 @@
 This guide connects three related components that move or manage native token value:
 
 - Base fee redirect: redirects EIP-1559 base fees to a configured sink instead of burning them.
-- FeeVault: a contract that accumulates native tokens and can split and bridge them.
+- FeeVault: a contract that accumulates native tokens and can split and distribute them.
 - Native minting precompile: a privileged mint/burn interface for controlled supply changes.
 
 These components are independent but commonly deployed together. The base fee redirect is a value transfer, not minting. Native minting is explicit supply change and should remain tightly controlled.
@@ -31,17 +31,17 @@ These components are independent but commonly deployed together. The base fee re
 
 See `docs/adr/ADR-0001-base-fee-redirect.md` for implementation details.
 
-## FeeVault (contract level)
+## FeeVault (contract level, optional)
 
-**Purpose**: Accumulate native tokens and split them between a bridge destination and a secondary recipient.
+**Purpose**: Accumulate native tokens and split them between two configurable recipients.
+
+FeeVault is **optional**. The base fee redirect works with any address — if fees should go to a single destination, point `baseFeeSink` at an EOA or multisig and skip FeeVault entirely. Use FeeVault when you need automatic on-chain splitting, minimum thresholds, or keeper incentives.
 
 **Mechanics**:
 
 - Receives base fees when `baseFeeSink` is set to the FeeVault address.
-- Anyone can trigger `sendToCelestia` (or equivalent) once the minimum threshold is met.
-- Splits balance by `bridgeShareBps`, sends the bridge share to `HypNativeMinter`, and transfers the remainder to `otherRecipient`.
-
-**Why it pairs with base fee redirect**: the redirect funnels base fees into the FeeVault automatically, turning burned fees into recoverable value for treasury or bridging.
+- Anyone can trigger `distribute()` once the minimum threshold is met.
+- Splits balance by `bridgeShareBps`, sends the bridge share to `bridgeRecipient`, and transfers the remainder to `otherRecipient`.
 
 See `docs/contracts/fee_vault.md` for parameters and deployment details.
 
@@ -69,17 +69,19 @@ See `docs/adr/ADR-0002-native-minting-precompile.md` for the full interface and 
 
 ## How They Fit Together
 
-1. **Base fee redirect** credits base fees to a sink address instead of burning them.
-2. **FeeVault** can be that sink, so base fees accumulate in a contract with deterministic split logic.
+1. **Base fee redirect** credits base fees to a sink address instead of burning them. The sink can be any address (EOA, multisig, or contract).
+2. **FeeVault** is one option for that sink when you need automatic splitting between two recipients. If fees go to a single destination, skip it.
 3. **Native minting** is separate and optional; it is used for controlled supply changes (bootstrapping liquidity, treasury operations), not for redirecting fees.
 
 In other words, base fee redirect and FeeVault are about re-routing existing value, while native minting explicitly changes total supply. Keep those responsibilities separate and limit minting access to minimize systemic risk.
 
-## Suggested Deployment Pattern
+## Suggested Deployment Patterns
 
-- Set `baseFeeSink` to the FeeVault address.
-- Use `AdminProxy` as the `mintAdmin` and FeeVault owner if you need a safe, upgradeable admin.
-- Activate both features at a planned height for existing networks.
+**Simple (no FeeVault):** Set `baseFeeSink` to an EOA or multisig. Fees accumulate there directly.
+
+**With splitting (FeeVault):** Set `baseFeeSink` to the FeeVault address. Configure the split between `bridgeRecipient` and `otherRecipient`. Use `AdminProxy` as the FeeVault owner if you need a safe, upgradeable admin.
+
+Both patterns can be combined with native minting if needed. Activate features at a planned height for existing networks.
 
 References:
 
