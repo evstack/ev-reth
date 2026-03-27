@@ -19,8 +19,7 @@ contract DeployFeeVault is Script {
         vm.startBroadcast();
 
         // Deploy FeeVault with CREATE2
-        FeeVault feeVault =
-            new FeeVault{salt: salt}(owner, minimumAmount, callFee, bridgeShareBps, otherRecipient);
+        FeeVault feeVault = new FeeVault{salt: salt}(owner, minimumAmount, callFee, bridgeShareBps, otherRecipient);
 
         vm.stopBroadcast();
 
@@ -48,8 +47,7 @@ contract ComputeFeeVaultAddress is Script {
 
         bytes32 initCodeHash = keccak256(
             abi.encodePacked(
-                type(FeeVault).creationCode,
-                abi.encode(owner, minimumAmount, callFee, bridgeShareBps, otherRecipient)
+                type(FeeVault).creationCode, abi.encode(owner, minimumAmount, callFee, bridgeShareBps, otherRecipient)
             )
         );
 

@@ -38,9 +38,7 @@ abstract contract FeeVaultAllocBase is Script {
             bytes32 initCodeHash = keccak256(
                 abi.encodePacked(
                     type(FeeVault).creationCode,
-                    abi.encode(
-                        cfg.owner, cfg.minimumAmount, cfg.callFee, cfg.bridgeShareBpsRaw, cfg.otherRecipient
-                    )
+                    abi.encode(cfg.owner, cfg.minimumAmount, cfg.callFee, cfg.bridgeShareBpsRaw, cfg.otherRecipient)
                 )
             );
             cfg.feeVaultAddress = address(
@@ -82,8 +80,7 @@ contract GenerateFeeVaultAlloc is FeeVaultAllocBase {
         Config memory cfg = loadConfig();
         bytes memory runtimeCode = type(FeeVault).runtimeCode;
 
-        (bytes32 slot0, bytes32 slot1, bytes32 slot2, bytes32 slot3, bytes32 slot4, bytes32 slot5) =
-            computeSlots(cfg);
+        (bytes32 slot0, bytes32 slot1, bytes32 slot2, bytes32 slot3, bytes32 slot4, bytes32 slot5) = computeSlots(cfg);
 
         console.log("========== FeeVault Genesis Alloc ==========");
         console.log("FeeVault address:", cfg.feeVaultAddress);
@@ -135,8 +132,7 @@ contract GenerateFeeVaultAllocJSON is FeeVaultAllocBase {
         Config memory cfg = loadConfig();
         bytes memory runtimeCode = type(FeeVault).runtimeCode;
 
-        (bytes32 slot0, bytes32 slot1, bytes32 slot2, bytes32 slot3, bytes32 slot4, bytes32 slot5) =
-            computeSlots(cfg);
+        (bytes32 slot0, bytes32 slot1, bytes32 slot2, bytes32 slot3, bytes32 slot4, bytes32 slot5) = computeSlots(cfg);
 
         string memory json = string(
             abi.encodePacked(
