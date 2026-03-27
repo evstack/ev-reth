@@ -2,11 +2,21 @@
 
 ## Overview
 
-The `FeeVault` is a specialized smart contract designed to accumulate native tokens (gas tokens) and automatically split them between a bridge recipient and a secondary recipient.
+The `FeeVault` is an **optional** smart contract for chains that need on-chain fee splitting logic. It accumulates native tokens (gas tokens) and automatically splits them between two configurable recipients.
+
+## When to Use FeeVault
+
+The base fee redirect (`baseFeeSink`) works with any address. You **do not need** FeeVault if fees should go to a single destination — just point `baseFeeSink` at an EOA or multisig.
+
+FeeVault adds value when you need:
+
+- **Splitting**: Automatically divide fees between two recipients (e.g., 80% to a bridge, 20% to treasury).
+- **Minimum threshold**: Only distribute when enough has accumulated to be economically worthwhile.
+- **Keeper incentive**: A `callFee` rewards anyone who triggers the distribution, removing the need for a centralized operator.
 
 ## Use Case
 
-This contract serves as a **fee sink** and **distribution mechanism** for a rollup or chain that wants to redirect collected fees (e.g., EIP-1559 base fees) to configured recipients while retaining a portion for other purposes (e.g., developer rewards, treasury).
+This contract serves as a **fee sink** and **distribution mechanism** for a rollup or chain that wants to redirect collected fees (e.g., EIP-1559 base fees) to multiple recipients.
 
 1. **Fee Accumulation**: The contract receives funds from:
     - **Base Fee Redirect**: The chain's execution layer (e.g., `ev-revm`) can be configured to direct burned base fees directly to this contract's address.

@@ -8,14 +8,17 @@ The AdminProxy contract solves the bootstrap problem for admin addresses at gene
 
 See [AdminProxy documentation](../docs/contracts/admin_proxy.md) for detailed setup and usage instructions.
 
-## FeeVault
+## FeeVault (optional)
 
-The FeeVault contract collects base fees and distributes them between a bridge recipient and an optional secondary recipient. It supports:
+The FeeVault is an **optional** contract for chains that need on-chain fee splitting logic. The base fee redirect (`baseFeeSink`) works with any address — an EOA or multisig is sufficient if you just need fees sent to a single destination.
 
-- Configurable fee splitting between bridge and another recipient
-- Minimum amount thresholds before distributing
-- Call fee for incentivizing distribution calls
-- Owner-controlled configuration
+FeeVault is useful when you need:
+
+- **Automatic splitting** of accumulated fees between two recipients (e.g., 80% to a bridge contract, 20% to a treasury)
+- **Minimum threshold** to avoid distributing uneconomically small amounts
+- **Keeper incentive** (`callFee`) so anyone can trigger distribution and get compensated
+
+If your chain only needs fees routed to a single address, skip FeeVault and point `baseFeeSink` directly at that address.
 
 ## Prerequisites
 
