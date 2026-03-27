@@ -1,5 +1,5 @@
 ---
-description: This skill should be used when the user asks about "ev-reth contracts", "FeeVault", "AdminProxy", "fee bridging to Celestia", "Hyperlane integration", "Foundry deployment scripts", "genesis allocations", or wants to understand how base fees are redirected and bridged.
+description: This skill should be used when the user asks about "ev-reth contracts", "FeeVault", "AdminProxy", "fee distribution", "Foundry deployment scripts", "genesis allocations", or wants to understand how base fees are redirected and distributed.
 ---
 
 # Contracts Onboarding
@@ -9,13 +9,13 @@ description: This skill should be used when the user asks about "ev-reth contrac
 The contracts live in `contracts/` and use Foundry for development. There are two main contracts:
 
 1. **AdminProxy** (`src/AdminProxy.sol`) - Bootstrap contract for admin addresses at genesis
-2. **FeeVault** (`src/FeeVault.sol`) - Collects base fees, bridges to Celestia via Hyperlane (cross-chain messaging protocol)
+2. **FeeVault** (`src/FeeVault.sol`) - Collects base fees and distributes them between configured recipients
 
 ## Key Files
 
 ### Contract Sources
 - `contracts/src/AdminProxy.sol` - Transparent proxy pattern for admin control
-- `contracts/src/FeeVault.sol` - Fee collection and bridging logic
+- `contracts/src/FeeVault.sol` - Fee collection and distribution logic
 
 ### Deployment Scripts
 - `contracts/script/DeployFeeVault.s.sol` - FeeVault deployment with CREATE2
@@ -34,7 +34,7 @@ The AdminProxy contract provides a bootstrap mechanism for setting admin address
 ### FeeVault
 The FeeVault serves as the destination for redirected base fees (instead of burning them). Key responsibilities:
 - Receive base fees from block production
-- Bridge accumulated fees to Celestia via Hyperlane
+- Distribute accumulated fees between configured recipients
 - Manage withdrawal permissions
 
 ## Connection to Rust Code
