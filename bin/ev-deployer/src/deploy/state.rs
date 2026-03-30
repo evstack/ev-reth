@@ -86,10 +86,12 @@ impl DeployState {
         Ok(state)
     }
 
-    /// Save state to a JSON file.
+    /// Save state to a JSON file atomically (write to tmp, then rename).
     pub(crate) fn save(&self, path: &Path) -> eyre::Result<()> {
         let json = serde_json::to_string_pretty(self)?;
-        std::fs::write(path, json)?;
+        let tmp = path.with_extension("tmp");
+        std::fs::write(&tmp, &json)?;
+        std::fs::rename(&tmp, path)?;
         Ok(())
     }
 
