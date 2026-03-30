@@ -105,7 +105,7 @@ alloy-json-rpc = { version = "1.6.3", default-features = false }
 alloy-rpc-types-eth = { version = "1.6.3", default-features = false }
 alloy-rpc-types-engine = { version = "1.6.3", default-features = false }
 alloy-signer = { version = "1.6.3", default-features = false }
-alloy-signer-local = { version = "1.6.3", features = ["mnemonic"] }
+alloy-signer-local = { version = "1.8.3", features = ["mnemonic"] }
 alloy-serde = { version = "1.6.3", default-features = false }
 alloy-primitives = { version = "1.5.6", default-features = false }
 alloy-consensus = { version = "1.6.3", default-features = false }
