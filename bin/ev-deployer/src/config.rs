@@ -7,7 +7,6 @@ use std::path::Path;
 
 /// Top-level deploy configuration.
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 pub(crate) struct DeployConfig {
     /// Chain configuration.
     pub chain: ChainConfig,
@@ -18,7 +17,6 @@ pub(crate) struct DeployConfig {
 
 /// Chain-level settings.
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 pub(crate) struct ChainConfig {
     /// The chain ID.
     pub chain_id: u64,
