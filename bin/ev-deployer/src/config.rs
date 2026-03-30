@@ -1,11 +1,11 @@
 //! TOML config types, parsing, and validation.
 
 use alloy_primitives::Address;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, path::Path};
 
 /// Top-level deploy configuration.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub(crate) struct DeployConfig {
     /// Chain configuration.
     pub chain: ChainConfig,
@@ -15,14 +15,14 @@ pub(crate) struct DeployConfig {
 }
 
 /// Chain-level settings.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub(crate) struct ChainConfig {
     /// The chain ID.
     pub chain_id: u64,
 }
 
 /// All contract configurations.
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub(crate) struct ContractsConfig {
     /// `AdminProxy` contract config (optional).
     pub admin_proxy: Option<AdminProxyConfig>,
@@ -35,29 +35,33 @@ impl ContractsConfig {
     fn all_addresses(&self) -> Vec<Address> {
         let mut addrs = Vec::new();
         if let Some(ref ap) = self.admin_proxy {
-            addrs.push(ap.address);
+            if let Some(addr) = ap.address {
+                addrs.push(addr);
+            }
         }
         if let Some(ref p2) = self.permit2 {
-            addrs.push(p2.address);
+            if let Some(addr) = p2.address {
+                addrs.push(addr);
+            }
         }
         addrs
     }
 }
 
 /// `AdminProxy` configuration.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub(crate) struct AdminProxyConfig {
-    /// Address to deploy at.
-    pub address: Address,
+    /// Address to deploy at (required for genesis, ignored for deploy).
+    pub address: Option<Address>,
     /// Owner address.
     pub owner: Address,
 }
 
 /// `Permit2` configuration (Uniswap token approval manager).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub(crate) struct Permit2Config {
-    /// Address to deploy at.
-    pub address: Address,
+    /// Address to deploy at (required for genesis, ignored for deploy).
+    pub address: Option<Address>,
 }
 
 impl DeployConfig {
@@ -70,7 +74,7 @@ impl DeployConfig {
     }
 
     /// Validate config values.
-    fn validate(&self) -> eyre::Result<()> {
+    pub(crate) fn validate(&self) -> eyre::Result<()> {
         if let Some(ref ap) = self.contracts.admin_proxy {
             eyre::ensure!(
                 !ap.owner.is_zero(),
@@ -79,10 +83,12 @@ impl DeployConfig {
         }
 
         if let Some(ref p2) = self.contracts.permit2 {
-            eyre::ensure!(
-                !p2.address.is_zero(),
-                "permit2.address must not be the zero address"
-            );
+            if let Some(addr) = p2.address {
+                eyre::ensure!(
+                    !addr.is_zero(),
+                    "permit2.address must not be the zero address"
+                );
+            }
         }
 
         // Detect duplicate deploy addresses across all contracts.
@@ -91,6 +97,23 @@ impl DeployConfig {
             eyre::ensure!(seen.insert(addr), "duplicate deploy address: {addr}");
         }
 
+        Ok(())
+    }
+
+    /// Additional validation for genesis mode: all addresses must be specified.
+    pub(crate) fn validate_for_genesis(&self) -> eyre::Result<()> {
+        if let Some(ref ap) = self.contracts.admin_proxy {
+            eyre::ensure!(
+                ap.address.is_some(),
+                "admin_proxy.address is required for genesis mode"
+            );
+        }
+        if let Some(ref p2) = self.contracts.permit2 {
+            eyre::ensure!(
+                p2.address.is_some(),
+                "permit2.address is required for genesis mode"
+            );
+        }
         Ok(())
     }
 }
@@ -203,6 +226,24 @@ address = "0x000000000022D473030F116dDEE9F6B43aC78BA3"
         config.validate().unwrap();
         assert!(config.contracts.admin_proxy.is_some());
         assert!(config.contracts.permit2.is_some());
+    }
+
+    #[test]
+    fn reject_missing_address_for_genesis() {
+        use alloy_primitives::address;
+
+        let config = DeployConfig {
+            chain: ChainConfig { chain_id: 1 },
+            contracts: ContractsConfig {
+                admin_proxy: Some(AdminProxyConfig {
+                    address: None,
+                    owner: address!("f39Fd6e51aad88F6F4ce6aB8827279cffFb92266"),
+                }),
+                permit2: None,
+            },
+        };
+        config.validate().unwrap(); // base validation passes
+        assert!(config.validate_for_genesis().is_err());
     }
 
     #[test]

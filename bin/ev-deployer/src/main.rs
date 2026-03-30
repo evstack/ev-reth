@@ -73,6 +73,7 @@ fn main() -> eyre::Result<()> {
             addresses_out,
         } => {
             let cfg = config::DeployConfig::load(&config_path)?;
+            cfg.validate_for_genesis()?;
 
             let result = if let Some(ref genesis_path) = merge_into {
                 genesis::merge_into(&cfg, genesis_path, force)?
@@ -117,14 +118,14 @@ fn main() -> eyre::Result<()> {
                     .contracts
                     .admin_proxy
                     .as_ref()
-                    .map(|c| c.address)
-                    .ok_or_else(|| eyre::eyre!("admin_proxy not configured"))?,
+                    .and_then(|c| c.address)
+                    .ok_or_else(|| eyre::eyre!("admin_proxy not configured or address not set"))?,
                 "permit2" => cfg
                     .contracts
                     .permit2
                     .as_ref()
-                    .map(|c| c.address)
-                    .ok_or_else(|| eyre::eyre!("permit2 not configured"))?,
+                    .and_then(|c| c.address)
+                    .ok_or_else(|| eyre::eyre!("permit2 not configured or address not set"))?,
                 other => eyre::bail!("unknown contract: {other}"),
             };
 

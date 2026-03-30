@@ -8,17 +8,21 @@ pub(crate) fn build_manifest(config: &DeployConfig) -> Value {
     let mut manifest = Map::new();
 
     if let Some(ref ap) = config.contracts.admin_proxy {
-        manifest.insert(
-            "admin_proxy".to_string(),
-            Value::String(format!("{}", ap.address)),
-        );
+        if let Some(addr) = ap.address {
+            manifest.insert(
+                "admin_proxy".to_string(),
+                Value::String(format!("{}", addr)),
+            );
+        }
     }
 
     if let Some(ref p2) = config.contracts.permit2 {
-        manifest.insert(
-            "permit2".to_string(),
-            Value::String(format!("{}", p2.address)),
-        );
+        if let Some(addr) = p2.address {
+            manifest.insert(
+                "permit2".to_string(),
+                Value::String(format!("{}", addr)),
+            );
+        }
     }
 
     Value::Object(manifest)
