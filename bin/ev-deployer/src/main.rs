@@ -1,4 +1,4 @@
-//! EV Deployer — genesis alloc generator for ev-reth contracts.
+//! EV Deployer — genesis alloc generator and live deployer for ev-reth contracts.
 
 mod config;
 mod contracts;
@@ -9,11 +9,11 @@ mod output;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
-/// EV Deployer: generate genesis alloc entries for ev-reth contracts.
+/// EV Deployer: generate genesis alloc or deploy ev-reth contracts.
 #[derive(Parser)]
 #[command(
     name = "ev-deployer",
-    about = "Generate genesis alloc for ev-reth contracts"
+    about = "Generate genesis alloc or deploy ev-reth contracts"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -45,6 +45,28 @@ enum Command {
         /// Allow overwriting existing addresses when merging.
         #[arg(long, default_value_t = false)]
         force: bool,
+
+        /// Write an address manifest to this file.
+        #[arg(long)]
+        addresses_out: Option<PathBuf>,
+    },
+    /// Deploy contracts to a live chain via CREATE2.
+    Deploy {
+        /// Path to the deploy TOML config.
+        #[arg(long)]
+        config: PathBuf,
+
+        /// RPC URL of the target chain.
+        #[arg(long, env = "EV_DEPLOYER_RPC_URL")]
+        rpc_url: String,
+
+        /// Hex-encoded private key for signing transactions.
+        #[arg(long, env = "EV_DEPLOYER_PRIVATE_KEY")]
+        private_key: String,
+
+        /// Path to the state file (created if absent, resumed if present).
+        #[arg(long)]
+        state: PathBuf,
 
         /// Write an address manifest to this file.
         #[arg(long)]
@@ -97,6 +119,26 @@ fn main() -> eyre::Result<()> {
                 std::fs::write(addr_path, &manifest_json)?;
                 eprintln!("Wrote address manifest to {}", addr_path.display());
             }
+        }
+        Command::Deploy {
+            config: config_path,
+            rpc_url,
+            private_key,
+            state: state_path,
+            addresses_out,
+        } => {
+            let cfg = config::DeployConfig::load(&config_path)?;
+            let deployer = deploy::deployer::LiveDeployer::new(&rpc_url, &private_key)?;
+            let pipeline_cfg = deploy::pipeline::PipelineConfig {
+                config: cfg,
+                state_path,
+                addresses_out,
+            };
+
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()?
+                .block_on(deploy::pipeline::run(&pipeline_cfg, &deployer))?;
         }
         Command::Init { output } => {
             let template = include_str!("init_template.toml");
