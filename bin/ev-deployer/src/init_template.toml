@@ -6,8 +6,9 @@
 chain_id = 0
 
 # ── Contracts ────────────────────────────────────────────
-# Uncomment and configure the contracts you want to include
-# in the genesis alloc.
+# Uncomment and configure the contracts you want to deploy.
+# The `address` field is required for `genesis` mode but
+# ignored in `deploy` mode (addresses come from CREATE2).
 
 # AdminProxy: transparent proxy with owner-based access control.
 # The owner address is stored in slot 0.
