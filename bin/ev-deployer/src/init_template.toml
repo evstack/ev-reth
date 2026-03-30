@@ -14,3 +14,7 @@ chain_id = 0
 # [contracts.admin_proxy]
 # address = "0x000000000000000000000000000000000000Ad00"
 # owner = "0x..."
+
+# Permit2: Uniswap canonical token approval manager.
+# [contracts.permit2]
+# address = "0x000000000022D473030F116dDEE9F6B43aC78BA3"
