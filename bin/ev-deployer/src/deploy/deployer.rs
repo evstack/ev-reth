@@ -1,8 +1,10 @@
-//! ChainDeployer trait and LiveDeployer implementation.
+//! `ChainDeployer` trait and `LiveDeployer` implementation.
 
 use crate::deploy::create2::{build_factory_calldata, DETERMINISTIC_DEPLOYER};
-use alloy::network::EthereumWallet;
-use alloy::providers::{Provider, ProviderBuilder};
+use alloy::{
+    network::EthereumWallet,
+    providers::{Provider, ProviderBuilder},
+};
 use alloy_primitives::{Address, Bytes, B256};
 use alloy_rpc_types_eth::TransactionRequest;
 use alloy_signer_local::PrivateKeySigner;
@@ -35,7 +37,7 @@ pub(crate) struct LiveDeployer {
 }
 
 impl LiveDeployer {
-    /// Create a new LiveDeployer from an RPC URL and a hex-encoded private key.
+    /// Create a new `LiveDeployer` from an RPC URL and a hex-encoded private key.
     pub(crate) fn new(rpc_url: &str, private_key_hex: &str) -> eyre::Result<Self> {
         let key_hex = private_key_hex
             .strip_prefix("0x")

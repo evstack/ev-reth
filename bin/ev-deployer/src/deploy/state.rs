@@ -207,9 +207,8 @@ mod tests {
 
     #[test]
     fn immutability_rejects_chain_id_change() {
-        let config = test_config();
-        let state = DeployState::new(&config);
-        let mut changed = config.clone();
+        let mut changed = test_config();
+        let state = DeployState::new(&changed);
         changed.chain.chain_id = 9999;
         let err = state
             .validate_immutability(&changed)
@@ -220,9 +219,8 @@ mod tests {
 
     #[test]
     fn immutability_rejects_owner_change() {
-        let config = test_config();
-        let state = DeployState::new(&config);
-        let mut changed = config.clone();
+        let mut changed = test_config();
+        let state = DeployState::new(&changed);
         changed.contracts.admin_proxy.as_mut().unwrap().owner =
             address!("0000000000000000000000000000000000000001");
         let err = state
@@ -247,16 +245,15 @@ mod tests {
         let state = DeployState::new(&config);
 
         // Now add permit2 — this should be allowed
-        let mut extended = config.clone();
+        let mut extended = config;
         extended.contracts.permit2 = Some(Permit2Config { address: None });
         assert!(state.validate_immutability(&extended).is_ok());
     }
 
     #[test]
     fn immutability_rejects_removing_contract() {
-        let config = test_config();
-        let state = DeployState::new(&config);
-        let mut changed = config.clone();
+        let mut changed = test_config();
+        let state = DeployState::new(&changed);
         changed.contracts.admin_proxy = None;
         let err = state
             .validate_immutability(&changed)

@@ -1,10 +1,14 @@
 //! Deploy pipeline: orchestrates the full deployment flow.
 
-use crate::config::DeployConfig;
-use crate::contracts;
-use crate::deploy::create2::{compute_address, DETERMINISTIC_DEPLOYER};
-use crate::deploy::deployer::ChainDeployer;
-use crate::deploy::state::{ContractState, ContractStatus, DeployState};
+use crate::{
+    config::DeployConfig,
+    contracts,
+    deploy::{
+        create2::{compute_address, DETERMINISTIC_DEPLOYER},
+        deployer::ChainDeployer,
+        state::{ContractState, ContractStatus, DeployState},
+    },
+};
 use alloy_primitives::{Address, B256};
 use std::path::{Path, PathBuf};
 
@@ -68,12 +72,14 @@ pub(crate) async fn run(
         deploy_contract(
             deployer,
             &mut state,
-            "admin_proxy",
-            address,
-            salt,
-            &initcode,
-            contracts::admin_proxy::ADMIN_PROXY_BYTECODE,
-            &pipeline_cfg.state_path,
+            &DeployContractParams {
+                name: "admin_proxy",
+                address,
+                salt,
+                initcode: &initcode,
+                expected_runtime: contracts::admin_proxy::ADMIN_PROXY_BYTECODE,
+                state_path: &pipeline_cfg.state_path,
+            },
         )
         .await?;
     } else {
@@ -81,18 +87,10 @@ pub(crate) async fn run(
     }
 
     // ── Step 3: Deploy Permit2 ──
-    if pipeline_cfg.config.contracts.permit2.is_some() {
+    if let Some(ref p2_config) = pipeline_cfg.config.contracts.permit2 {
         eprintln!("[4/5] Deploying Permit2...");
 
-        if pipeline_cfg
-            .config
-            .contracts
-            .permit2
-            .as_ref()
-            .unwrap()
-            .address
-            .is_some()
-        {
+        if p2_config.address.is_some() {
             eprintln!("       WARN: contracts.permit2.address is ignored in deploy mode");
         }
 
@@ -104,12 +102,14 @@ pub(crate) async fn run(
         deploy_contract(
             deployer,
             &mut state,
-            "permit2",
-            address,
-            salt,
-            &initcode,
-            &expected_runtime,
-            &pipeline_cfg.state_path,
+            &DeployContractParams {
+                name: "permit2",
+                address,
+                salt,
+                initcode: &initcode,
+                expected_runtime: &expected_runtime,
+                state_path: &pipeline_cfg.state_path,
+            },
         )
         .await?;
     } else {
@@ -139,7 +139,7 @@ pub(crate) async fn run(
     Ok(())
 }
 
-/// Build AdminProxy initcode with constructor argument.
+/// Build `AdminProxy` initcode with constructor argument.
 fn build_admin_proxy_initcode(owner: Address) -> Vec<u8> {
     let mut initcode = contracts::admin_proxy::ADMIN_PROXY_INITCODE.to_vec();
     // ABI-encode the owner address as a 32-byte word and append
@@ -147,17 +147,30 @@ fn build_admin_proxy_initcode(owner: Address) -> Vec<u8> {
     initcode
 }
 
+/// Parameters for deploying a single contract.
+struct DeployContractParams<'a> {
+    name: &'a str,
+    address: Address,
+    salt: B256,
+    initcode: &'a [u8],
+    expected_runtime: &'a [u8],
+    state_path: &'a Path,
+}
+
 /// Deploy a single contract via CREATE2 with idempotency.
 async fn deploy_contract(
     deployer: &dyn ChainDeployer,
     state: &mut DeployState,
-    name: &str,
-    address: Address,
-    salt: B256,
-    initcode: &[u8],
-    expected_runtime: &[u8],
-    state_path: &Path,
+    params: &DeployContractParams<'_>,
 ) -> eyre::Result<()> {
+    let DeployContractParams {
+        name,
+        address,
+        salt,
+        initcode,
+        expected_runtime,
+        state_path,
+    } = params;
     // Check if already deployed or verified in state
     let current_status = get_contract_status(state, name);
     if current_status >= Some(ContractStatus::Deployed) {
@@ -166,32 +179,31 @@ async fn deploy_contract(
     }
 
     // Idempotency: check if code already exists on-chain
-    let existing_code = deployer.get_code(address).await?;
+    let existing_code = deployer.get_code(*address).await?;
     if !existing_code.is_empty() {
-        if existing_code.as_ref() == expected_runtime {
+        if existing_code.as_ref() == *expected_runtime {
             eprintln!("       found matching bytecode at {address}, marking as deployed");
             set_contract_state(
                 state,
                 name,
                 ContractState {
                     status: ContractStatus::Deployed,
-                    address,
+                    address: *address,
                     deploy_tx: None,
                 },
             );
             state.save(state_path)?;
             return Ok(());
-        } else {
-            eyre::bail!(
-                "unexpected bytecode at {address}: expected {} bytes, found {} bytes",
-                expected_runtime.len(),
-                existing_code.len()
-            );
         }
+        eyre::bail!(
+            "unexpected bytecode at {address}: expected {} bytes, found {} bytes",
+            expected_runtime.len(),
+            existing_code.len()
+        );
     }
 
     // Deploy
-    let receipt = deployer.deploy_create2(salt, initcode).await?;
+    let receipt = deployer.deploy_create2(*salt, initcode).await?;
     eyre::ensure!(
         receipt.success,
         "CREATE2 deploy tx reverted for {name}: tx={}",
@@ -205,7 +217,7 @@ async fn deploy_contract(
         name,
         ContractState {
             status: ContractStatus::Deployed,
-            address,
+            address: *address,
             deploy_tx: Some(receipt.tx_hash),
         },
     );
@@ -294,12 +306,10 @@ fn build_deploy_manifest(state: &DeployState) -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::*;
-    use crate::deploy::deployer::TxReceipt;
+    use crate::{config::*, deploy::deployer::TxReceipt};
     use alloy_primitives::{address, Bytes};
     use async_trait::async_trait;
-    use std::collections::HashMap;
-    use std::sync::Mutex;
+    use std::{collections::HashMap, sync::Mutex};
 
     /// Mock deployer for testing the pipeline without a live chain.
     struct MockDeployer {

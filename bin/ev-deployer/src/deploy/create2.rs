@@ -3,7 +3,7 @@
 use alloy_primitives::{keccak256, Address, Bytes, B256};
 
 /// The deterministic deployer factory address (Nick's factory).
-/// See: https://github.com/Arachnid/deterministic-deployment-proxy
+/// See: <https://github.com/Arachnid/deterministic-deployment-proxy>
 pub(crate) const DETERMINISTIC_DEPLOYER: Address = Address::new(alloy_primitives::hex!(
     "4e59b44847b379578588920ca78fbf26c0b4956c"
 ));
@@ -41,7 +41,7 @@ mod tests {
         let initcode = hex!("60006000f3");
         let addr = compute_address(salt, &initcode);
 
-        let init_hash = keccak256(&initcode);
+        let init_hash = keccak256(initcode);
         let expected = DETERMINISTIC_DEPLOYER.create2(salt, init_hash);
         assert_eq!(addr, expected);
     }
