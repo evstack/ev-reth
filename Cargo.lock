@@ -2921,12 +2921,18 @@ dependencies = [
 name = "ev-deployer"
 version = "0.1.0"
 dependencies = [
+ "alloy",
  "alloy-primitives",
+ "alloy-rpc-types-eth",
+ "alloy-signer-local",
+ "async-trait",
  "clap",
  "eyre",
+ "rand 0.10.0",
  "serde",
  "serde_json",
  "tempfile",
+ "tokio",
  "toml 0.8.23",
 ]
 
