@@ -27,13 +27,7 @@ pub(crate) struct DeployState {
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub(crate) struct AppliedIntent {
     pub chain_id: u64,
-    pub admin_proxy: Option<AppliedAdminProxy>,
     pub permit2: Option<AppliedPermit2>,
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
-pub(crate) struct AppliedAdminProxy {
-    pub owner: Address,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
@@ -42,7 +36,6 @@ pub(crate) struct AppliedPermit2 {}
 /// Per-contract deployment states.
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub(crate) struct ContractStates {
-    pub admin_proxy: Option<ContractState>,
     pub permit2: Option<ContractState>,
 }
 
@@ -112,22 +105,6 @@ impl DeployState {
             config.chain.chain_id
         );
 
-        // If admin_proxy was in the original intent, its owner must not change
-        if let Some(ref original_ap) = current.admin_proxy {
-            if let Some(ref new_ap) = config.contracts.admin_proxy {
-                eyre::ensure!(
-                    new_ap.owner == original_ap.owner,
-                    "immutability violation: admin_proxy.owner changed from {} to {}",
-                    original_ap.owner,
-                    new_ap.owner
-                );
-            } else {
-                eyre::bail!(
-                    "immutability violation: admin_proxy was configured but is now missing"
-                );
-            }
-        }
-
         // If permit2 was in the original intent, it must still be present
         if current.permit2.is_some() {
             eyre::ensure!(
@@ -144,11 +121,6 @@ impl AppliedIntent {
     fn from_config(config: &DeployConfig) -> Self {
         Self {
             chain_id: config.chain.chain_id,
-            admin_proxy: config
-                .contracts
-                .admin_proxy
-                .as_ref()
-                .map(|ap| AppliedAdminProxy { owner: ap.owner }),
             permit2: config.contracts.permit2.as_ref().map(|_| AppliedPermit2 {}),
         }
     }
@@ -158,16 +130,12 @@ impl AppliedIntent {
 mod tests {
     use super::*;
     use crate::config::*;
-    use alloy_primitives::address;
 
     fn test_config() -> DeployConfig {
         DeployConfig {
             chain: ChainConfig { chain_id: 1234 },
             contracts: ContractsConfig {
-                admin_proxy: Some(AdminProxyConfig {
-                    address: None,
-                    owner: address!("f39Fd6e51aad88F6F4ce6aB8827279cffFb92266"),
-                }),
+                admin_proxy: None,
                 permit2: Some(Permit2Config { address: None }),
             },
         }
@@ -184,7 +152,6 @@ mod tests {
     fn new_state_snapshots_intent() {
         let state = DeployState::new(&test_config());
         assert_eq!(state.applied_intent.chain_id, 1234);
-        assert!(state.applied_intent.admin_proxy.is_some());
         assert!(state.applied_intent.permit2.is_some());
     }
 
@@ -218,49 +185,32 @@ mod tests {
     }
 
     #[test]
-    fn immutability_rejects_owner_change() {
-        let mut changed = test_config();
-        let state = DeployState::new(&changed);
-        changed.contracts.admin_proxy.as_mut().unwrap().owner =
-            address!("0000000000000000000000000000000000000001");
-        let err = state
-            .validate_immutability(&changed)
-            .unwrap_err()
-            .to_string();
-        assert!(err.contains("admin_proxy.owner changed"), "{err}");
-    }
-
-    #[test]
-    fn immutability_allows_adding_new_contract() {
+    fn immutability_allows_adding_permit2() {
         let config = DeployConfig {
             chain: ChainConfig { chain_id: 1234 },
             contracts: ContractsConfig {
-                admin_proxy: Some(AdminProxyConfig {
-                    address: None,
-                    owner: address!("f39Fd6e51aad88F6F4ce6aB8827279cffFb92266"),
-                }),
+                admin_proxy: None,
                 permit2: None,
             },
         };
         let state = DeployState::new(&config);
 
-        // Now add permit2 — this should be allowed
         let mut extended = config;
         extended.contracts.permit2 = Some(Permit2Config { address: None });
         assert!(state.validate_immutability(&extended).is_ok());
     }
 
     #[test]
-    fn immutability_rejects_removing_contract() {
+    fn immutability_rejects_removing_permit2() {
         let mut changed = test_config();
         let state = DeployState::new(&changed);
-        changed.contracts.admin_proxy = None;
+        changed.contracts.permit2 = None;
         let err = state
             .validate_immutability(&changed)
             .unwrap_err()
             .to_string();
         assert!(
-            err.contains("admin_proxy was configured but is now missing"),
+            err.contains("permit2 was configured but is now missing"),
             "{err}"
         );
     }

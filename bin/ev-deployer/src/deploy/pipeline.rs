@@ -25,7 +25,7 @@ pub(crate) async fn run(
     deployer: &dyn ChainDeployer,
 ) -> eyre::Result<()> {
     // ── Step 1: Init ──
-    eprintln!("[1/5] Connecting to RPC...");
+    eprintln!("[1/4] Connecting to RPC...");
     let chain_id = deployer.chain_id().await?;
     eprintln!("       chain_id={chain_id}");
 
@@ -36,7 +36,7 @@ pub(crate) async fn run(
         chain_id
     );
 
-    eprintln!("[2/5] Verifying deterministic deployer...");
+    eprintln!("[2/4] Verifying deterministic deployer...");
     let deployer_code = deployer.get_code(DETERMINISTIC_DEPLOYER).await?;
     eyre::ensure!(
         !deployer_code.is_empty(),
@@ -58,37 +58,9 @@ pub(crate) async fn run(
 
     let salt = state.create2_salt;
 
-    // ── Step 2: Deploy AdminProxy ──
-    if let Some(ref ap_config) = pipeline_cfg.config.contracts.admin_proxy {
-        eprintln!("[3/5] Deploying AdminProxy...");
-
-        if ap_config.address.is_some() {
-            eprintln!("       WARN: contracts.admin_proxy.address is ignored in deploy mode");
-        }
-
-        let initcode = build_admin_proxy_initcode(ap_config.owner);
-        let address = compute_address(salt, &initcode);
-
-        deploy_contract(
-            deployer,
-            &mut state,
-            &DeployContractParams {
-                name: "admin_proxy",
-                address,
-                salt,
-                initcode: &initcode,
-                expected_runtime: contracts::admin_proxy::ADMIN_PROXY_BYTECODE,
-                state_path: &pipeline_cfg.state_path,
-            },
-        )
-        .await?;
-    } else {
-        eprintln!("[3/5] AdminProxy not configured, skipping");
-    }
-
-    // ── Step 3: Deploy Permit2 ──
+    // ── Step 2: Deploy Permit2 ──
     if let Some(ref p2_config) = pipeline_cfg.config.contracts.permit2 {
-        eprintln!("[4/5] Deploying Permit2...");
+        eprintln!("[3/4] Deploying Permit2...");
 
         if p2_config.address.is_some() {
             eprintln!("       WARN: contracts.permit2.address is ignored in deploy mode");
@@ -113,11 +85,11 @@ pub(crate) async fn run(
         )
         .await?;
     } else {
-        eprintln!("[4/5] Permit2 not configured, skipping");
+        eprintln!("[3/4] Permit2 not configured, skipping");
     }
 
-    // ── Step 4: Verify ──
-    eprintln!("[5/5] Verifying bytecodes...");
+    // ── Step 3: Verify ──
+    eprintln!("[4/4] Verifying bytecodes...");
     verify_all(deployer, &mut state, &pipeline_cfg.config, chain_id).await?;
     state.save(&pipeline_cfg.state_path)?;
     eprintln!("       OK");
@@ -137,14 +109,6 @@ pub(crate) async fn run(
     }
 
     Ok(())
-}
-
-/// Build `AdminProxy` initcode with constructor argument.
-fn build_admin_proxy_initcode(owner: Address) -> Vec<u8> {
-    let mut initcode = contracts::admin_proxy::ADMIN_PROXY_INITCODE.to_vec();
-    // ABI-encode the owner address as a 32-byte word and append
-    initcode.extend_from_slice(owner.into_word().as_slice());
-    initcode
 }
 
 /// Parameters for deploying a single contract.
@@ -233,23 +197,6 @@ async fn verify_all(
     _config: &DeployConfig,
     chain_id: u64,
 ) -> eyre::Result<()> {
-    if let Some(ref cs) = state.contracts.admin_proxy {
-        if cs.status == ContractStatus::Deployed {
-            let on_chain = deployer.get_code(cs.address).await?;
-            let expected = contracts::admin_proxy::ADMIN_PROXY_BYTECODE;
-            eyre::ensure!(
-                on_chain.as_ref() == expected,
-                "bytecode mismatch at {}: expected {} bytes, got {} bytes",
-                cs.address,
-                expected.len(),
-                on_chain.len()
-            );
-            let mut updated = cs.clone();
-            updated.status = ContractStatus::Verified;
-            state.contracts.admin_proxy = Some(updated);
-        }
-    }
-
     if let Some(ref cs) = state.contracts.permit2 {
         if cs.status == ContractStatus::Deployed {
             let on_chain = deployer.get_code(cs.address).await?;
@@ -271,29 +218,21 @@ async fn verify_all(
 }
 
 fn get_contract_status(state: &DeployState, name: &str) -> Option<ContractStatus> {
-    match name {
-        "admin_proxy" => state.contracts.admin_proxy.as_ref().map(|c| c.status),
-        "permit2" => state.contracts.permit2.as_ref().map(|c| c.status),
-        _ => None,
+    if name == "permit2" {
+        state.contracts.permit2.as_ref().map(|c| c.status)
+    } else {
+        None
     }
 }
 
 fn set_contract_state(state: &mut DeployState, name: &str, cs: ContractState) {
-    match name {
-        "admin_proxy" => state.contracts.admin_proxy = Some(cs),
-        "permit2" => state.contracts.permit2 = Some(cs),
-        _ => {}
+    if name == "permit2" {
+        state.contracts.permit2 = Some(cs);
     }
 }
 
 fn build_deploy_manifest(state: &DeployState) -> serde_json::Value {
     let mut manifest = serde_json::Map::new();
-    if let Some(ref cs) = state.contracts.admin_proxy {
-        manifest.insert(
-            "admin_proxy".to_string(),
-            serde_json::Value::String(format!("{}", cs.address)),
-        );
-    }
     if let Some(ref cs) = state.contracts.permit2 {
         manifest.insert(
             "permit2".to_string(),
@@ -307,7 +246,7 @@ fn build_deploy_manifest(state: &DeployState) -> serde_json::Value {
 mod tests {
     use super::*;
     use crate::{config::*, deploy::deployer::TxReceipt};
-    use alloy_primitives::{address, Bytes};
+    use alloy_primitives::Bytes;
     use async_trait::async_trait;
     use std::{collections::HashMap, sync::Mutex};
 
@@ -352,18 +291,11 @@ mod tests {
             // Simulate: place the expected runtime bytecode at the computed address
             let address = compute_address(salt, initcode);
 
-            // Determine which contract this is based on initcode
-            let runtime = if initcode.len() > contracts::admin_proxy::ADMIN_PROXY_INITCODE.len()
-                && initcode[..contracts::admin_proxy::ADMIN_PROXY_INITCODE.len()]
-                    == *contracts::admin_proxy::ADMIN_PROXY_INITCODE
-            {
-                Bytes::from_static(contracts::admin_proxy::ADMIN_PROXY_BYTECODE)
-            } else {
-                let runtime = contracts::permit2::expected_runtime_bytecode(self.chain_id, address);
-                Bytes::from(runtime)
-            };
-
-            self.code.lock().unwrap().insert(address, runtime);
+            let runtime = contracts::permit2::expected_runtime_bytecode(self.chain_id, address);
+            self.code
+                .lock()
+                .unwrap()
+                .insert(address, Bytes::from(runtime));
 
             Ok(TxReceipt {
                 tx_hash: B256::with_last_byte(0x01),
@@ -376,17 +308,14 @@ mod tests {
         DeployConfig {
             chain: ChainConfig { chain_id: 1234 },
             contracts: ContractsConfig {
-                admin_proxy: Some(AdminProxyConfig {
-                    address: None,
-                    owner: address!("f39Fd6e51aad88F6F4ce6aB8827279cffFb92266"),
-                }),
+                admin_proxy: None,
                 permit2: Some(Permit2Config { address: None }),
             },
         }
     }
 
     #[tokio::test]
-    async fn pipeline_deploys_both_contracts() {
+    async fn pipeline_deploys_permit2() {
         let mock = MockDeployer::new(1234);
         let tmp_state = tempfile::NamedTempFile::new().unwrap();
         std::fs::remove_file(tmp_state.path()).unwrap();
@@ -401,14 +330,10 @@ mod tests {
 
         let state = DeployState::load(tmp_state.path()).unwrap();
         assert_eq!(
-            state.contracts.admin_proxy.as_ref().unwrap().status,
-            ContractStatus::Verified
-        );
-        assert_eq!(
             state.contracts.permit2.as_ref().unwrap().status,
             ContractStatus::Verified
         );
-        assert_eq!(mock.deploys.lock().unwrap().len(), 2);
+        assert_eq!(mock.deploys.lock().unwrap().len(), 1);
     }
 
     #[tokio::test]
@@ -425,11 +350,11 @@ mod tests {
 
         // First run
         run(&cfg, &mock).await.unwrap();
-        assert_eq!(mock.deploys.lock().unwrap().len(), 2);
+        assert_eq!(mock.deploys.lock().unwrap().len(), 1);
 
-        // Second run — should skip both
+        // Second run — should skip
         run(&cfg, &mock).await.unwrap();
-        assert_eq!(mock.deploys.lock().unwrap().len(), 2); // no new deploys
+        assert_eq!(mock.deploys.lock().unwrap().len(), 1); // no new deploys
     }
 
     #[tokio::test]
