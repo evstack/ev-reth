@@ -15,6 +15,7 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 toml = "0.8"
 eyre = { workspace = true }
+rand = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
