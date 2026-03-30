@@ -37,7 +37,9 @@ pub(crate) struct LiveDeployer {
 impl LiveDeployer {
     /// Create a new LiveDeployer from an RPC URL and a hex-encoded private key.
     pub(crate) fn new(rpc_url: &str, private_key_hex: &str) -> eyre::Result<Self> {
-        let key_hex = private_key_hex.strip_prefix("0x").unwrap_or(private_key_hex);
+        let key_hex = private_key_hex
+            .strip_prefix("0x")
+            .unwrap_or(private_key_hex);
         let signer: PrivateKeySigner = key_hex.parse()?;
         let wallet = EthereumWallet::from(signer);
 

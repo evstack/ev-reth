@@ -1,11 +1,12 @@
 //! CREATE2 address computation.
 
-use alloy_primitives::{Address, Bytes, B256, keccak256};
+use alloy_primitives::{keccak256, Address, Bytes, B256};
 
 /// The deterministic deployer factory address (Nick's factory).
 /// See: https://github.com/Arachnid/deterministic-deployment-proxy
-pub(crate) const DETERMINISTIC_DEPLOYER: Address =
-    Address::new(alloy_primitives::hex!("4e59b44847b379578588920ca78fbf26c0b4956c"));
+pub(crate) const DETERMINISTIC_DEPLOYER: Address = Address::new(alloy_primitives::hex!(
+    "4e59b44847b379578588920ca78fbf26c0b4956c"
+));
 
 /// Compute the CREATE2 address for a contract deployed via the deterministic deployer.
 ///

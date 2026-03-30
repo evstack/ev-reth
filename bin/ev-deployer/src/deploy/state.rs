@@ -122,7 +122,9 @@ impl DeployState {
                     new_ap.owner
                 );
             } else {
-                eyre::bail!("immutability violation: admin_proxy was configured but is now missing");
+                eyre::bail!(
+                    "immutability violation: admin_proxy was configured but is now missing"
+                );
             }
         }
 
@@ -147,11 +149,7 @@ impl AppliedIntent {
                 .admin_proxy
                 .as_ref()
                 .map(|ap| AppliedAdminProxy { owner: ap.owner }),
-            permit2: config
-                .contracts
-                .permit2
-                .as_ref()
-                .map(|_| AppliedPermit2 {}),
+            permit2: config.contracts.permit2.as_ref().map(|_| AppliedPermit2 {}),
         }
     }
 }

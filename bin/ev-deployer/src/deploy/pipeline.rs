@@ -99,8 +99,7 @@ pub(crate) async fn run(
         let initcode = contracts::permit2::PERMIT2_INITCODE.to_vec();
         let address = compute_address(salt, &initcode);
 
-        let expected_runtime =
-            contracts::permit2::expected_runtime_bytecode(chain_id, address);
+        let expected_runtime = contracts::permit2::expected_runtime_bytecode(chain_id, address);
 
         deploy_contract(
             deployer,
@@ -242,8 +241,7 @@ async fn verify_all(
     if let Some(ref cs) = state.contracts.permit2 {
         if cs.status == ContractStatus::Deployed {
             let on_chain = deployer.get_code(cs.address).await?;
-            let expected =
-                contracts::permit2::expected_runtime_bytecode(chain_id, cs.address);
+            let expected = contracts::permit2::expected_runtime_bytecode(chain_id, cs.address);
             eyre::ensure!(
                 on_chain.as_ref() == expected.as_slice(),
                 "bytecode mismatch at {}: expected {} bytes, got {} bytes",
@@ -338,33 +336,22 @@ mod tests {
                 .unwrap_or_default())
         }
 
-        async fn deploy_create2(
-            &self,
-            salt: B256,
-            initcode: &[u8],
-        ) -> eyre::Result<TxReceipt> {
-            self.deploys
-                .lock()
-                .unwrap()
-                .push((salt, initcode.to_vec()));
+        async fn deploy_create2(&self, salt: B256, initcode: &[u8]) -> eyre::Result<TxReceipt> {
+            self.deploys.lock().unwrap().push((salt, initcode.to_vec()));
 
             // Simulate: place the expected runtime bytecode at the computed address
             let address = compute_address(salt, initcode);
 
             // Determine which contract this is based on initcode
-            let runtime =
-                if initcode.len() > contracts::admin_proxy::ADMIN_PROXY_INITCODE.len()
-                    && initcode[..contracts::admin_proxy::ADMIN_PROXY_INITCODE.len()]
-                        == *contracts::admin_proxy::ADMIN_PROXY_INITCODE
-                {
-                    Bytes::from_static(contracts::admin_proxy::ADMIN_PROXY_BYTECODE)
-                } else {
-                    let runtime = contracts::permit2::expected_runtime_bytecode(
-                        self.chain_id,
-                        address,
-                    );
-                    Bytes::from(runtime)
-                };
+            let runtime = if initcode.len() > contracts::admin_proxy::ADMIN_PROXY_INITCODE.len()
+                && initcode[..contracts::admin_proxy::ADMIN_PROXY_INITCODE.len()]
+                    == *contracts::admin_proxy::ADMIN_PROXY_INITCODE
+            {
+                Bytes::from_static(contracts::admin_proxy::ADMIN_PROXY_BYTECODE)
+            } else {
+                let runtime = contracts::permit2::expected_runtime_bytecode(self.chain_id, address);
+                Bytes::from(runtime)
+            };
 
             self.code.lock().unwrap().insert(address, runtime);
 
