@@ -176,6 +176,40 @@ address = "0x000000000000000000000000000000000000Ad00"
     }
 
     #[test]
+    fn permit2_only() {
+        let toml = r#"
+[chain]
+chain_id = 1
+
+[contracts.permit2]
+address = "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+"#;
+        let config: DeployConfig = toml::from_str(toml).unwrap();
+        config.validate().unwrap();
+        assert!(config.contracts.permit2.is_some());
+        assert!(config.contracts.admin_proxy.is_none());
+    }
+
+    #[test]
+    fn both_contracts() {
+        let toml = r#"
+[chain]
+chain_id = 1
+
+[contracts.admin_proxy]
+address = "0x000000000000000000000000000000000000Ad00"
+owner = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+
+[contracts.permit2]
+address = "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+"#;
+        let config: DeployConfig = toml::from_str(toml).unwrap();
+        config.validate().unwrap();
+        assert!(config.contracts.admin_proxy.is_some());
+        assert!(config.contracts.permit2.is_some());
+    }
+
+    #[test]
     fn admin_proxy_only() {
         let toml = r#"
 [chain]
