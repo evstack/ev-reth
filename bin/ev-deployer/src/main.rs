@@ -2,6 +2,7 @@
 
 mod config;
 mod contracts;
+mod deploy;
 mod genesis;
 mod output;
 
