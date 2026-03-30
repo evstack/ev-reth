@@ -2,8 +2,7 @@
 
 use alloy_primitives::Address;
 use serde::Deserialize;
-use std::collections::HashSet;
-use std::path::Path;
+use std::{collections::HashSet, path::Path};
 
 /// Top-level deploy configuration.
 #[derive(Debug, Deserialize)]
@@ -89,10 +88,7 @@ impl DeployConfig {
         // Detect duplicate deploy addresses across all contracts.
         let mut seen = HashSet::new();
         for addr in self.contracts.all_addresses() {
-            eyre::ensure!(
-                seen.insert(addr),
-                "duplicate deploy address: {addr}"
-            );
+            eyre::ensure!(seen.insert(addr), "duplicate deploy address: {addr}");
         }
 
         Ok(())
