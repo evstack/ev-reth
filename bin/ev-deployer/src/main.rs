@@ -154,11 +154,21 @@ fn main() -> eyre::Result<()> {
                 .build()?
                 .block_on(deploy::pipeline::run(&pipeline_cfg, &deployer))?;
         }
-        Command::Init { output, .. } => {
-            let template = include_str!("init_template.toml");
+        Command::Init {
+            output,
+            chain_id,
+            permit2,
+            admin_proxy_owner,
+        } => {
+            let params = init::InitParams {
+                chain_id: chain_id.unwrap_or(0),
+                permit2,
+                admin_proxy_owner: admin_proxy_owner.map(|a| format!("{a}")),
+            };
+            let template = init::generate_template(&params);
 
             if let Some(ref out_path) = output {
-                std::fs::write(out_path, template)?;
+                std::fs::write(out_path, &template)?;
                 eprintln!("Wrote config to {}", out_path.display());
             } else {
                 print!("{template}");
