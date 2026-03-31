@@ -48,8 +48,8 @@ Generate a starter config file.
 # Bare template (all contracts commented out)
 ev-deployer init
 
-# Pre-populated with chain ID and Permit2
-ev-deployer init --chain-id 42170 --permit2
+# Pre-populated with chain ID, Permit2, and deterministic deployer
+ev-deployer init --chain-id 42170 --permit2 --deterministic-deployer
 
 # Full config with all contracts
 ev-deployer init \
@@ -64,6 +64,7 @@ ev-deployer init \
 | `--output <PATH>` | Write to file instead of stdout |
 | `--chain-id <ID>` | Set the chain ID (defaults to 0) |
 | `--permit2` | Enable Permit2 with its canonical address |
+| `--deterministic-deployer` | Enable the deterministic deployer (Nick's factory) with its canonical address |
 | `--admin-proxy-owner <ADDR>` | Enable AdminProxy with the given owner |
 
 ### `genesis`
@@ -158,12 +159,19 @@ ev-deployer compute-address --config deploy.toml --contract permit2
 |-------|------|-------------|
 | `address` | address | Address to deploy at (canonical: `0x000000000022D473030F116dDEE9F6B43aC78BA3`). Required for genesis, ignored for deploy. |
 
+### `[contracts.deterministic_deployer]`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `address` | address | Address (canonical: `0x4e59b44847b379578588920cA78FbF26c0B4956C`). Required for genesis. Genesis-only — not used in deploy mode. |
+
 ## Contracts
 
 | Contract | Description |
 |----------|-------------|
 | `admin_proxy` | Transparent proxy with owner-based access control |
 | `permit2` | Uniswap canonical token approval manager (same address on all chains) |
+| `deterministic_deployer` | Nick's CREATE2 factory — genesis-only, needed on post-merge chains |
 
 Runtime bytecodes are embedded in the binary — no external toolchain is needed at deploy time.
 

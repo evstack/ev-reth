@@ -14,8 +14,14 @@ use std::path::{Path, PathBuf};
 
 /// Configuration for the deploy pipeline.
 pub(crate) struct PipelineConfig {
+    /// Parsed deployment intent loaded from the user-provided config file.
     pub config: DeployConfig,
+    /// Path to the persisted deploy state JSON file.
+    /// If the file exists, the pipeline resumes from it and reuses its CREATE2 salt.
+    /// If it does not exist, the pipeline creates it on first run.
     pub state_path: PathBuf,
+    /// Optional path for writing a JSON address manifest after a successful deploy.
+    /// This output is informational only and does not affect deployment behavior.
     pub addresses_out: Option<PathBuf>,
 }
 
@@ -310,6 +316,7 @@ mod tests {
             contracts: ContractsConfig {
                 admin_proxy: None,
                 permit2: Some(Permit2Config { address: None }),
+                deterministic_deployer: None,
             },
         }
     }

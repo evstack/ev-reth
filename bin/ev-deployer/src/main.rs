@@ -38,6 +38,10 @@ enum Command {
         #[arg(long)]
         permit2: bool,
 
+        /// Include the deterministic deployer (Nick's factory) with its canonical address.
+        #[arg(long)]
+        deterministic_deployer: bool,
+
         /// Include `AdminProxy` with the given owner address.
         #[arg(long)]
         admin_proxy_owner: Option<Address>,
@@ -158,11 +162,13 @@ fn main() -> eyre::Result<()> {
             output,
             chain_id,
             permit2,
+            deterministic_deployer,
             admin_proxy_owner,
         } => {
             let params = init::InitParams {
                 chain_id: chain_id.unwrap_or(0),
                 permit2,
+                deterministic_deployer,
                 admin_proxy_owner: admin_proxy_owner.map(|a| format!("{a}")),
             };
             let template = init::generate_template(&params);
@@ -193,6 +199,14 @@ fn main() -> eyre::Result<()> {
                     .as_ref()
                     .and_then(|c| c.address)
                     .ok_or_else(|| eyre::eyre!("permit2 not configured or address not set"))?,
+                "deterministic_deployer" => cfg
+                    .contracts
+                    .deterministic_deployer
+                    .as_ref()
+                    .and_then(|c| c.address)
+                    .ok_or_else(|| {
+                        eyre::eyre!("deterministic_deployer not configured or address not set")
+                    })?,
                 other => eyre::bail!("unknown contract: {other}"),
             };
 

@@ -4,6 +4,7 @@
 pub(crate) struct InitParams {
     pub chain_id: u64,
     pub permit2: bool,
+    pub deterministic_deployer: bool,
     pub admin_proxy_owner: Option<String>,
 }
 
@@ -53,6 +54,18 @@ pub(crate) fn generate_template(params: &InitParams) -> String {
         out.push_str("# address = \"0x000000000022D473030F116dDEE9F6B43aC78BA3\"\n");
     }
 
+    // Deterministic deployer
+    out.push('\n');
+    out.push_str("# Deterministic deployer (Nick's factory): CREATE2 factory for deploy mode.\n");
+    out.push_str("# Required in genesis for post-merge chains where the keyless tx cannot land.\n");
+    if params.deterministic_deployer {
+        out.push_str("[contracts.deterministic_deployer]\n");
+        out.push_str("address = \"0x4e59b44847b379578588920cA78FbF26c0B4956C\"\n");
+    } else {
+        out.push_str("# [contracts.deterministic_deployer]\n");
+        out.push_str("# address = \"0x4e59b44847b379578588920cA78FbF26c0B4956C\"\n");
+    }
+
     out
 }
 
@@ -68,6 +81,7 @@ mod tests {
         let params = InitParams {
             chain_id: 0,
             permit2: false,
+            deterministic_deployer: false,
             admin_proxy_owner: None,
         };
         let output = generate_template(&params);
@@ -79,6 +93,7 @@ mod tests {
         let params = InitParams {
             chain_id: 42170,
             permit2: false,
+            deterministic_deployer: false,
             admin_proxy_owner: None,
         };
         let output = generate_template(&params);
@@ -92,6 +107,7 @@ mod tests {
         let params = InitParams {
             chain_id: 0,
             permit2: true,
+            deterministic_deployer: false,
             admin_proxy_owner: None,
         };
         let output = generate_template(&params);
@@ -108,6 +124,7 @@ mod tests {
         let params = InitParams {
             chain_id: 0,
             permit2: false,
+            deterministic_deployer: false,
             admin_proxy_owner: Some("0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266".to_string()),
         };
         let output = generate_template(&params);
@@ -124,6 +141,7 @@ mod tests {
         let params = InitParams {
             chain_id: 1234,
             permit2: true,
+            deterministic_deployer: true,
             admin_proxy_owner: Some("0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266".to_string()),
         };
         let output = generate_template(&params);
@@ -132,6 +150,45 @@ mod tests {
         assert!(output.contains("[contracts.admin_proxy]\n"), "{output}");
         assert!(
             output.contains("owner = \"0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266\""),
+            "{output}"
+        );
+        assert!(
+            output.contains("[contracts.deterministic_deployer]\n"),
+            "{output}"
+        );
+    }
+
+    #[test]
+    fn deterministic_deployer_enabled() {
+        let params = InitParams {
+            chain_id: 0,
+            permit2: false,
+            deterministic_deployer: true,
+            admin_proxy_owner: None,
+        };
+        let output = generate_template(&params);
+        assert!(
+            output.contains("[contracts.deterministic_deployer]\n"),
+            "{output}"
+        );
+        assert!(
+            output.contains("address = \"0x4e59b44847b379578588920cA78FbF26c0B4956C\""),
+            "{output}"
+        );
+        assert!(output.contains("# [contracts.permit2]"), "{output}");
+    }
+
+    #[test]
+    fn deterministic_deployer_disabled() {
+        let params = InitParams {
+            chain_id: 0,
+            permit2: false,
+            deterministic_deployer: false,
+            admin_proxy_owner: None,
+        };
+        let output = generate_template(&params);
+        assert!(
+            output.contains("# [contracts.deterministic_deployer]"),
             "{output}"
         );
     }

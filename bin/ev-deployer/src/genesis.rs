@@ -22,6 +22,11 @@ pub(crate) fn build_alloc(config: &DeployConfig) -> Value {
         insert_contract(&mut alloc, &contract);
     }
 
+    if let Some(ref dd_config) = config.contracts.deterministic_deployer {
+        let contract = contracts::deterministic_deployer::build(dd_config);
+        insert_contract(&mut alloc, &contract);
+    }
+
     Value::Object(alloc)
 }
 
@@ -108,6 +113,7 @@ mod tests {
                     owner: address!("f39Fd6e51aad88F6F4ce6aB8827279cffFb92266"),
                 }),
                 permit2: None,
+                deterministic_deployer: None,
             },
         }
     }
@@ -206,5 +212,28 @@ mod tests {
 
         let result = merge_into(&test_config(), tmp.path(), false);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn deterministic_deployer_in_alloc() {
+        let config = DeployConfig {
+            chain: ChainConfig { chain_id: 1234 },
+            contracts: ContractsConfig {
+                admin_proxy: None,
+                permit2: None,
+                deterministic_deployer: Some(DeterministicDeployerConfig {
+                    address: Some(address!("4e59b44847b379578588920cA78FbF26c0B4956C")),
+                }),
+            },
+        };
+        let alloc = build_alloc(&config);
+        let obj = alloc.as_object().unwrap();
+        let key = "4e59b44847b379578588920ca78fbf26c0b4956c";
+        assert!(obj.contains_key(key), "missing key {key} in {obj:?}");
+
+        let entry = obj.get(key).unwrap().as_object().unwrap();
+        assert_eq!(entry["balance"], "0x0");
+        assert!(entry["code"].as_str().unwrap().starts_with("0x"));
+        assert!(entry["storage"].as_object().unwrap().is_empty());
     }
 }
