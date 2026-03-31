@@ -33,7 +33,7 @@ EV Deployer uses a TOML config file to define what contracts to include and how 
 
 | Field     | Type    | Description                                              |
 |-----------|---------|----------------------------------------------------------|
-| `address` | address | Address to deploy at (canonical: `0x000000000022D473...`) |
+| `address` | address | Address to deploy at (canonical: `0x000000000022D473030F116dDEE9F6B43aC78BA3`) |
 
 ## Usage
 
