@@ -139,6 +139,7 @@ mod tests {
             contracts: ContractsConfig {
                 admin_proxy: None,
                 permit2: Some(Permit2Config { address: None }),
+                deterministic_deployer: None,
             },
         }
     }
@@ -193,6 +194,7 @@ mod tests {
             contracts: ContractsConfig {
                 admin_proxy: None,
                 permit2: None,
+                deterministic_deployer: None,
             },
         };
         let state = DeployState::new(&config);

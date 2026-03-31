@@ -10,7 +10,7 @@ use alloy_primitives::{B256, U256};
 
 /// A single immutable reference inside a bytecode blob.
 #[derive(Debug, Clone, Copy)]
-pub struct ImmutableRef {
+pub(crate) struct ImmutableRef {
     /// Byte offset into the **runtime** bytecode.
     pub start: usize,
     /// Number of bytes (always 32 for EVM words).
@@ -22,7 +22,7 @@ pub struct ImmutableRef {
 /// # Panics
 ///
 /// Panics if any reference extends past the end of `bytecode`.
-pub fn patch_bytes(bytecode: &mut [u8], refs: &[ImmutableRef], value: &[u8; 32]) {
+pub(crate) fn patch_bytes(bytecode: &mut [u8], refs: &[ImmutableRef], value: &[u8; 32]) {
     for r in refs {
         assert!(
             r.start + r.length <= bytecode.len(),
@@ -36,7 +36,7 @@ pub fn patch_bytes(bytecode: &mut [u8], refs: &[ImmutableRef], value: &[u8; 32])
 }
 
 /// Convenience: patch with an ABI-encoded `uint256`.
-pub fn patch_u256(bytecode: &mut [u8], refs: &[ImmutableRef], val: U256) {
+pub(crate) fn patch_u256(bytecode: &mut [u8], refs: &[ImmutableRef], val: U256) {
     let word = B256::from(val);
     patch_bytes(bytecode, refs, &word.0);
 }
