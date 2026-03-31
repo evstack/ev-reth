@@ -24,10 +24,7 @@ pub struct PipelineConfig {
 }
 
 /// Run the full deploy pipeline.
-pub async fn run(
-    pipeline_cfg: &PipelineConfig,
-    deployer: &dyn ChainDeployer,
-) -> eyre::Result<()> {
+pub async fn run(pipeline_cfg: &PipelineConfig, deployer: &dyn ChainDeployer) -> eyre::Result<()> {
     // ── Step 1: Init ──
     eprintln!("[1/4] Connecting to RPC...");
     let chain_id = deployer.chain_id().await?;

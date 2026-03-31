@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, path::Path};
 
 /// Top-level deploy configuration.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DeployConfig {
     /// Chain configuration.
     pub chain: ChainConfig,
@@ -22,7 +22,7 @@ pub struct ChainConfig {
 }
 
 /// All contract configurations.
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct ContractsConfig {
     /// `AdminProxy` contract config (optional).
     pub admin_proxy: Option<AdminProxyConfig>,

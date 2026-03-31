@@ -5,6 +5,7 @@
 
 pub mod config;
 pub mod contracts;
+/// CREATE2 deploy pipeline for live chain deployment.
 pub mod deploy;
 pub mod genesis;
 /// Dynamic config template generation for the `init` command.

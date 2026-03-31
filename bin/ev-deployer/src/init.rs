@@ -7,7 +7,7 @@ pub struct InitParams {
     pub chain_id: u64,
     /// Whether to include Permit2 with its canonical address.
     pub permit2: bool,
-    /// Optional AdminProxy owner address.
+    /// Optional `AdminProxy` owner address.
     pub admin_proxy_owner: Option<String>,
 }
 
