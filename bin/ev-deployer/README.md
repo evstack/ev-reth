@@ -113,9 +113,11 @@ ev-deployer deploy \
 The deploy pipeline:
 
 1. Connects to the RPC and verifies the chain ID matches the config.
-2. Checks that the deterministic deployer (`0x4e59b44847b379578588920ca78fbf26c0b4956c`) exists on-chain.
+2. Checks that the [deterministic deployer](https://github.com/Arachnid/deterministic-deployment-proxy) (`0x4e59b44847b379578588920ca78fbf26c0b4956c`) exists on-chain.
 3. Deploys each configured contract via CREATE2.
 4. Verifies that the on-chain bytecode matches the expected bytecode (including patched immutables).
+
+> **Using with ev-dev**: The deterministic deployer is pre-included in the ev-dev genesis, so `ev-deployer deploy` works against ev-dev out of the box. See the [ev-dev README](../ev-dev/README.md#live-contract-deployment-create2) for examples.
 
 The `address` field in the config is **ignored** in deploy mode — addresses come from the CREATE2 computation.
 

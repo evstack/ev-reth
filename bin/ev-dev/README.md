@@ -106,6 +106,26 @@ Genesis Contracts (from path/to/deploy.toml)
 
 See the [ev-deployer README](../ev-deployer/README.md) for full config reference and available contracts.
 
+## Live Contract Deployment (CREATE2)
+
+You can also deploy contracts to a running ev-dev chain using `ev-deployer deploy`. This uses the [deterministic deployer](https://github.com/Arachnid/deterministic-deployment-proxy) (Nick's CREATE2 factory at `0x4e59b44847b379578588920ca78fbf26c0b4956c`), which is pre-included in the devnet genesis.
+
+```bash
+# Terminal 1: start the chain
+ev-dev
+
+# Terminal 2: deploy contracts via CREATE2
+ev-deployer deploy \
+    --config bin/ev-deployer/examples/devnet.toml \
+    --rpc-url http://127.0.0.1:8545 \
+    --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 \
+    --state /tmp/deploy-state.json
+```
+
+In deploy mode, contract addresses are computed deterministically via CREATE2 (the `address` field in the config is ignored). The `--state` file tracks progress and allows resuming interrupted deployments.
+
+**Genesis vs Deploy mode**: Use `--deploy-config` (genesis mode) when you want contracts available from block 0 with exact addresses. Use `ev-deployer deploy` when you want to test the deployment pipeline itself or need CREATE2-derived addresses.
+
 ## Chain Details
 
 | Property | Value |
