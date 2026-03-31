@@ -34,11 +34,11 @@ enum Command {
         #[arg(long)]
         chain_id: Option<u64>,
 
-        /// Include Permit2 with its canonical address.
+        /// Include `Permit2` with its canonical address.
         #[arg(long)]
         permit2: bool,
 
-        /// Include AdminProxy with the given owner address.
+        /// Include `AdminProxy` with the given owner address.
         #[arg(long)]
         admin_proxy_owner: Option<Address>,
     },
