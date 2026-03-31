@@ -7,4 +7,5 @@ pub mod config;
 pub mod contracts;
 pub mod deploy;
 pub mod genesis;
+pub mod init;
 pub mod output;

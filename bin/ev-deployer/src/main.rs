@@ -1,7 +1,8 @@
 //! EV Deployer — genesis alloc generator and live deployer for ev-reth contracts.
 
+use alloy_primitives::Address;
 use clap::{Parser, Subcommand};
-use ev_deployer::{config, deploy, genesis, output};
+use ev_deployer::{config, deploy, genesis, init, output};
 use std::path::PathBuf;
 
 /// EV Deployer: generate genesis alloc or deploy ev-reth contracts.
@@ -17,11 +18,23 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Generate a starter config file with all supported contracts commented out.
+    /// Generate a starter config file with all supported contracts.
     Init {
         /// Write config to this file instead of stdout.
         #[arg(long)]
         output: Option<PathBuf>,
+
+        /// Set the chain ID (defaults to 0).
+        #[arg(long)]
+        chain_id: Option<u64>,
+
+        /// Include Permit2 with its canonical address.
+        #[arg(long)]
+        permit2: bool,
+
+        /// Include AdminProxy with the given owner address.
+        #[arg(long)]
+        admin_proxy_owner: Option<Address>,
     },
     /// Generate genesis alloc JSON from a deploy config.
     Genesis {
@@ -135,11 +148,21 @@ fn main() -> eyre::Result<()> {
                 .build()?
                 .block_on(deploy::pipeline::run(&pipeline_cfg, &deployer))?;
         }
-        Command::Init { output } => {
-            let template = include_str!("init_template.toml");
+        Command::Init {
+            output,
+            chain_id,
+            permit2,
+            admin_proxy_owner,
+        } => {
+            let params = init::InitParams {
+                chain_id: chain_id.unwrap_or(0),
+                permit2,
+                admin_proxy_owner: admin_proxy_owner.map(|a| format!("{a}")),
+            };
+            let template = init::generate_template(&params);
 
             if let Some(ref out_path) = output {
-                std::fs::write(out_path, template)?;
+                std::fs::write(out_path, &template)?;
                 eprintln!("Wrote config to {}", out_path.display());
             } else {
                 print!("{template}");
