@@ -5,7 +5,7 @@
 pub struct InitParams {
     /// Target chain ID (written to `[chain]` section).
     pub chain_id: u64,
-    /// Whether to enable the Permit2 contract section.
+    /// Whether to enable the `Permit2` contract section.
     pub permit2: bool,
     /// If set, enables `AdminProxy` with this owner address.
     pub admin_proxy_owner: Option<String>,
@@ -112,9 +112,7 @@ mod tests {
         let params = InitParams {
             chain_id: 0,
             permit2: false,
-            admin_proxy_owner: Some(
-                "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266".to_string(),
-            ),
+            admin_proxy_owner: Some("0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266".to_string()),
         };
         let output = generate_template(&params);
         assert!(output.contains("[contracts.admin_proxy]\n"), "{output}");
@@ -130,9 +128,7 @@ mod tests {
         let params = InitParams {
             chain_id: 1234,
             permit2: true,
-            admin_proxy_owner: Some(
-                "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266".to_string(),
-            ),
+            admin_proxy_owner: Some("0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266".to_string()),
         };
         let output = generate_template(&params);
         assert!(output.contains("chain_id = 1234"), "{output}");

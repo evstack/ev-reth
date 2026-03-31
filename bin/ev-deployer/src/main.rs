@@ -28,7 +28,7 @@ enum Command {
         #[arg(long)]
         chain_id: Option<u64>,
 
-        /// Include Permit2 with its canonical address.
+        /// Include `Permit2` with its canonical address.
         #[arg(long)]
         permit2: bool,
 
