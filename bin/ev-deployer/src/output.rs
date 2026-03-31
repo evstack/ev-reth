@@ -22,5 +22,14 @@ pub fn build_manifest(config: &DeployConfig) -> Value {
         }
     }
 
+    if let Some(ref dd) = config.contracts.deterministic_deployer {
+        if let Some(addr) = dd.address {
+            manifest.insert(
+                "deterministic_deployer".to_string(),
+                Value::String(format!("{}", addr)),
+            );
+        }
+    }
+
     Value::Object(manifest)
 }
