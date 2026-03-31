@@ -6,6 +6,7 @@ mod deploy;
 mod genesis;
 mod output;
 
+use alloy_primitives::Address;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
@@ -22,11 +23,23 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Generate a starter config file with all supported contracts commented out.
+    /// Generate a starter config file with all supported contracts.
     Init {
         /// Write config to this file instead of stdout.
         #[arg(long)]
         output: Option<PathBuf>,
+
+        /// Set the chain ID (defaults to 0).
+        #[arg(long)]
+        chain_id: Option<u64>,
+
+        /// Include Permit2 with its canonical address.
+        #[arg(long)]
+        permit2: bool,
+
+        /// Include AdminProxy with the given owner address.
+        #[arg(long)]
+        admin_proxy_owner: Option<Address>,
     },
     /// Generate genesis alloc JSON from a deploy config.
     Genesis {
@@ -140,7 +153,7 @@ fn main() -> eyre::Result<()> {
                 .build()?
                 .block_on(deploy::pipeline::run(&pipeline_cfg, &deployer))?;
         }
-        Command::Init { output } => {
+        Command::Init { output, .. } => {
             let template = include_str!("init_template.toml");
 
             if let Some(ref out_path) = output {
