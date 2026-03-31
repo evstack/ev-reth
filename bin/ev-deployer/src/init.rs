@@ -1,9 +1,13 @@
 //! Dynamic config template generation for the `init` command.
 
 /// Parameters for generating the init template.
+#[derive(Debug)]
 pub struct InitParams {
+    /// Target chain ID (written to `[chain]` section).
     pub chain_id: u64,
+    /// Whether to enable the Permit2 contract section.
     pub permit2: bool,
+    /// If set, enables `AdminProxy` with this owner address.
     pub admin_proxy_owner: Option<String>,
 }
 
@@ -14,7 +18,7 @@ pub fn generate_template(params: &InitParams) -> String {
     // Header
     out.push_str("# EV Deployer configuration\n");
     out.push_str("# See: bin/ev-deployer/README.md\n");
-    out.push_str("\n");
+    out.push('\n');
 
     // Chain
     out.push_str("[chain]\n");
@@ -22,36 +26,33 @@ pub fn generate_template(params: &InitParams) -> String {
     out.push_str(&format!("chain_id = {}\n", params.chain_id));
 
     // Contracts section header
-    out.push_str("\n");
+    out.push('\n');
     out.push_str("# ── Contracts ────────────────────────────────────────────\n");
     out.push_str("# Uncomment and configure the contracts you want to deploy.\n");
     out.push_str("# The `address` field is required for `genesis` mode but\n");
     out.push_str("# ignored in `deploy` mode (addresses come from CREATE2).\n");
 
     // AdminProxy
-    out.push_str("\n");
+    out.push('\n');
+    out.push_str("# AdminProxy: transparent proxy with owner-based access control.\n");
+    out.push_str("# The owner address is stored in slot 0.\n");
     if let Some(ref owner) = params.admin_proxy_owner {
-        out.push_str("# AdminProxy: transparent proxy with owner-based access control.\n");
-        out.push_str("# The owner address is stored in slot 0.\n");
         out.push_str("[contracts.admin_proxy]\n");
         out.push_str("address = \"0x000000000000000000000000000000000000Ad00\"\n");
         out.push_str(&format!("owner = \"{owner}\"\n"));
     } else {
-        out.push_str("# AdminProxy: transparent proxy with owner-based access control.\n");
-        out.push_str("# The owner address is stored in slot 0.\n");
         out.push_str("# [contracts.admin_proxy]\n");
         out.push_str("# address = \"0x000000000000000000000000000000000000Ad00\"\n");
         out.push_str("# owner = \"0x...\"\n");
     }
 
     // Permit2
-    out.push_str("\n");
+    out.push('\n');
+    out.push_str("# Permit2: Uniswap canonical token approval manager.\n");
     if params.permit2 {
-        out.push_str("# Permit2: Uniswap canonical token approval manager.\n");
         out.push_str("[contracts.permit2]\n");
         out.push_str("address = \"0x000000000022D473030F116dDEE9F6B43aC78BA3\"\n");
     } else {
-        out.push_str("# Permit2: Uniswap canonical token approval manager.\n");
         out.push_str("# [contracts.permit2]\n");
         out.push_str("# address = \"0x000000000022D473030F116dDEE9F6B43aC78BA3\"\n");
     }

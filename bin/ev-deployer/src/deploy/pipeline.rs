@@ -13,9 +13,13 @@ use alloy_primitives::{Address, B256};
 use std::path::{Path, PathBuf};
 
 /// Configuration for the deploy pipeline.
+#[derive(Debug)]
 pub struct PipelineConfig {
+    /// Parsed deploy configuration (chain + contracts).
     pub config: DeployConfig,
+    /// Path to the JSON state file for idempotent deploys.
     pub state_path: PathBuf,
+    /// Optional path to write the final address manifest.
     pub addresses_out: Option<PathBuf>,
 }
 

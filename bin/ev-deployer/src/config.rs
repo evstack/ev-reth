@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, path::Path};
 
 /// Top-level deploy configuration.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DeployConfig {
     /// Chain configuration.
     pub chain: ChainConfig,
@@ -15,14 +15,14 @@ pub struct DeployConfig {
 }
 
 /// Chain-level settings.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ChainConfig {
     /// The chain ID.
     pub chain_id: u64,
 }
 
 /// All contract configurations.
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct ContractsConfig {
     /// `AdminProxy` contract config (optional).
     pub admin_proxy: Option<AdminProxyConfig>,
@@ -49,7 +49,7 @@ impl ContractsConfig {
 }
 
 /// `AdminProxy` configuration.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AdminProxyConfig {
     /// Address to deploy at (required for genesis, ignored for deploy).
     pub address: Option<Address>,
@@ -58,7 +58,7 @@ pub struct AdminProxyConfig {
 }
 
 /// `Permit2` configuration (Uniswap token approval manager).
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Permit2Config {
     /// Address to deploy at (required for genesis, ignored for deploy).
     pub address: Option<Address>,

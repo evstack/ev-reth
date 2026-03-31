@@ -32,7 +32,7 @@ enum Command {
         #[arg(long)]
         permit2: bool,
 
-        /// Include AdminProxy with the given owner address.
+        /// Include `AdminProxy` with the given owner address.
         #[arg(long)]
         admin_proxy_owner: Option<Address>,
     },
