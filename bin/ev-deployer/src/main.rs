@@ -4,6 +4,7 @@ mod config;
 mod contracts;
 mod deploy;
 mod genesis;
+mod init;
 mod output;
 
 use alloy_primitives::Address;
