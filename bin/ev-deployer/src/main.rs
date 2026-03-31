@@ -1,14 +1,14 @@
-//! EV Deployer — genesis alloc generator for ev-reth contracts.
+//! EV Deployer — genesis alloc generator and live deployer for ev-reth contracts.
 
 use clap::{Parser, Subcommand};
-use ev_deployer::{config, genesis, output};
+use ev_deployer::{config, deploy, genesis, output};
 use std::path::PathBuf;
 
-/// EV Deployer: generate genesis alloc entries for ev-reth contracts.
+/// EV Deployer: generate genesis alloc or deploy ev-reth contracts.
 #[derive(Parser)]
 #[command(
     name = "ev-deployer",
-    about = "Generate genesis alloc for ev-reth contracts"
+    about = "Generate genesis alloc or deploy ev-reth contracts"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -45,6 +45,28 @@ enum Command {
         #[arg(long)]
         addresses_out: Option<PathBuf>,
     },
+    /// Deploy contracts to a live chain via CREATE2.
+    Deploy {
+        /// Path to the deploy TOML config.
+        #[arg(long)]
+        config: PathBuf,
+
+        /// RPC URL of the target chain.
+        #[arg(long, env = "EV_DEPLOYER_RPC_URL")]
+        rpc_url: String,
+
+        /// Hex-encoded private key for signing transactions.
+        #[arg(long, env = "EV_DEPLOYER_PRIVATE_KEY")]
+        private_key: String,
+
+        /// Path to the state file (created if absent, resumed if present).
+        #[arg(long)]
+        state: PathBuf,
+
+        /// Write an address manifest to this file.
+        #[arg(long)]
+        addresses_out: Option<PathBuf>,
+    },
     /// Compute the address for a configured contract.
     ComputeAddress {
         /// Path to the deploy TOML config.
@@ -69,6 +91,7 @@ fn main() -> eyre::Result<()> {
             addresses_out,
         } => {
             let cfg = config::DeployConfig::load(&config_path)?;
+            cfg.validate_for_genesis()?;
 
             let result = if let Some(ref genesis_path) = merge_into {
                 genesis::merge_into(&cfg, genesis_path, force)?
@@ -92,6 +115,26 @@ fn main() -> eyre::Result<()> {
                 eprintln!("Wrote address manifest to {}", addr_path.display());
             }
         }
+        Command::Deploy {
+            config: config_path,
+            rpc_url,
+            private_key,
+            state: state_path,
+            addresses_out,
+        } => {
+            let cfg = config::DeployConfig::load(&config_path)?;
+            let deployer = deploy::deployer::LiveDeployer::new(&rpc_url, &private_key)?;
+            let pipeline_cfg = deploy::pipeline::PipelineConfig {
+                config: cfg,
+                state_path,
+                addresses_out,
+            };
+
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()?
+                .block_on(deploy::pipeline::run(&pipeline_cfg, &deployer))?;
+        }
         Command::Init { output } => {
             let template = include_str!("init_template.toml");
 
@@ -113,14 +156,14 @@ fn main() -> eyre::Result<()> {
                     .contracts
                     .admin_proxy
                     .as_ref()
-                    .map(|c| c.address)
-                    .ok_or_else(|| eyre::eyre!("admin_proxy not configured"))?,
+                    .and_then(|c| c.address)
+                    .ok_or_else(|| eyre::eyre!("admin_proxy not configured or address not set"))?,
                 "permit2" => cfg
                     .contracts
                     .permit2
                     .as_ref()
-                    .map(|c| c.address)
-                    .ok_or_else(|| eyre::eyre!("permit2 not configured"))?,
+                    .and_then(|c| c.address)
+                    .ok_or_else(|| eyre::eyre!("permit2 not configured or address not set"))?,
                 other => eyre::bail!("unknown contract: {other}"),
             };
 

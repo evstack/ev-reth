@@ -105,7 +105,7 @@ mod tests {
             chain: ChainConfig { chain_id: 1234 },
             contracts: ContractsConfig {
                 admin_proxy: Some(AdminProxyConfig {
-                    address: address!("000000000000000000000000000000000000ad00"),
+                    address: Some(address!("000000000000000000000000000000000000ad00")),
                     owner: address!("f39Fd6e51aad88F6F4ce6aB8827279cffFb92266"),
                 }),
                 permit2: None,
