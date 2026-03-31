@@ -13,7 +13,9 @@ use async_trait::async_trait;
 /// Receipt from a confirmed transaction.
 #[derive(Debug)]
 pub struct TxReceipt {
+    /// Hash of the confirmed transaction.
     pub tx_hash: B256,
+    /// Whether the transaction executed successfully.
     pub success: bool,
 }
 
@@ -34,6 +36,12 @@ pub trait ChainDeployer: Send + Sync {
 /// Live deployer using alloy provider + signer.
 pub struct LiveDeployer {
     provider: Box<dyn Provider>,
+}
+
+impl std::fmt::Debug for LiveDeployer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LiveDeployer").finish_non_exhaustive()
+    }
 }
 
 impl LiveDeployer {

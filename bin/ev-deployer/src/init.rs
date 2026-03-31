@@ -1,9 +1,13 @@
 //! Dynamic config template generation for the `init` command.
 
 /// Parameters for generating the init template.
+#[derive(Debug)]
 pub struct InitParams {
+    /// Target chain ID.
     pub chain_id: u64,
+    /// Whether to include Permit2 with its canonical address.
     pub permit2: bool,
+    /// Optional AdminProxy owner address.
     pub admin_proxy_owner: Option<String>,
 }
 

@@ -15,7 +15,7 @@ pub struct DeployConfig {
 }
 
 /// Chain-level settings.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ChainConfig {
     /// The chain ID.
     pub chain_id: u64,
@@ -49,7 +49,7 @@ impl ContractsConfig {
 }
 
 /// `AdminProxy` configuration.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AdminProxyConfig {
     /// Address to deploy at (required for genesis, ignored for deploy).
     pub address: Option<Address>,
@@ -58,7 +58,7 @@ pub struct AdminProxyConfig {
 }
 
 /// `Permit2` configuration (Uniswap token approval manager).
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Permit2Config {
     /// Address to deploy at (required for genesis, ignored for deploy).
     pub address: Option<Address>,

@@ -7,5 +7,6 @@ pub mod config;
 pub mod contracts;
 pub mod deploy;
 pub mod genesis;
+/// Dynamic config template generation for the `init` command.
 pub mod init;
 pub mod output;
