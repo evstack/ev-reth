@@ -33,7 +33,10 @@ mod tests {
         };
         let contract = build(&config);
 
-        assert_eq!(contract.address, address!("4e59b44847b379578588920ca78fbf26c0b4956c"));
+        assert_eq!(
+            contract.address,
+            address!("4e59b44847b379578588920ca78fbf26c0b4956c")
+        );
         assert_eq!(contract.code.as_ref(), DETERMINISTIC_DEPLOYER_BYTECODE);
         assert!(contract.storage.is_empty());
     }

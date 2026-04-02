@@ -319,7 +319,12 @@ chain_id = 1
         let config: DeployConfig = toml::from_str(toml).unwrap();
         config.validate().unwrap();
         assert!(config.contracts.deterministic_deployer.is_some());
-        assert!(config.contracts.deterministic_deployer.unwrap().address.is_none());
+        assert!(config
+            .contracts
+            .deterministic_deployer
+            .unwrap()
+            .address
+            .is_none());
     }
 
     #[test]
