@@ -60,9 +60,9 @@ struct EvDevArgs {
     #[arg(long, default_value_t = 10, value_parser = parse_accounts)]
     accounts: usize,
 
-    /// Path to an ev-deployer TOML config to deploy contracts at genesis.
+    /// Path to an ev-deployer TOML config to embed contracts in genesis.
     #[arg(long, value_name = "PATH")]
-    deploy_config: Option<PathBuf>,
+    genesis_config: Option<PathBuf>,
 
     /// Launch with terminal UI instead of plain log output
     #[arg(long, default_value_t = false)]
@@ -138,7 +138,7 @@ fn print_banner(args: &EvDevArgs, deploy_cfg: Option<&DeployConfig>) {
     println!();
 
     if let Some(cfg) = deploy_cfg {
-        let config_path = args.deploy_config.as_ref().unwrap();
+        let config_path = args.genesis_config.as_ref().unwrap();
         println!("Genesis Contracts (from {})", config_path.display());
         println!("==================");
         let manifest = build_manifest(cfg);
@@ -204,7 +204,7 @@ fn prepare_genesis(
     let genesis_json = if let Some(ref cfg) = deploy_cfg {
         let mut genesis: serde_json::Value =
             serde_json::from_str(DEVNET_GENESIS).expect("valid genesis JSON");
-        merge_alloc(cfg, &mut genesis, true).expect("failed to merge deploy config into genesis");
+        merge_alloc(cfg, &mut genesis, true).expect("failed to merge genesis config into genesis");
         serde_json::to_string(&genesis).expect("failed to serialize merged genesis")
     } else {
         DEVNET_GENESIS.to_string()
@@ -221,15 +221,15 @@ fn prepare_genesis(
     (genesis_file, datadir)
 }
 
-fn load_deploy_config(dev_args: &EvDevArgs) -> Option<DeployConfig> {
-    dev_args.deploy_config.as_ref().map(|config_path| {
+fn load_genesis_config(dev_args: &EvDevArgs) -> Option<DeployConfig> {
+    dev_args.genesis_config.as_ref().map(|config_path| {
         let mut cfg = DeployConfig::load(config_path)
-            .unwrap_or_else(|e| panic!("failed to load deploy config: {e}"));
+            .unwrap_or_else(|e| panic!("failed to load genesis config: {e}"));
 
         let genesis_chain_id = chain_id_from_genesis();
         if cfg.chain.chain_id != genesis_chain_id {
             eprintln!(
-                "WARNING: deploy config chain_id ({}) differs from devnet genesis ({}), overriding to {}",
+                "WARNING: genesis config chain_id ({}) differs from devnet genesis ({}), overriding to {}",
                 cfg.chain.chain_id, genesis_chain_id, genesis_chain_id
             );
             cfg.chain.chain_id = genesis_chain_id;
@@ -260,7 +260,7 @@ fn main() {
     }
 
     let dev_args = EvDevArgs::parse();
-    let deploy_cfg = load_deploy_config(&dev_args);
+    let deploy_cfg = load_genesis_config(&dev_args);
 
     if dev_args.tui {
         run_with_tui(dev_args, deploy_cfg);
