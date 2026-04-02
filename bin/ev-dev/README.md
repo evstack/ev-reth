@@ -2,15 +2,24 @@
 
 One-command local development chain for Evolve. Think of it as the Evolve equivalent of [Hardhat Node](https://hardhat.org/hardhat-network/docs/overview) or [Anvil](https://book.getfoundry.sh/reference/anvil/).
 
+## Installation
+
+```bash
+# Install to ~/.cargo/bin
+just install-ev-dev
+
+# Or build without installing
+just build-ev-dev
+```
+
 ## Quick Start
 
 ```bash
 # Build and run
 just dev-chain
 
-# Or build separately
-just build-ev-dev
-./target/release/ev-dev
+# Or run directly after installing
+ev-dev
 ```
 
 The chain starts immediately with 10 pre-funded accounts, each holding 1,000,000 ETH.
@@ -28,7 +37,31 @@ ev-dev [OPTIONS]
 | `--block-time` | `1` | Block time in seconds (`0` = mine on transaction) |
 | `--silent` | `false` | Suppress the startup banner |
 | `--accounts` | `10` | Number of accounts to display (1-20) |
-| `--deploy-config` | — | Path to an ev-deployer TOML config to deploy contracts at genesis |
+| `--genesis-config` | — | Path to an ev-deployer TOML config to deploy contracts at genesis |
+| `--tui` | `false` | Launch with an interactive terminal UI instead of plain log output |
+
+### TUI Mode
+
+Pass `--tui` to launch an interactive terminal dashboard:
+
+```bash
+ev-dev --tui
+```
+
+The TUI shows:
+
+- **Chain info** — chain ID, RPC URL, block time
+- **Accounts** — addresses, private keys, and real-time balances (polled every 2s)
+- **Deployed contracts** — when using `--genesis-config`
+- **Logs** — live node logs with scrollback
+
+Keyboard shortcuts:
+
+| Key | Action |
+|-----|--------|
+| `Tab` | Cycle between panels |
+| `↑` / `↓` | Scroll within the active panel |
+| `q` / `Esc` / `Ctrl+C` | Quit |
 
 ### Examples
 
@@ -43,18 +76,19 @@ ev-dev --host 0.0.0.0
 ev-dev --port 9545 --block-time 2
 
 # Start with genesis contracts deployed
-ev-dev --deploy-config bin/ev-deployer/examples/devnet.toml
+ev-deployer init genesis --permit2 --deterministic-deployer --chain-id 1234 --output genesis.toml
+ev-dev --genesis-config genesis.toml
 ```
 
 ## Genesis Contract Deployment
 
-You can deploy contracts into the genesis state by passing a `--deploy-config` flag pointing to an [ev-deployer](../ev-deployer/README.md) TOML config file.
+You can deploy contracts into the genesis state by passing a `--genesis-config` flag pointing to an [ev-deployer](../ev-deployer/README.md) TOML config file.
 
 ```bash
-ev-dev --deploy-config path/to/deploy.toml
+ev-dev --genesis-config path/to/deploy.toml
 ```
 
-When a deploy config is provided, ev-dev will:
+When a genesis config is provided, ev-dev will:
 
 1. Load and validate the config
 2. Override the config's `chain_id` to match the devnet genesis (a warning is printed if they differ)
@@ -72,6 +106,28 @@ Genesis Contracts (from path/to/deploy.toml)
 ```
 
 See the [ev-deployer README](../ev-deployer/README.md) for full config reference and available contracts.
+
+## Live Contract Deployment (CREATE2)
+
+You can also deploy contracts to a running ev-dev chain using `ev-deployer deploy`. This uses the [deterministic deployer](https://github.com/Arachnid/deterministic-deployment-proxy) (Nick's CREATE2 factory at `0x4e59b44847b379578588920ca78fbf26c0b4956c`), which must be included in the genesis via `--genesis-config`.
+
+```bash
+# Terminal 1: start the chain with Nick's factory in genesis
+ev-deployer init genesis --deterministic-deployer --chain-id 1234 --output genesis.toml
+ev-dev --genesis-config genesis.toml
+
+# Terminal 2: generate a deploy config and deploy Permit2 via CREATE2
+ev-deployer init deploy --permit2 --chain-id 1234 --output deploy.toml
+ev-deployer deploy \
+    --config deploy.toml \
+    --rpc-url http://127.0.0.1:8545 \
+    --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 \
+    --state /tmp/deploy-state.json
+```
+
+Permit2 deploys to its canonical address (`0x000000000022D473030F116dDEE9F6B43aC78BA3`) using the original Uniswap CREATE2 salt. The `--state` file tracks progress and allows resuming interrupted deployments.
+
+**Genesis vs Deploy mode**: Use `--genesis-config` (genesis mode) when you want contracts available from block 0 with exact addresses. Use `ev-deployer deploy` when you want to simulate a real deployment pipeline — contracts land at their canonical CREATE2 addresses.
 
 ## Chain Details
 
@@ -235,7 +291,7 @@ ev-dev includes all Evolve customizations out of the box:
 
 ev-dev is a thin wrapper around the full `ev-reth` node. On startup it:
 
-1. If `--deploy-config` is provided, loads the config and merges contract alloc entries into the genesis
+1. If `--genesis-config` is provided, loads the config and merges contract alloc entries into the genesis
 2. Writes the (possibly extended) devnet genesis to a temp file
 3. Creates a temporary data directory (clean state every run)
 4. Launches `ev-reth` in `--dev` mode with networking disabled
