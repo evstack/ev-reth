@@ -76,7 +76,8 @@ ev-dev --host 0.0.0.0
 ev-dev --port 9545 --block-time 2
 
 # Start with genesis contracts deployed
-ev-dev --deploy-config bin/ev-deployer/examples/devnet.toml
+ev-deployer init genesis --permit2 --deterministic-deployer --chain-id 1234 --output genesis.toml
+ev-dev --deploy-config genesis.toml
 ```
 
 ## Genesis Contract Deployment
@@ -108,23 +109,25 @@ See the [ev-deployer README](../ev-deployer/README.md) for full config reference
 
 ## Live Contract Deployment (CREATE2)
 
-You can also deploy contracts to a running ev-dev chain using `ev-deployer deploy`. This uses the [deterministic deployer](https://github.com/Arachnid/deterministic-deployment-proxy) (Nick's CREATE2 factory at `0x4e59b44847b379578588920ca78fbf26c0b4956c`), which is pre-included in the devnet genesis.
+You can also deploy contracts to a running ev-dev chain using `ev-deployer deploy`. This uses the [deterministic deployer](https://github.com/Arachnid/deterministic-deployment-proxy) (Nick's CREATE2 factory at `0x4e59b44847b379578588920ca78fbf26c0b4956c`), which must be included in the genesis via `--deploy-config`.
 
 ```bash
-# Terminal 1: start the chain
-ev-dev
+# Terminal 1: start the chain with Nick's factory in genesis
+ev-deployer init genesis --deterministic-deployer --chain-id 1234 --output genesis.toml
+ev-dev --deploy-config genesis.toml
 
-# Terminal 2: deploy contracts via CREATE2
+# Terminal 2: generate a deploy config and deploy Permit2 via CREATE2
+ev-deployer init deploy --permit2 --chain-id 1234 --output deploy.toml
 ev-deployer deploy \
-    --config bin/ev-deployer/examples/devnet.toml \
+    --config deploy.toml \
     --rpc-url http://127.0.0.1:8545 \
     --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 \
     --state /tmp/deploy-state.json
 ```
 
-In deploy mode, contract addresses are computed deterministically via CREATE2 (the `address` field in the config is ignored). The `--state` file tracks progress and allows resuming interrupted deployments.
+Permit2 deploys to its canonical address (`0x000000000022D473030F116dDEE9F6B43aC78BA3`) using the original Uniswap CREATE2 salt. The `--state` file tracks progress and allows resuming interrupted deployments.
 
-**Genesis vs Deploy mode**: Use `--deploy-config` (genesis mode) when you want contracts available from block 0 with exact addresses. Use `ev-deployer deploy` when you want to test the deployment pipeline itself or need CREATE2-derived addresses.
+**Genesis vs Deploy mode**: Use `--deploy-config` (genesis mode) when you want contracts available from block 0 with exact addresses. Use `ev-deployer deploy` when you want to simulate a real deployment pipeline — contracts land at their canonical CREATE2 addresses.
 
 ## Chain Details
 

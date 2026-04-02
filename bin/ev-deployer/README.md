@@ -16,13 +16,12 @@ Both modes read the same TOML config. The `address` field in each contract secti
 ## Quick Start
 
 ```bash
-# 1. Generate a config pre-populated for your chain
-ev-deployer init --chain-id 42170 --permit2 --output deploy.toml
+# Genesis: embed contracts into the chain's genesis state
+ev-deployer init genesis --chain-id 42170 --permit2 --deterministic-deployer --output genesis.toml
+ev-deployer genesis --config genesis.toml --merge-into genesis.json --output genesis-out.json
 
-# 2a. Genesis mode: embed into genesis state
-ev-deployer genesis --config deploy.toml --merge-into genesis.json --output genesis-out.json
-
-# 2b. Deploy mode: deploy to a live chain
+# Deploy: deploy contracts to a running chain via CREATE2
+ev-deployer init deploy --chain-id 42170 --permit2 --output deploy.toml
 ev-deployer deploy \
     --config deploy.toml \
     --rpc-url http://localhost:8545 \
@@ -40,19 +39,44 @@ The binary is output to `target/release/ev-deployer`.
 
 ## Commands
 
-### `init`
+### `init genesis`
 
-Generate a starter config file.
+Generate a starter config for **genesis mode** (contracts embedded at chain start). Includes `address` fields for each contract.
 
 ```bash
 # Bare template (all contracts commented out)
-ev-deployer init
+ev-deployer init genesis
 
-# Pre-populated with chain ID, Permit2, and deterministic deployer
-ev-deployer init --chain-id 42170 --permit2 --deterministic-deployer
+# Pre-populated with Permit2 and deterministic deployer
+ev-deployer init genesis --chain-id 42170 --permit2 --deterministic-deployer
 
 # Full config with all contracts
-ev-deployer init \
+ev-deployer init genesis \
+    --chain-id 42170 \
+    --permit2 \
+    --deterministic-deployer \
+    --admin-proxy-owner 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 \
+    --output genesis.toml
+```
+
+| Flag | Description |
+|------|-------------|
+| `--output <PATH>` | Write to file instead of stdout |
+| `--chain-id <ID>` | Set the chain ID (defaults to 0) |
+| `--permit2` | Enable Permit2 with its canonical address |
+| `--deterministic-deployer` | Enable the deterministic deployer (Nick's factory) |
+| `--admin-proxy-owner <ADDR>` | Enable AdminProxy with the given owner |
+
+### `init deploy`
+
+Generate a starter config for **deploy mode** (contracts deployed via CREATE2 to a running chain). No `address` fields — addresses are computed deterministically. The deterministic deployer is not included in the config since it cannot be deployed via CREATE2 (it must already exist on-chain).
+
+```bash
+# Config with Permit2
+ev-deployer init deploy --chain-id 42170 --permit2
+
+# Full config
+ev-deployer init deploy \
     --chain-id 42170 \
     --permit2 \
     --admin-proxy-owner 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 \
@@ -63,8 +87,7 @@ ev-deployer init \
 |------|-------------|
 | `--output <PATH>` | Write to file instead of stdout |
 | `--chain-id <ID>` | Set the chain ID (defaults to 0) |
-| `--permit2` | Enable Permit2 with its canonical address |
-| `--deterministic-deployer` | Enable the deterministic deployer (Nick's factory) with its canonical address |
+| `--permit2` | Enable Permit2 |
 | `--admin-proxy-owner <ADDR>` | Enable AdminProxy with the given owner |
 
 ### `genesis`
@@ -118,13 +141,13 @@ The deploy pipeline:
 3. Deploys each configured contract via CREATE2.
 4. Verifies that the on-chain bytecode matches the expected bytecode (including patched immutables).
 
-> **Using with ev-dev**: The deterministic deployer is pre-included in the ev-dev genesis, so `ev-deployer deploy` works against ev-dev out of the box. See the [ev-dev README](../ev-dev/README.md#live-contract-deployment-create2) for examples.
+Permit2 is deployed using the [canonical Uniswap salt](https://github.com/Uniswap/permit2/blob/main/script/DeployPermit2.s.sol), so it lands at its well-known address `0x000000000022D473030F116dDEE9F6B43aC78BA3` on any chain.
 
-The `address` field in the config is **ignored** in deploy mode — addresses come from the CREATE2 computation.
+> **Using with ev-dev**: The deterministic deployer can be included in the ev-dev genesis via `ev-deployer init genesis --deterministic-deployer`, so `ev-deployer deploy` works against ev-dev. See the [ev-dev README](../ev-dev/README.md#live-contract-deployment-create2) for examples.
 
 #### State file and resumability
 
-The `--state` file tracks deployment progress. On first run it generates a random CREATE2 salt and records which contracts have been deployed. If the process is interrupted, re-running with the same state file resumes where it left off.
+The `--state` file tracks deployment progress and records which contracts have been deployed. If the process is interrupted, re-running with the same state file resumes where it left off. Contracts with well-known salts (e.g. Permit2) use their canonical salt; others use a random salt generated on first run.
 
 Immutability rules protect against accidental misconfiguration on resume:
 
