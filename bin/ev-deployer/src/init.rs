@@ -30,8 +30,9 @@ pub fn generate_template(params: &InitParams) -> String {
 
     let is_genesis = params.mode == InitMode::Genesis;
 
-    // In deploy mode, deterministic deployer is always required.
-    let deterministic_deployer = params.deterministic_deployer || !is_genesis;
+    // In deploy mode, the deterministic deployer must already exist on-chain
+    // (verified by the pipeline) — it cannot be deployed via CREATE2 itself.
+    let deterministic_deployer = params.deterministic_deployer && is_genesis;
 
     // Header
     let mode_label = if is_genesis { "genesis" } else { "deploy" };
@@ -88,27 +89,21 @@ pub fn generate_template(params: &InitParams) -> String {
         }
     }
 
-    // Deterministic deployer
-    out.push('\n');
+    // Deterministic deployer (only relevant for genesis mode — in deploy mode
+    // the pipeline verifies it exists on-chain, it cannot be deployed via CREATE2).
     if is_genesis {
+        out.push('\n');
         out.push_str(
             "# Deterministic deployer (Nick's factory): CREATE2 factory for deploy mode.\n",
         );
         out.push_str(
             "# Required in genesis for post-merge chains where the keyless tx cannot land.\n",
         );
-    } else {
-        out.push_str("# Deterministic deployer (Nick's factory): required for CREATE2 deploys.\n");
-        out.push_str("# Automatically included — must be present on-chain before deploying.\n");
-    }
-    if deterministic_deployer {
-        out.push_str("[contracts.deterministic_deployer]\n");
-        if is_genesis {
+        if deterministic_deployer {
+            out.push_str("[contracts.deterministic_deployer]\n");
             out.push_str("address = \"0x4e59b44847b379578588920cA78FbF26c0B4956C\"\n");
-        }
-    } else {
-        out.push_str("# [contracts.deterministic_deployer]\n");
-        if is_genesis {
+        } else {
+            out.push_str("# [contracts.deterministic_deployer]\n");
             out.push_str("# address = \"0x4e59b44847b379578588920cA78FbF26c0B4956C\"\n");
         }
     }
@@ -281,7 +276,7 @@ mod tests {
     }
 
     #[test]
-    fn deploy_auto_includes_deterministic_deployer() {
+    fn deploy_excludes_deterministic_deployer() {
         let params = InitParams {
             mode: InitMode::Deploy,
             chain_id: 1234,
@@ -291,12 +286,8 @@ mod tests {
         };
         let output = generate_template(&params);
         assert!(
-            output.contains("[contracts.deterministic_deployer]\n"),
-            "deploy mode should auto-include deterministic deployer\n{output}"
-        );
-        assert!(
-            !output.contains("address = \"0x4e59b44847b379578588920cA78FbF26c0B4956C\""),
-            "deploy mode should not include address for deterministic deployer\n{output}"
+            !output.contains("deterministic_deployer"),
+            "deploy mode should not include deterministic deployer section\n{output}"
         );
     }
 
