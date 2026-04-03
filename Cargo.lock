@@ -2943,6 +2943,7 @@ dependencies = [
  "alloy-primitives",
  "alloy-signer-local",
  "clap",
+ "ev-deployer",
  "ev-node",
  "evolve-ev-reth",
  "eyre",

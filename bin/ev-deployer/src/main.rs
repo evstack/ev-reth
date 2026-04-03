@@ -1,14 +1,8 @@
 //! EV Deployer — genesis alloc generator and live deployer for ev-reth contracts.
 
-mod config;
-mod contracts;
-mod deploy;
-mod genesis;
-mod init;
-mod output;
-
 use alloy_primitives::Address;
 use clap::{Parser, Subcommand};
+use ev_deployer::{config, deploy, genesis, init, output};
 use std::path::PathBuf;
 
 /// EV Deployer: generate genesis alloc or deploy ev-reth contracts.
