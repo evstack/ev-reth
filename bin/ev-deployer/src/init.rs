@@ -1,15 +1,20 @@
 //! Dynamic config template generation for the `init` command.
 
 /// Parameters for generating the init template.
-pub(crate) struct InitParams {
+#[derive(Debug)]
+pub struct InitParams {
+    /// Target chain ID.
     pub chain_id: u64,
+    /// Whether to include Permit2 with its canonical address.
     pub permit2: bool,
+    /// Whether to include the deterministic deployer (Nick's factory).
     pub deterministic_deployer: bool,
+    /// Optional `AdminProxy` owner address.
     pub admin_proxy_owner: Option<String>,
 }
 
 /// Generate a TOML config template based on the given parameters.
-pub(crate) fn generate_template(params: &InitParams) -> String {
+pub fn generate_template(params: &InitParams) -> String {
     let mut out = String::new();
 
     // Header

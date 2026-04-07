@@ -7,12 +7,13 @@
 
 use alloy_signer_local::{coins_bip39::English, MnemonicBuilder};
 use clap::Parser;
+use ev_deployer::{config::DeployConfig, genesis::merge_alloc, output::build_manifest};
 use evolve_ev_reth::{
     config::EvolveConfig,
     rpc::txpool::{EvolveTxpoolApiImpl, EvolveTxpoolApiServer},
 };
 use reth_ethereum_cli::Cli;
-use std::io::Write;
+use std::{io::Write, path::PathBuf};
 use tracing::info;
 
 use ev_node::{EvolveArgs, EvolveChainSpecParser, EvolveNode};
@@ -55,6 +56,10 @@ struct EvDevArgs {
     /// Number of accounts to display (1..=20)
     #[arg(long, default_value_t = 10, value_parser = parse_accounts)]
     accounts: usize,
+
+    /// Path to an ev-deployer TOML config to deploy contracts at genesis.
+    #[arg(long, value_name = "PATH")]
+    deploy_config: Option<PathBuf>,
 }
 
 fn derive_keys(count: usize) -> Vec<(String, String)> {
@@ -84,7 +89,7 @@ fn chain_id_from_genesis() -> u64 {
         .expect("genesis must have config.chainId")
 }
 
-fn print_banner(args: &EvDevArgs) {
+fn print_banner(args: &EvDevArgs, deploy_cfg: Option<&DeployConfig>) {
     let accounts = derive_keys(args.accounts);
 
     println!();
@@ -124,6 +129,20 @@ fn print_banner(args: &EvDevArgs) {
     println!("Mnemonic: {HARDHAT_MNEMONIC}");
     println!("Derivation path: m/44'/60'/0'/0/{{index}}");
     println!();
+
+    if let Some(cfg) = deploy_cfg {
+        let config_path = args.deploy_config.as_ref().unwrap();
+        println!("Genesis Contracts (from {})", config_path.display());
+        println!("==================");
+        let manifest = build_manifest(cfg);
+        if let Some(obj) = manifest.as_object() {
+            for (name, addr) in obj {
+                println!("  {name:20} {addr}");
+            }
+        }
+        println!();
+    }
+
     println!("WARNING: These accounts and keys are publicly known.");
     println!("Any funds sent to them on mainnet WILL BE LOST.");
     println!();
@@ -138,15 +157,39 @@ fn main() {
 
     let dev_args = EvDevArgs::parse();
 
+    let deploy_cfg = dev_args.deploy_config.as_ref().map(|config_path| {
+        let mut cfg = DeployConfig::load(config_path)
+            .unwrap_or_else(|e| panic!("failed to load deploy config: {e}"));
+
+        let genesis_chain_id = chain_id_from_genesis();
+        if cfg.chain.chain_id != genesis_chain_id {
+            eprintln!(
+                "WARNING: deploy config chain_id ({}) differs from devnet genesis ({}), overriding to {}",
+                cfg.chain.chain_id, genesis_chain_id, genesis_chain_id
+            );
+            cfg.chain.chain_id = genesis_chain_id;
+        }
+        cfg
+    });
+
     if !dev_args.silent {
-        print_banner(&dev_args);
+        print_banner(&dev_args, deploy_cfg.as_ref());
     }
+
+    let genesis_json = if let Some(ref cfg) = deploy_cfg {
+        let mut genesis: serde_json::Value =
+            serde_json::from_str(DEVNET_GENESIS).expect("valid genesis JSON");
+        merge_alloc(cfg, &mut genesis, true).expect("failed to merge deploy config into genesis");
+        serde_json::to_string(&genesis).expect("failed to serialize merged genesis")
+    } else {
+        DEVNET_GENESIS.to_string()
+    };
 
     // Write genesis to a temp file that lives for the process duration
     let mut genesis_file =
         tempfile::NamedTempFile::new().expect("failed to create temp genesis file");
     genesis_file
-        .write_all(DEVNET_GENESIS.as_bytes())
+        .write_all(genesis_json.as_bytes())
         .expect("failed to write genesis");
     let genesis_path = genesis_file
         .path()

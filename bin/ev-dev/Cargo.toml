@@ -15,6 +15,7 @@ path = "src/main.rs"
 [dependencies]
 # Core evolve crates
 ev-node = { path = "../../crates/node" }
+ev-deployer = { path = "../ev-deployer" }
 evolve-ev-reth = { path = "../../crates/evolve" }
 
 # Reth CLI and core dependencies

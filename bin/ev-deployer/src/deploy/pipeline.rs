@@ -13,7 +13,8 @@ use alloy_primitives::{Address, B256};
 use std::path::{Path, PathBuf};
 
 /// Configuration for the deploy pipeline.
-pub(crate) struct PipelineConfig {
+#[derive(Debug)]
+pub struct PipelineConfig {
     /// Parsed deployment intent loaded from the user-provided config file.
     pub config: DeployConfig,
     /// Path to the persisted deploy state JSON file.
@@ -26,10 +27,7 @@ pub(crate) struct PipelineConfig {
 }
 
 /// Run the full deploy pipeline.
-pub(crate) async fn run(
-    pipeline_cfg: &PipelineConfig,
-    deployer: &dyn ChainDeployer,
-) -> eyre::Result<()> {
+pub async fn run(pipeline_cfg: &PipelineConfig, deployer: &dyn ChainDeployer) -> eyre::Result<()> {
     // ── Step 1: Init ──
     eprintln!("[1/4] Connecting to RPC...");
     let chain_id = deployer.chain_id().await?;
