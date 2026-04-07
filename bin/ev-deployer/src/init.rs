@@ -36,7 +36,9 @@ pub fn generate_template(params: &InitParams) -> String {
 
     // Header
     let mode_label = if is_genesis { "genesis" } else { "deploy" };
-    out.push_str(&format!("# EV Deployer configuration ({mode_label} mode)\n"));
+    out.push_str(&format!(
+        "# EV Deployer configuration ({mode_label} mode)\n"
+    ));
     out.push_str("# See: bin/ev-deployer/README.md\n");
     out.push('\n');
 
