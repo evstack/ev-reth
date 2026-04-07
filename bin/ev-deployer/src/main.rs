@@ -18,27 +18,10 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Generate a starter config file with all supported contracts.
+    /// Generate a starter config file for genesis or deploy mode.
     Init {
-        /// Write config to this file instead of stdout.
-        #[arg(long)]
-        output: Option<PathBuf>,
-
-        /// Set the chain ID (defaults to 0).
-        #[arg(long)]
-        chain_id: Option<u64>,
-
-        /// Include `Permit2` with its canonical address.
-        #[arg(long)]
-        permit2: bool,
-
-        /// Include the deterministic deployer (Nick's factory) with its canonical address.
-        #[arg(long)]
-        deterministic_deployer: bool,
-
-        /// Include `AdminProxy` with the given owner address.
-        #[arg(long)]
-        admin_proxy_owner: Option<Address>,
+        #[command(subcommand)]
+        subcommand: InitSubcommand,
     },
     /// Generate genesis alloc JSON from a deploy config.
     Genesis {
@@ -93,6 +76,50 @@ enum Command {
         /// Contract name (e.g. `admin_proxy`).
         #[arg(long)]
         contract: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum InitSubcommand {
+    /// Generate config for genesis injection (contracts embedded at chain start).
+    Genesis {
+        /// Write config to this file instead of stdout.
+        #[arg(long)]
+        output: Option<PathBuf>,
+
+        /// Set the chain ID (defaults to 0).
+        #[arg(long)]
+        chain_id: Option<u64>,
+
+        /// Include `Permit2` with its canonical address.
+        #[arg(long)]
+        permit2: bool,
+
+        /// Include the deterministic deployer (Nick's factory) with its canonical address.
+        #[arg(long)]
+        deterministic_deployer: bool,
+
+        /// Include `AdminProxy` with the given owner address.
+        #[arg(long)]
+        admin_proxy_owner: Option<Address>,
+    },
+    /// Generate config for live CREATE2 deployment.
+    Deploy {
+        /// Write config to this file instead of stdout.
+        #[arg(long)]
+        output: Option<PathBuf>,
+
+        /// Set the chain ID (defaults to 0).
+        #[arg(long)]
+        chain_id: Option<u64>,
+
+        /// Include `Permit2`.
+        #[arg(long)]
+        permit2: bool,
+
+        /// Include `AdminProxy` with the given owner address.
+        #[arg(long)]
+        admin_proxy_owner: Option<Address>,
     },
 }
 
@@ -152,19 +179,41 @@ fn main() -> eyre::Result<()> {
                 .build()?
                 .block_on(deploy::pipeline::run(&pipeline_cfg, &deployer))?;
         }
-        Command::Init {
-            output,
-            chain_id,
-            permit2,
-            deterministic_deployer,
-            admin_proxy_owner,
-        } => {
-            let params = init::InitParams {
-                chain_id: chain_id.unwrap_or(0),
-                permit2,
-                deterministic_deployer,
-                admin_proxy_owner: admin_proxy_owner.map(|a| format!("{a}")),
+        Command::Init { subcommand } => {
+            let (params, output) = match subcommand {
+                InitSubcommand::Genesis {
+                    output,
+                    chain_id,
+                    permit2,
+                    deterministic_deployer,
+                    admin_proxy_owner,
+                } => (
+                    init::InitParams {
+                        mode: init::InitMode::Genesis,
+                        chain_id: chain_id.unwrap_or(0),
+                        permit2,
+                        deterministic_deployer,
+                        admin_proxy_owner: admin_proxy_owner.map(|a| format!("{a}")),
+                    },
+                    output,
+                ),
+                InitSubcommand::Deploy {
+                    output,
+                    chain_id,
+                    permit2,
+                    admin_proxy_owner,
+                } => (
+                    init::InitParams {
+                        mode: init::InitMode::Deploy,
+                        chain_id: chain_id.unwrap_or(0),
+                        permit2,
+                        deterministic_deployer: false,
+                        admin_proxy_owner: admin_proxy_owner.map(|a| format!("{a}")),
+                    },
+                    output,
+                ),
             };
+
             let template = init::generate_template(&params);
 
             if let Some(ref out_path) = output {
