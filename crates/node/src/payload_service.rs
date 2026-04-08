@@ -541,4 +541,89 @@ mod tests {
             "span missing duration_ms field"
         );
     }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn try_build_drops_invalid_raw_transactions() {
+        let genesis: alloy_genesis::Genesis =
+            serde_json::from_str(include_str!("../../tests/assets/genesis.json"))
+                .expect("valid genesis");
+        let chain_spec = Arc::new(
+            ChainSpecBuilder::default()
+                .chain(reth_chainspec::Chain::from_id(1234))
+                .genesis(genesis)
+                .cancun_activated()
+                .build(),
+        );
+
+        let provider = MockEthProvider::default();
+        let genesis_hash = B256::from_slice(
+            &hex::decode("2b8bbb1ea1e04f9c9809b4b278a8687806edc061a356c7dbc491930d8e922503")
+                .unwrap(),
+        );
+        let genesis_state_root = B256::from_slice(
+            &hex::decode("05e9954443da80d86f2104e56ffdfd98fe21988730684360104865b3dc8191b4")
+                .unwrap(),
+        );
+
+        let genesis_header = Header {
+            state_root: genesis_state_root,
+            number: 0,
+            gas_limit: 30_000_000,
+            timestamp: 1710338135,
+            base_fee_per_gas: Some(0),
+            excess_blob_gas: Some(0),
+            blob_gas_used: Some(0),
+            parent_beacon_block_root: Some(B256::ZERO),
+            ..Default::default()
+        };
+        provider.add_header(genesis_hash, genesis_header.clone());
+
+        let config = EvolvePayloadBuilderConfig::from_chain_spec(chain_spec.as_ref()).unwrap();
+        let evm_config = EvolveEvmConfig::new(chain_spec);
+        let evolve_builder = Arc::new(EvolvePayloadBuilder::new(
+            Arc::new(provider),
+            evm_config,
+            config.clone(),
+        ));
+
+        let engine_builder = EvolveEnginePayloadBuilder {
+            evolve_builder,
+            config,
+            pool: NoopTransactionPool::<EvPooledTransaction>::new(),
+            dev_mode: false,
+        };
+
+        // Include garbage bytes that cannot be decoded as valid transactions.
+        let invalid_tx = alloy_primitives::Bytes::from_static(&[0xde, 0xad, 0xbe, 0xef]);
+        let attrs = EvolveEnginePayloadAttributes {
+            inner: RpcPayloadAttributes {
+                timestamp: 1710338136,
+                prev_randao: B256::random(),
+                suggested_fee_recipient: Address::random(),
+                withdrawals: Some(vec![]),
+                parent_beacon_block_root: Some(B256::ZERO),
+            },
+            transactions: Some(vec![invalid_tx]),
+            gas_limit: Some(30_000_000),
+        };
+        let payload_id = attrs.payload_id(&genesis_hash);
+
+        let sealed_parent = SealedHeader::new(genesis_header, genesis_hash);
+        let payload_config = PayloadConfig::new(Arc::new(sealed_parent), attrs, payload_id);
+        let args = BuildArguments::new(
+            CachedReads::default(),
+            None,
+            None,
+            payload_config,
+            CancelOnDrop::default(),
+            None,
+        );
+
+        // The build should succeed — invalid transactions are dropped, not fatal.
+        let result = engine_builder.try_build(args);
+        assert!(
+            result.is_ok(),
+            "build should succeed even with invalid raw transactions, got: {result:?}"
+        );
+    }
 }
