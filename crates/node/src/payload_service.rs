@@ -11,7 +11,7 @@ use reth_basic_payload_builder::{
 use reth_ethereum::{
     chainspec::{ChainSpec, ChainSpecProvider},
     node::{
-        api::{payload::PayloadBuilderAttributes, FullNodeTypes, NodeTypes},
+        api::{payload::PayloadAttributes, FullNodeTypes, NodeTypes},
         builder::{components::PayloadBuilderBuilder, BuilderContext},
     },
     pool::{PoolTransaction, TransactionPool},
@@ -23,8 +23,10 @@ use reth_revm::cached::CachedReads;
 use tokio::runtime::Handle;
 use tracing::{info, instrument};
 
+use alloy_eips::Decodable2718;
+
 use crate::{
-    attributes::EvolveEnginePayloadBuilderAttributes, builder::EvolvePayloadBuilder,
+    attributes::EvolveEnginePayloadAttributes, builder::EvolvePayloadBuilder,
     config::EvolvePayloadBuilderConfig, executor::EvolveEvmConfig, node::EvolveEngineTypes,
     payload_types::EvBuiltPayload,
 };
@@ -123,6 +125,29 @@ where
     }
 }
 
+impl<Client, Pool> EvolveEnginePayloadBuilder<Client, Pool>
+where
+    Client: Clone,
+{
+    /// Resolves the fee recipient: uses the suggested value from attributes, falling back
+    /// to the configured base-fee sink when the suggested value is zero.
+    fn resolve_fee_recipient(&self, suggested: Address, block_number: u64) -> Address {
+        if suggested != Address::ZERO {
+            return suggested;
+        }
+        if let Some(sink) = self.config.base_fee_sink_for_block(block_number) {
+            info!(
+                target: "ev-reth",
+                fee_sink = ?sink,
+                block_number,
+                "Suggested fee recipient missing; defaulting to base-fee sink"
+            );
+            return sink;
+        }
+        suggested
+    }
+}
+
 impl<Client, Pool> PayloadBuilder for EvolveEnginePayloadBuilder<Client, Pool>
 where
     Client: reth_ethereum::provider::StateProviderFactory
@@ -136,12 +161,12 @@ where
         + Unpin
         + 'static,
 {
-    type Attributes = EvolveEnginePayloadBuilderAttributes;
+    type Attributes = EvolveEnginePayloadAttributes;
     type BuiltPayload = EvBuiltPayload;
 
     #[instrument(skip(self, args), fields(
         tx_count = tracing::field::Empty,
-        payload_id = %args.config.attributes.payload_id(),
+        payload_id = %args.config.payload_id(),
         duration_ms = tracing::field::Empty,
     ))]
     fn try_build(
@@ -154,10 +179,12 @@ where
             config,
             cancel: _,
             best_payload: _,
+            ..
         } = args;
         let PayloadConfig {
             parent_header,
-            attributes,
+            mut attributes,
+            payload_id,
         } = config;
 
         info!("building payload");
@@ -169,18 +196,8 @@ where
         set_current_block_gas_limit(effective_gas_limit);
 
         let block_number = parent_header.number + 1;
-        let mut fee_recipient = attributes.suggested_fee_recipient();
-        if fee_recipient == Address::ZERO {
-            if let Some(sink) = self.config.base_fee_sink_for_block(block_number) {
-                info!(
-                    target: "ev-reth",
-                    fee_sink = ?sink,
-                    block_number,
-                    "Suggested fee recipient missing; defaulting to base-fee sink"
-                );
-                fee_recipient = sink;
-            }
-        }
+        let fee_recipient =
+            self.resolve_fee_recipient(attributes.inner.suggested_fee_recipient, block_number);
 
         // In dev mode, pull pending transactions from the txpool.
         // In production, transactions come exclusively from Engine API attributes.
@@ -199,7 +216,25 @@ where
             }
             pool_txs
         } else {
-            attributes.transactions.clone()
+            // Decode transactions from raw bytes.
+            attributes
+                .transactions
+                .take()
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(|tx_bytes| {
+                    match TransactionSigned::network_decode(&mut tx_bytes.as_ref()) {
+                        Ok(tx) => Some(tx),
+                        Err(err) => {
+                            tracing::warn!(
+                                %err,
+                                "dropping undecodable transaction from payload attributes"
+                            );
+                            None
+                        }
+                    }
+                })
+                .collect()
         };
 
         tracing::Span::current().record("tx_count", transactions.len());
@@ -208,9 +243,9 @@ where
             transactions,
             Some(effective_gas_limit),
             attributes.timestamp(),
-            attributes.prev_randao(),
+            attributes.inner.prev_randao,
             fee_recipient,
-            attributes.parent(),
+            parent_header.hash(),
             block_number,
         );
 
@@ -230,7 +265,7 @@ where
         // Convert to EvBuiltPayload.
         let gas_used = sealed_block.gas_used;
         let built_payload = EvBuiltPayload::new(
-            attributes.payload_id(), // Use the proper payload ID from attributes.
+            payload_id,
             Arc::new(sealed_block),
             U256::from(gas_used), // Block gas used.
             None,                 // No blob sidecar for evolve.
@@ -243,7 +278,7 @@ where
     }
 
     #[instrument(skip(self, config), fields(
-        payload_id = %config.attributes.payload_id(),
+        payload_id = %config.payload_id(),
         duration_ms = tracing::field::Empty,
     ))]
     fn build_empty_payload(
@@ -254,6 +289,7 @@ where
         let PayloadConfig {
             parent_header,
             attributes,
+            payload_id,
         } = config;
 
         info!("building empty payload");
@@ -265,26 +301,16 @@ where
         set_current_block_gas_limit(effective_gas_limit);
 
         let block_number = parent_header.number + 1;
-        let mut fee_recipient = attributes.suggested_fee_recipient();
-        if fee_recipient == Address::ZERO {
-            if let Some(sink) = self.config.base_fee_sink_for_block(block_number) {
-                info!(
-                    target: "ev-reth",
-                    fee_sink = ?sink,
-                    block_number,
-                    "Suggested fee recipient missing; defaulting to base-fee sink"
-                );
-                fee_recipient = sink;
-            }
-        }
+        let fee_recipient =
+            self.resolve_fee_recipient(attributes.inner.suggested_fee_recipient, block_number);
 
         let evolve_attrs = EvolvePayloadAttributes::new(
             vec![],
             Some(effective_gas_limit),
             attributes.timestamp(),
-            attributes.prev_randao(),
+            attributes.inner.prev_randao,
             fee_recipient,
-            attributes.parent(),
+            parent_header.hash(),
             block_number,
         );
 
@@ -297,7 +323,7 @@ where
 
         let gas_used = sealed_block.gas_used;
         Ok(EvBuiltPayload::new(
-            attributes.payload_id(),
+            payload_id,
             Arc::new(sealed_block),
             U256::from(gas_used),
             None,
@@ -327,7 +353,7 @@ mod tests {
     use alloy_rpc_types::engine::PayloadAttributes as RpcPayloadAttributes;
     use reth_basic_payload_builder::PayloadConfig;
     use reth_chainspec::ChainSpecBuilder;
-    use reth_payload_builder::EthPayloadBuilderAttributes;
+    use reth_payload_primitives::PayloadAttributes;
     use reth_primitives_traits::SealedHeader;
     use reth_provider::test_utils::MockEthProvider;
     use reth_revm::{cached::CachedReads, cancelled::CancelOnDrop};
@@ -387,20 +413,25 @@ mod tests {
             dev_mode: false,
         };
 
-        let rpc_attrs = RpcPayloadAttributes {
-            timestamp: 1710338136,
-            prev_randao: B256::random(),
-            suggested_fee_recipient: Address::random(),
-            withdrawals: Some(vec![]),
-            parent_beacon_block_root: Some(B256::ZERO),
+        let attrs = EvolveEnginePayloadAttributes {
+            inner: RpcPayloadAttributes {
+                timestamp: 1710338136,
+                prev_randao: B256::random(),
+                suggested_fee_recipient: Address::random(),
+                withdrawals: Some(vec![]),
+                parent_beacon_block_root: Some(B256::ZERO),
+            },
+            transactions: None,
+            gas_limit: Some(30_000_000),
         };
-        let eth_attrs = EthPayloadBuilderAttributes::new(genesis_hash, rpc_attrs);
-        let builder_attrs = EvolveEnginePayloadBuilderAttributes::from(eth_attrs);
+        let payload_id = attrs.payload_id(&genesis_hash);
 
         let sealed_parent = SealedHeader::new(genesis_header, genesis_hash);
-        let payload_config = PayloadConfig::new(Arc::new(sealed_parent), builder_attrs);
+        let payload_config = PayloadConfig::new(Arc::new(sealed_parent), attrs, payload_id);
         let args = BuildArguments::new(
             CachedReads::default(),
+            None,
+            None,
             payload_config,
             CancelOnDrop::default(),
             None,
@@ -478,18 +509,21 @@ mod tests {
             dev_mode: false,
         };
 
-        let rpc_attrs = RpcPayloadAttributes {
-            timestamp: 1710338136,
-            prev_randao: B256::random(),
-            suggested_fee_recipient: Address::random(),
-            withdrawals: Some(vec![]),
-            parent_beacon_block_root: Some(B256::ZERO),
+        let attrs = EvolveEnginePayloadAttributes {
+            inner: RpcPayloadAttributes {
+                timestamp: 1710338136,
+                prev_randao: B256::random(),
+                suggested_fee_recipient: Address::random(),
+                withdrawals: Some(vec![]),
+                parent_beacon_block_root: Some(B256::ZERO),
+            },
+            transactions: None,
+            gas_limit: Some(30_000_000),
         };
-        let eth_attrs = EthPayloadBuilderAttributes::new(genesis_hash, rpc_attrs);
-        let builder_attrs = EvolveEnginePayloadBuilderAttributes::from(eth_attrs);
+        let payload_id = attrs.payload_id(&genesis_hash);
 
         let sealed_parent = SealedHeader::new(genesis_header, genesis_hash);
-        let payload_config = PayloadConfig::new(Arc::new(sealed_parent), builder_attrs);
+        let payload_config = PayloadConfig::new(Arc::new(sealed_parent), attrs, payload_id);
 
         // we only care that the span was created with the right fields.
         let _ = engine_builder.build_empty_payload(payload_config);
@@ -505,6 +539,91 @@ mod tests {
         assert!(
             span.has_field("duration_ms"),
             "span missing duration_ms field"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn try_build_drops_invalid_raw_transactions() {
+        let genesis: alloy_genesis::Genesis =
+            serde_json::from_str(include_str!("../../tests/assets/genesis.json"))
+                .expect("valid genesis");
+        let chain_spec = Arc::new(
+            ChainSpecBuilder::default()
+                .chain(reth_chainspec::Chain::from_id(1234))
+                .genesis(genesis)
+                .cancun_activated()
+                .build(),
+        );
+
+        let provider = MockEthProvider::default();
+        let genesis_hash = B256::from_slice(
+            &hex::decode("2b8bbb1ea1e04f9c9809b4b278a8687806edc061a356c7dbc491930d8e922503")
+                .unwrap(),
+        );
+        let genesis_state_root = B256::from_slice(
+            &hex::decode("05e9954443da80d86f2104e56ffdfd98fe21988730684360104865b3dc8191b4")
+                .unwrap(),
+        );
+
+        let genesis_header = Header {
+            state_root: genesis_state_root,
+            number: 0,
+            gas_limit: 30_000_000,
+            timestamp: 1710338135,
+            base_fee_per_gas: Some(0),
+            excess_blob_gas: Some(0),
+            blob_gas_used: Some(0),
+            parent_beacon_block_root: Some(B256::ZERO),
+            ..Default::default()
+        };
+        provider.add_header(genesis_hash, genesis_header.clone());
+
+        let config = EvolvePayloadBuilderConfig::from_chain_spec(chain_spec.as_ref()).unwrap();
+        let evm_config = EvolveEvmConfig::new(chain_spec);
+        let evolve_builder = Arc::new(EvolvePayloadBuilder::new(
+            Arc::new(provider),
+            evm_config,
+            config.clone(),
+        ));
+
+        let engine_builder = EvolveEnginePayloadBuilder {
+            evolve_builder,
+            config,
+            pool: NoopTransactionPool::<EvPooledTransaction>::new(),
+            dev_mode: false,
+        };
+
+        // Include garbage bytes that cannot be decoded as valid transactions.
+        let invalid_tx = alloy_primitives::Bytes::from_static(&[0xde, 0xad, 0xbe, 0xef]);
+        let attrs = EvolveEnginePayloadAttributes {
+            inner: RpcPayloadAttributes {
+                timestamp: 1710338136,
+                prev_randao: B256::random(),
+                suggested_fee_recipient: Address::random(),
+                withdrawals: Some(vec![]),
+                parent_beacon_block_root: Some(B256::ZERO),
+            },
+            transactions: Some(vec![invalid_tx]),
+            gas_limit: Some(30_000_000),
+        };
+        let payload_id = attrs.payload_id(&genesis_hash);
+
+        let sealed_parent = SealedHeader::new(genesis_header, genesis_hash);
+        let payload_config = PayloadConfig::new(Arc::new(sealed_parent), attrs, payload_id);
+        let args = BuildArguments::new(
+            CachedReads::default(),
+            None,
+            None,
+            payload_config,
+            CancelOnDrop::default(),
+            None,
+        );
+
+        // The build should succeed — invalid transactions are dropped, not fatal.
+        let result = engine_builder.try_build(args);
+        assert!(
+            result.is_ok(),
+            "build should succeed even with invalid raw transactions, got: {result:?}"
         );
     }
 }

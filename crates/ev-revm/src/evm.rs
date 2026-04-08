@@ -22,7 +22,7 @@ use reth_revm::{
     },
     Context,
 };
-use revm_inspector::JournalExt;
+use reth_revm::revm::inspector::JournalExt;
 use std::ops::{Deref, DerefMut};
 
 /// Convenience alias matching the stock mainnet EVM signature.
@@ -35,28 +35,6 @@ pub struct EvEvm<CTX, INSP, PRECOMP = EthPrecompiles> {
     redirect: Option<BaseFeeRedirect>,
     deploy_allowlist: Option<DeployAllowlistSettings>,
     inspect: bool,
-}
-
-impl<CTX, INSP, P> EvEvm<CTX, INSP, P>
-where
-    CTX: ContextTr + ContextSetters,
-    P: Default,
-{
-    /// Creates a new wrapper configured with the provided redirect policy.
-    pub fn new(ctx: CTX, inspector: INSP, redirect: Option<BaseFeeRedirect>) -> Self {
-        Self {
-            inner: Evm {
-                ctx,
-                inspector,
-                instruction: EthInstructions::new_mainnet(),
-                precompiles: P::default(),
-                frame_stack: FrameStack::new(),
-            },
-            redirect,
-            deploy_allowlist: None,
-            inspect: false,
-        }
-    }
 }
 
 impl<CTX, INSP, P> EvEvm<CTX, INSP, P> {
@@ -116,7 +94,7 @@ impl<CTX, INSP, P> EvEvm<CTX, INSP, P> {
     }
 
     /// Exposes a mutable reference to the wrapped `Evm`.
-    pub(crate) fn inner_mut(
+    pub(crate) const fn inner_mut(
         &mut self,
     ) -> &mut Evm<CTX, INSP, EthInstructions<EthInterpreter, CTX>, P, EthFrame<EthInterpreter>>
     {

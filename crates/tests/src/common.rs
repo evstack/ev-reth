@@ -16,7 +16,8 @@ use ev_revm::{
 use eyre::Result;
 use reth_chainspec::{ChainSpec, ChainSpecBuilder};
 use reth_node_api::TreeConfig;
-use reth_primitives::{Header, Transaction};
+use alloy_consensus::Header;
+use reth_ethereum_primitives::Transaction;
 use reth_provider::test_utils::{ExtendedAccount, MockEthProvider};
 use serde_json::json;
 use tempfile::TempDir;
@@ -109,7 +110,6 @@ pub fn create_test_chain_spec_with_deploy_allowlist(
 pub fn e2e_test_tree_config() -> TreeConfig {
     TreeConfig::default()
         .with_legacy_state_root(true)
-        .with_disable_proof_v2(true)
 }
 
 /// Shared test fixture for evolve payload builder tests

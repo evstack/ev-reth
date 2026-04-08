@@ -26,7 +26,7 @@ use std::sync::Arc;
 use tracing::info;
 
 use crate::{
-    attributes::{EvolveEnginePayloadAttributes, EvolveEnginePayloadBuilderAttributes},
+    attributes::EvolveEnginePayloadAttributes,
     executor::EvolveExecutorBuilder,
     payload_service::EvolvePayloadBuilderBuilder,
     payload_types::EvBuiltPayload,
@@ -44,7 +44,6 @@ impl PayloadTypes for EvolveEngineTypes {
     type ExecutionData = ExecutionData;
     type BuiltPayload = EvBuiltPayload;
     type PayloadAttributes = EvolveEnginePayloadAttributes;
-    type PayloadBuilderAttributes = EvolveEnginePayloadBuilderAttributes;
 
     fn block_to_payload(
         block: SealedBlock<

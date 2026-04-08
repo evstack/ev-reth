@@ -252,9 +252,6 @@ impl Precompile for MintPrecompile {
         }
     }
 
-    fn is_pure(&self) -> bool {
-        false
-    }
 }
 
 #[cfg(test)]
