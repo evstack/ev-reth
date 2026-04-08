@@ -35,7 +35,7 @@ reth-errors = { git = "https://github.com/paradigmxyz/reth.git", tag = "v2.0.0" 
 reth-trie-db = { git = "https://github.com/paradigmxyz/reth.git", tag = "v2.0.0" }
 reth-trie-common = { git = "https://github.com/paradigmxyz/reth.git", tag = "v2.0.0" }
 reth-rpc-eth-types = { git = "https://github.com/paradigmxyz/reth.git", tag = "v2.0.0" }
-reth-primitives-traits = { git = "https://github.com/paradigmxyz/reth.git", tag = "v2.0.0" }
+reth-primitives-traits = { version = "0.1.0", default-features = false }
 reth-provider = { git = "https://github.com/paradigmxyz/reth.git", tag = "v2.0.0" }
 reth-storage-api = { git = "https://github.com/paradigmxyz/reth.git", tag = "v2.0.0" }
 reth-tracing = { git = "https://github.com/paradigmxyz/reth.git", tag = "v2.0.0" }
@@ -67,7 +67,7 @@ reth-rpc-builder = { git = "https://github.com/paradigmxyz/reth.git", tag = "v2.
 reth-rpc-engine-api = { git = "https://github.com/paradigmxyz/reth.git", tag = "v2.0.0" }
 reth-rpc = { git = "https://github.com/paradigmxyz/reth.git", tag = "v2.0.0" }
 reth-rpc-convert = { git = "https://github.com/paradigmxyz/reth.git", tag = "v2.0.0" }
-reth-codecs = { git = "https://github.com/paradigmxyz/reth.git", tag = "v2.0.0" }
+reth-codecs = { version = "0.1.0", default-features = false }
 
 ev-revm = { path = "crates/ev-revm" }
 ev-primitives = { path = "crates/ev-primitives" }
