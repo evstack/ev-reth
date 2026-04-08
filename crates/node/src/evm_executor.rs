@@ -15,7 +15,7 @@ use alloy_evm::{
         spec::{EthExecutorSpec, EthSpec},
         EthBlockExecutionCtx,
     },
-    Database, EthEvmFactory, Evm, EvmFactory, FromRecoveredTx, FromTxWithEncoded, RecoveredTx,
+    EthEvmFactory, Evm, EvmFactory, FromRecoveredTx, FromTxWithEncoded, RecoveredTx,
 };
 use alloy_primitives::Log;
 use ev_primitives::{Receipt, TransactionSigned};
@@ -23,7 +23,7 @@ use reth_ethereum_forks::EthereumHardfork;
 use reth_revm::{
     context_interface::block::Block as BlockEnvTr,
     database_interface::DatabaseCommitExt,
-    revm::{context_interface::result::ResultAndState, database::State, DatabaseCommit, Inspector},
+    revm::{context_interface::result::ResultAndState, DatabaseCommit, Inspector},
 };
 
 /// Execution result wrapper used by the EV block executor.
@@ -45,6 +45,10 @@ impl<H, T> alloy_evm::block::TxResult for EvTxResult<H, T> {
 
     fn result(&self) -> &ResultAndState<Self::HaltReason> {
         &self.result
+    }
+
+    fn into_result(self) -> ResultAndState<Self::HaltReason> {
+        self.result
     }
 }
 
@@ -110,11 +114,10 @@ where
     }
 }
 
-impl<'db, DB, E, Spec, R> BlockExecutor for EvBlockExecutor<'_, E, Spec, R>
+impl<E, Spec, R> BlockExecutor for EvBlockExecutor<'_, E, Spec, R>
 where
-    DB: Database + 'db,
     E: Evm<
-        DB = &'db mut State<DB>,
+        DB: alloy_evm::block::state::StateDB,
         Tx: FromRecoveredTx<R::Transaction> + FromTxWithEncoded<R::Transaction>,
     >,
     Spec: EthExecutorSpec,
@@ -127,11 +130,6 @@ where
         EvTxResult<<Self::Evm as Evm>::HaltReason, <R::Transaction as TransactionEnvelope>::TxType>;
 
     fn apply_pre_execution_changes(&mut self) -> Result<(), BlockExecutionError> {
-        let state_clear_flag = self
-            .spec
-            .is_spurious_dragon_active_at_block(self.evm.block().number().saturating_to());
-        self.evm.db_mut().set_state_clear_flag(state_clear_flag);
-
         self.system_caller
             .apply_blockhashes_contract_call(self.ctx.parent_hash, &mut self.evm)?;
         self.system_caller
@@ -350,12 +348,12 @@ where
 
     fn create_executor<'a, DB, I>(
         &'a self,
-        evm: EvmF::Evm<&'a mut State<DB>, I>,
+        evm: EvmF::Evm<DB, I>,
         ctx: Self::ExecutionCtx<'a>,
     ) -> impl BlockExecutorFor<'a, Self, DB, I>
     where
-        DB: Database + 'a,
-        I: Inspector<EvmF::Context<&'a mut State<DB>>> + 'a,
+        DB: alloy_evm::block::state::StateDB + 'a,
+        I: Inspector<EvmF::Context<DB>> + 'a,
     {
         EvBlockExecutor::new(evm, ctx, self.spec.clone(), self.receipt_builder.clone())
     }

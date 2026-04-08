@@ -1,5 +1,5 @@
 use alloy_consensus::BlockHeader;
-use alloy_eips::{eip4895::Withdrawals, Decodable2718};
+use alloy_eips::Decodable2718;
 use alloy_primitives::{Address, Bytes, B256};
 use alloy_rpc_types::{
     engine::{PayloadAttributes as RpcPayloadAttributes, PayloadId},
@@ -7,17 +7,15 @@ use alloy_rpc_types::{
 };
 use reth_chainspec::EthereumHardforks;
 use reth_engine_local::payload::LocalPayloadAttributesBuilder;
-use reth_ethereum::node::api::payload::{PayloadAttributes, PayloadBuilderAttributes};
-use reth_payload_builder::EthPayloadBuilderAttributes;
-use reth_payload_primitives::PayloadAttributesBuilder;
+use reth_ethereum::node::api::payload::PayloadAttributes;
+use reth_payload_primitives::{payload_id, PayloadAttributesBuilder};
 use reth_primitives_traits::SealedHeader;
 use serde::{Deserialize, Serialize};
 
-use crate::tracing_ext::RecordDurationOnDrop;
-use tracing::{info, instrument};
-
 use crate::error::EvolveEngineError;
+use crate::tracing_ext::RecordDurationOnDrop;
 use ev_primitives::TransactionSigned;
+use tracing::{info, instrument};
 
 /// Evolve payload attributes that support passing transactions via Engine API.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -33,6 +31,10 @@ pub struct EvolveEnginePayloadAttributes {
 }
 
 impl PayloadAttributes for EvolveEnginePayloadAttributes {
+    fn payload_id(&self, parent_hash: &B256) -> PayloadId {
+        payload_id(parent_hash, &self.inner)
+    }
+
     fn timestamp(&self) -> u64 {
         self.inner.timestamp()
     }
@@ -57,33 +59,37 @@ impl From<RpcPayloadAttributes> for EvolveEnginePayloadAttributes {
 }
 
 /// Evolve payload builder attributes.
-#[derive(Clone, Debug, PartialEq, Eq)]
+///
+/// In reth v2.0.0, `PayloadBuilderAttributes` was removed. This type now implements
+/// `PayloadAttributes` directly and stores the decoded transactions from the Engine API.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EvolveEnginePayloadBuilderAttributes {
-    /// Ethereum payload builder attributes.
-    pub ethereum_attributes: EthPayloadBuilderAttributes,
+    /// The inner RPC payload attributes.
+    #[serde(flatten)]
+    pub inner: RpcPayloadAttributes,
+    /// Parent block hash.
+    pub parent: B256,
     /// Decoded transactions from the Engine API.
+    #[serde(skip)]
     pub transactions: Vec<TransactionSigned>,
     /// Gas limit for the payload.
+    #[serde(rename = "gasLimit")]
     pub gas_limit: Option<u64>,
 }
 
-impl PayloadBuilderAttributes for EvolveEnginePayloadBuilderAttributes {
-    type RpcPayloadAttributes = EvolveEnginePayloadAttributes;
-    type Error = EvolveEngineError;
-
-    #[instrument(skip(parent, attributes, _version), fields(
+impl EvolveEnginePayloadBuilderAttributes {
+    /// Creates builder attributes from RPC attributes with decoded transactions.
+    #[instrument(skip(parent, attributes), fields(
         parent_hash = %parent,
         raw_tx_count = attributes.transactions.as_ref().map_or(0, |t| t.len()),
         gas_limit = ?attributes.gas_limit,
         duration_ms = tracing::field::Empty,
     ))]
-    fn try_new(
+    pub fn try_new(
         parent: B256,
         attributes: EvolveEnginePayloadAttributes,
-        _version: u8,
-    ) -> Result<Self, Self::Error> {
+    ) -> Result<Self, EvolveEngineError> {
         let _duration = RecordDurationOnDrop::new();
-        let ethereum_attributes = EthPayloadBuilderAttributes::new(parent, attributes.inner);
 
         // Decode transactions from bytes if provided.
         let transactions = attributes
@@ -102,47 +108,54 @@ impl PayloadBuilderAttributes for EvolveEnginePayloadBuilderAttributes {
         );
 
         Ok(Self {
-            ethereum_attributes,
+            inner: attributes.inner,
+            parent,
             transactions,
             gas_limit: attributes.gas_limit,
         })
     }
 
-    fn payload_id(&self) -> PayloadId {
-        self.ethereum_attributes.id
+    /// Returns the parent block hash.
+    pub fn parent(&self) -> B256 {
+        self.parent
     }
 
-    fn parent(&self) -> B256 {
-        self.ethereum_attributes.parent
+    /// Returns the suggested fee recipient.
+    pub fn suggested_fee_recipient(&self) -> Address {
+        self.inner.suggested_fee_recipient
     }
 
-    fn timestamp(&self) -> u64 {
-        self.ethereum_attributes.timestamp
-    }
-
-    fn parent_beacon_block_root(&self) -> Option<B256> {
-        self.ethereum_attributes.parent_beacon_block_root
-    }
-
-    fn suggested_fee_recipient(&self) -> Address {
-        self.ethereum_attributes.suggested_fee_recipient
-    }
-
-    fn prev_randao(&self) -> B256 {
-        self.ethereum_attributes.prev_randao
-    }
-
-    fn withdrawals(&self) -> &Withdrawals {
-        &self.ethereum_attributes.withdrawals
+    /// Returns the prev randao value.
+    pub fn prev_randao(&self) -> B256 {
+        self.inner.prev_randao
     }
 }
 
-impl From<EthPayloadBuilderAttributes> for EvolveEnginePayloadBuilderAttributes {
-    fn from(eth: EthPayloadBuilderAttributes) -> Self {
+impl PayloadAttributes for EvolveEnginePayloadBuilderAttributes {
+    fn payload_id(&self, parent_hash: &B256) -> PayloadId {
+        payload_id(parent_hash, &self.inner)
+    }
+
+    fn timestamp(&self) -> u64 {
+        self.inner.timestamp
+    }
+
+    fn withdrawals(&self) -> Option<&Vec<Withdrawal>> {
+        self.inner.withdrawals.as_ref()
+    }
+
+    fn parent_beacon_block_root(&self) -> Option<B256> {
+        self.inner.parent_beacon_block_root
+    }
+}
+
+impl From<EvolveEnginePayloadAttributes> for EvolveEnginePayloadBuilderAttributes {
+    fn from(attrs: EvolveEnginePayloadAttributes) -> Self {
         Self {
-            ethereum_attributes: eth,
+            inner: attrs.inner,
+            parent: B256::ZERO,
             transactions: Vec::new(),
-            gas_limit: None,
+            gas_limit: attrs.gas_limit,
         }
     }
 }
@@ -206,7 +219,7 @@ mod tests {
         };
 
         // we only care that the span was created with the right fields.
-        let _ = EvolveEnginePayloadBuilderAttributes::try_new(parent, attrs, 3);
+        let _ = EvolveEnginePayloadBuilderAttributes::try_new(parent, attrs);
 
         let span = collector
             .find_span("try_new")

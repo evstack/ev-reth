@@ -11,7 +11,7 @@ use reth_basic_payload_builder::{
 use reth_ethereum::{
     chainspec::{ChainSpec, ChainSpecProvider},
     node::{
-        api::{payload::PayloadBuilderAttributes, FullNodeTypes, NodeTypes},
+        api::{payload::PayloadAttributes, FullNodeTypes, NodeTypes},
         builder::{components::PayloadBuilderBuilder, BuilderContext},
     },
     pool::{PoolTransaction, TransactionPool},
@@ -23,8 +23,10 @@ use reth_revm::cached::CachedReads;
 use tokio::runtime::Handle;
 use tracing::{info, instrument};
 
+use alloy_eips::Decodable2718;
+
 use crate::{
-    attributes::EvolveEnginePayloadBuilderAttributes, builder::EvolvePayloadBuilder,
+    attributes::EvolveEnginePayloadAttributes, builder::EvolvePayloadBuilder,
     config::EvolvePayloadBuilderConfig, executor::EvolveEvmConfig, node::EvolveEngineTypes,
     payload_types::EvBuiltPayload,
 };
@@ -136,12 +138,12 @@ where
         + Unpin
         + 'static,
 {
-    type Attributes = EvolveEnginePayloadBuilderAttributes;
+    type Attributes = EvolveEnginePayloadAttributes;
     type BuiltPayload = EvBuiltPayload;
 
     #[instrument(skip(self, args), fields(
         tx_count = tracing::field::Empty,
-        payload_id = %args.config.attributes.payload_id(),
+        payload_id = %args.config.payload_id(),
         duration_ms = tracing::field::Empty,
     ))]
     fn try_build(
@@ -154,10 +156,12 @@ where
             config,
             cancel: _,
             best_payload: _,
+            ..
         } = args;
         let PayloadConfig {
             parent_header,
-            attributes,
+            mut attributes,
+            payload_id,
         } = config;
 
         info!("building payload");
@@ -169,7 +173,7 @@ where
         set_current_block_gas_limit(effective_gas_limit);
 
         let block_number = parent_header.number + 1;
-        let mut fee_recipient = attributes.suggested_fee_recipient();
+        let mut fee_recipient = attributes.inner.suggested_fee_recipient;
         if fee_recipient == Address::ZERO {
             if let Some(sink) = self.config.base_fee_sink_for_block(block_number) {
                 info!(
@@ -199,7 +203,16 @@ where
             }
             pool_txs
         } else {
-            attributes.transactions.clone()
+            // Decode transactions from raw bytes.
+            attributes
+                .transactions
+                .take()
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(|tx_bytes| {
+                    TransactionSigned::network_decode(&mut tx_bytes.as_ref()).ok()
+                })
+                .collect()
         };
 
         tracing::Span::current().record("tx_count", transactions.len());
@@ -208,9 +221,9 @@ where
             transactions,
             Some(effective_gas_limit),
             attributes.timestamp(),
-            attributes.prev_randao(),
+            attributes.inner.prev_randao,
             fee_recipient,
-            attributes.parent(),
+            parent_header.hash(),
             block_number,
         );
 
@@ -230,7 +243,7 @@ where
         // Convert to EvBuiltPayload.
         let gas_used = sealed_block.gas_used;
         let built_payload = EvBuiltPayload::new(
-            attributes.payload_id(), // Use the proper payload ID from attributes.
+            payload_id,
             Arc::new(sealed_block),
             U256::from(gas_used), // Block gas used.
             None,                 // No blob sidecar for evolve.
@@ -243,7 +256,7 @@ where
     }
 
     #[instrument(skip(self, config), fields(
-        payload_id = %config.attributes.payload_id(),
+        payload_id = %config.payload_id(),
         duration_ms = tracing::field::Empty,
     ))]
     fn build_empty_payload(
@@ -254,6 +267,7 @@ where
         let PayloadConfig {
             parent_header,
             attributes,
+            payload_id,
         } = config;
 
         info!("building empty payload");
@@ -265,7 +279,7 @@ where
         set_current_block_gas_limit(effective_gas_limit);
 
         let block_number = parent_header.number + 1;
-        let mut fee_recipient = attributes.suggested_fee_recipient();
+        let mut fee_recipient = attributes.inner.suggested_fee_recipient;
         if fee_recipient == Address::ZERO {
             if let Some(sink) = self.config.base_fee_sink_for_block(block_number) {
                 info!(
@@ -282,9 +296,9 @@ where
             vec![],
             Some(effective_gas_limit),
             attributes.timestamp(),
-            attributes.prev_randao(),
+            attributes.inner.prev_randao,
             fee_recipient,
-            attributes.parent(),
+            parent_header.hash(),
             block_number,
         );
 
@@ -297,7 +311,7 @@ where
 
         let gas_used = sealed_block.gas_used;
         Ok(EvBuiltPayload::new(
-            attributes.payload_id(),
+            payload_id,
             Arc::new(sealed_block),
             U256::from(gas_used),
             None,
@@ -327,7 +341,7 @@ mod tests {
     use alloy_rpc_types::engine::PayloadAttributes as RpcPayloadAttributes;
     use reth_basic_payload_builder::PayloadConfig;
     use reth_chainspec::ChainSpecBuilder;
-    use reth_payload_builder::EthPayloadBuilderAttributes;
+    use reth_payload_primitives::PayloadAttributes;
     use reth_primitives_traits::SealedHeader;
     use reth_provider::test_utils::MockEthProvider;
     use reth_revm::{cached::CachedReads, cancelled::CancelOnDrop};
@@ -387,20 +401,25 @@ mod tests {
             dev_mode: false,
         };
 
-        let rpc_attrs = RpcPayloadAttributes {
-            timestamp: 1710338136,
-            prev_randao: B256::random(),
-            suggested_fee_recipient: Address::random(),
-            withdrawals: Some(vec![]),
-            parent_beacon_block_root: Some(B256::ZERO),
+        let attrs = EvolveEnginePayloadAttributes {
+            inner: RpcPayloadAttributes {
+                timestamp: 1710338136,
+                prev_randao: B256::random(),
+                suggested_fee_recipient: Address::random(),
+                withdrawals: Some(vec![]),
+                parent_beacon_block_root: Some(B256::ZERO),
+            },
+            transactions: None,
+            gas_limit: Some(30_000_000),
         };
-        let eth_attrs = EthPayloadBuilderAttributes::new(genesis_hash, rpc_attrs);
-        let builder_attrs = EvolveEnginePayloadBuilderAttributes::from(eth_attrs);
+        let payload_id = attrs.payload_id(&genesis_hash);
 
         let sealed_parent = SealedHeader::new(genesis_header, genesis_hash);
-        let payload_config = PayloadConfig::new(Arc::new(sealed_parent), builder_attrs);
+        let payload_config = PayloadConfig::new(Arc::new(sealed_parent), attrs, payload_id);
         let args = BuildArguments::new(
             CachedReads::default(),
+            None,
+            None,
             payload_config,
             CancelOnDrop::default(),
             None,
@@ -478,18 +497,21 @@ mod tests {
             dev_mode: false,
         };
 
-        let rpc_attrs = RpcPayloadAttributes {
-            timestamp: 1710338136,
-            prev_randao: B256::random(),
-            suggested_fee_recipient: Address::random(),
-            withdrawals: Some(vec![]),
-            parent_beacon_block_root: Some(B256::ZERO),
+        let attrs = EvolveEnginePayloadAttributes {
+            inner: RpcPayloadAttributes {
+                timestamp: 1710338136,
+                prev_randao: B256::random(),
+                suggested_fee_recipient: Address::random(),
+                withdrawals: Some(vec![]),
+                parent_beacon_block_root: Some(B256::ZERO),
+            },
+            transactions: None,
+            gas_limit: Some(30_000_000),
         };
-        let eth_attrs = EthPayloadBuilderAttributes::new(genesis_hash, rpc_attrs);
-        let builder_attrs = EvolveEnginePayloadBuilderAttributes::from(eth_attrs);
+        let payload_id = attrs.payload_id(&genesis_hash);
 
         let sealed_parent = SealedHeader::new(genesis_header, genesis_hash);
-        let payload_config = PayloadConfig::new(Arc::new(sealed_parent), builder_attrs);
+        let payload_config = PayloadConfig::new(Arc::new(sealed_parent), attrs, payload_id);
 
         // we only care that the span was created with the right fields.
         let _ = engine_builder.build_empty_payload(payload_config);

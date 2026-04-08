@@ -58,6 +58,10 @@ impl PoolTransaction for EvPooledTransaction {
     type Consensus = EvTxEnvelope;
     type Pooled = EvPooledTxEnvelope;
 
+    fn consensus_ref(&self) -> Recovered<&Self::Consensus> {
+        Recovered::new_unchecked(self.inner.transaction.inner(), self.inner.transaction.signer())
+    }
+
     fn clone_into_consensus(&self) -> Recovered<Self::Consensus> {
         self.inner.transaction().clone()
     }
@@ -598,7 +602,7 @@ where
             // - Sender balance for non-sponsored EvNode and standard Ethereum transactions
             .disable_balance_check()
             .with_additional_tasks(ctx.config().txpool.additional_validation_tasks)
-            .build_with_tasks::<EvPooledTransaction, _, _>(
+            .build_with_tasks::<EvPooledTransaction, _>(
                 ctx.task_executor().clone(),
                 blob_store.clone(),
             )
