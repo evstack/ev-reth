@@ -110,7 +110,7 @@ alloy-serde = { version = "1.8.3", default-features = false }
 alloy-primitives = { version = "1.5.6", default-features = false }
 alloy-consensus = { version = "1.8.3", default-features = false }
 alloy-consensus-any = { version = "1.8.3", default-features = false }
-alloy-rlp = { version = "0.3.13", default-features = false }
+alloy-rlp = { version = "0.3.15", default-features = false }
 alloy-genesis = { version = "1.8.3", default-features = false }
 alloy-rpc-types-txpool = { version = "1.8.3", default-features = false }
 alloy-sol-types = { version = "1.5.6", default-features = false }
