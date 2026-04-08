@@ -127,7 +127,7 @@ nybbles = "0.4.8"
 # Core dependencies
 eyre = "0.6"
 tracing = "0.1"
-tokio = { version = "1.50", features = ["full"] }
+tokio = { version = "1.51", features = ["full"] }
 serde = { version = "=1.0.228", default-features = false, features = [
   "derive",
 ] }
