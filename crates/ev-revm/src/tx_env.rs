@@ -65,7 +65,7 @@ impl EvTxEnv {
     }
 
     /// Returns the underlying `TxEnv` mutably.
-    pub fn inner_mut(&mut self) -> &mut TxEnv {
+    pub const fn inner_mut(&mut self) -> &mut TxEnv {
         &mut self.inner
     }
 

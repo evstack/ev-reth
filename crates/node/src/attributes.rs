@@ -116,17 +116,17 @@ impl EvolveEnginePayloadBuilderAttributes {
     }
 
     /// Returns the parent block hash.
-    pub fn parent(&self) -> B256 {
+    pub const fn parent(&self) -> B256 {
         self.parent
     }
 
     /// Returns the suggested fee recipient.
-    pub fn suggested_fee_recipient(&self) -> Address {
+    pub const fn suggested_fee_recipient(&self) -> Address {
         self.inner.suggested_fee_recipient
     }
 
     /// Returns the prev randao value.
-    pub fn prev_randao(&self) -> B256 {
+    pub const fn prev_randao(&self) -> B256 {
         self.inner.prev_randao
     }
 }

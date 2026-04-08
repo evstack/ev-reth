@@ -117,7 +117,7 @@ impl<CTX, INSP, P> EvEvm<CTX, INSP, P> {
     }
 
     /// Exposes a mutable reference to the wrapped `Evm`.
-    pub(crate) fn inner_mut(
+    pub(crate) const fn inner_mut(
         &mut self,
     ) -> &mut Evm<CTX, INSP, EthInstructions<EthInterpreter, CTX>, P, EthFrame<EthInterpreter>>
     {

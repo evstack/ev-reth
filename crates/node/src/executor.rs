@@ -372,7 +372,7 @@ where
             withdrawals: payload
                 .payload
                 .withdrawals()
-                .map(|w| std::borrow::Cow::Owned(w.clone().into())),
+                .map(|w| std::borrow::Cow::Owned(w.clone())),
             extra_data: payload.payload.as_v1().extra_data.clone(),
         })
     }
