@@ -8,7 +8,6 @@
 //! - [`InMemorySize`]: Memory accounting for pool size limits
 //! - [`SignerRecoverable`]: Sender address recovery for validation
 //! - [`TxHashRef`]: Transaction hash access for deduplication
-//! - [`SignedTransaction`]: Marker trait for signed transaction types
 
 use alloy_consensus::{
     error::ValueError,
@@ -16,7 +15,7 @@ use alloy_consensus::{
     TransactionEnvelope,
 };
 use alloy_primitives::{Address, B256};
-use reth_primitives_traits::{InMemorySize, SignedTransaction};
+use reth_primitives_traits::InMemorySize;
 
 use crate::tx::{EvNodeSignedTx, EvTxEnvelope};
 
@@ -86,4 +85,3 @@ impl From<EvPooledTxEnvelope> for EvTxEnvelope {
     }
 }
 
-impl SignedTransaction for EvPooledTxEnvelope {}
