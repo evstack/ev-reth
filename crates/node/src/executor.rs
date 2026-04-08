@@ -171,7 +171,7 @@ where
             gas_limit: header.gas_limit,
             basefee: header.base_fee_per_gas.unwrap_or_default(),
             blob_excess_gas_and_price,
-            slot_num: 0,
+            slot_num: 0, // EL client — CL slot tracking not applicable
         };
 
         Ok(EvmEnv { cfg_env, block_env })
@@ -248,7 +248,7 @@ where
             gas_limit,
             basefee: basefee.unwrap_or_default(),
             blob_excess_gas_and_price,
-            slot_num: 0,
+            slot_num: 0, // EL client — CL slot tracking not applicable
         };
 
         Ok(EvmEnv {
@@ -354,7 +354,7 @@ where
             gas_limit: payload.payload.gas_limit(),
             basefee: payload.payload.saturated_base_fee_per_gas(),
             blob_excess_gas_and_price,
-            slot_num: 0,
+            slot_num: 0, // EL client — CL slot tracking not applicable
         };
 
         Ok(EvmEnv { cfg_env, block_env })
