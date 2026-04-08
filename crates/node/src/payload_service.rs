@@ -125,6 +125,29 @@ where
     }
 }
 
+impl<Client, Pool> EvolveEnginePayloadBuilder<Client, Pool>
+where
+    Client: Clone,
+{
+    /// Resolves the fee recipient: uses the suggested value from attributes, falling back
+    /// to the configured base-fee sink when the suggested value is zero.
+    fn resolve_fee_recipient(&self, suggested: Address, block_number: u64) -> Address {
+        if suggested != Address::ZERO {
+            return suggested;
+        }
+        if let Some(sink) = self.config.base_fee_sink_for_block(block_number) {
+            info!(
+                target: "ev-reth",
+                fee_sink = ?sink,
+                block_number,
+                "Suggested fee recipient missing; defaulting to base-fee sink"
+            );
+            return sink;
+        }
+        suggested
+    }
+}
+
 impl<Client, Pool> PayloadBuilder for EvolveEnginePayloadBuilder<Client, Pool>
 where
     Client: reth_ethereum::provider::StateProviderFactory
@@ -173,18 +196,8 @@ where
         set_current_block_gas_limit(effective_gas_limit);
 
         let block_number = parent_header.number + 1;
-        let mut fee_recipient = attributes.inner.suggested_fee_recipient;
-        if fee_recipient == Address::ZERO {
-            if let Some(sink) = self.config.base_fee_sink_for_block(block_number) {
-                info!(
-                    target: "ev-reth",
-                    fee_sink = ?sink,
-                    block_number,
-                    "Suggested fee recipient missing; defaulting to base-fee sink"
-                );
-                fee_recipient = sink;
-            }
-        }
+        let fee_recipient =
+            self.resolve_fee_recipient(attributes.inner.suggested_fee_recipient, block_number);
 
         // In dev mode, pull pending transactions from the txpool.
         // In production, transactions come exclusively from Engine API attributes.
@@ -210,7 +223,16 @@ where
                 .unwrap_or_default()
                 .into_iter()
                 .filter_map(|tx_bytes| {
-                    TransactionSigned::network_decode(&mut tx_bytes.as_ref()).ok()
+                    match TransactionSigned::network_decode(&mut tx_bytes.as_ref()) {
+                        Ok(tx) => Some(tx),
+                        Err(err) => {
+                            tracing::warn!(
+                                %err,
+                                "dropping undecodable transaction from payload attributes"
+                            );
+                            None
+                        }
+                    }
                 })
                 .collect()
         };
@@ -279,18 +301,8 @@ where
         set_current_block_gas_limit(effective_gas_limit);
 
         let block_number = parent_header.number + 1;
-        let mut fee_recipient = attributes.inner.suggested_fee_recipient;
-        if fee_recipient == Address::ZERO {
-            if let Some(sink) = self.config.base_fee_sink_for_block(block_number) {
-                info!(
-                    target: "ev-reth",
-                    fee_sink = ?sink,
-                    block_number,
-                    "Suggested fee recipient missing; defaulting to base-fee sink"
-                );
-                fee_recipient = sink;
-            }
-        }
+        let fee_recipient =
+            self.resolve_fee_recipient(attributes.inner.suggested_fee_recipient, block_number);
 
         let evolve_attrs = EvolvePayloadAttributes::new(
             vec![],
