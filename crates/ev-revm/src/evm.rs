@@ -37,29 +37,6 @@ pub struct EvEvm<CTX, INSP, PRECOMP = EthPrecompiles> {
     inspect: bool,
 }
 
-impl<CTX, INSP, P> EvEvm<CTX, INSP, P>
-where
-    CTX: ContextTr + ContextSetters,
-    P: Default,
-{
-    /// Creates a new wrapper configured with the provided redirect policy.
-    #[allow(deprecated)]
-    pub fn new(ctx: CTX, inspector: INSP, redirect: Option<BaseFeeRedirect>) -> Self {
-        Self {
-            inner: Evm {
-                ctx,
-                inspector,
-                instruction: EthInstructions::new_mainnet(),
-                precompiles: P::default(),
-                frame_stack: FrameStack::new(),
-            },
-            redirect,
-            deploy_allowlist: None,
-            inspect: false,
-        }
-    }
-}
-
 impl<CTX, INSP, P> EvEvm<CTX, INSP, P> {
     /// Wraps an existing EVM instance with the redirect policy.
     pub fn from_inner<T>(
