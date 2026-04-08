@@ -319,12 +319,13 @@ impl EvTxEvmFactory {
         env: EvmEnv<SpecId>,
         inspector: I,
     ) -> EvRevmEvm<DB, I> {
+        let spec = env.cfg_env.spec;
         let precompiles = PrecompilesMap::from_static(Precompiles::new(
-            PrecompileSpecId::from_spec_id(env.cfg_env.spec),
+            PrecompileSpecId::from_spec_id(spec),
         ));
 
         let mut journaled_state = reth_revm::revm::Journal::new(db);
-        journaled_state.set_spec_id(env.cfg_env.spec);
+        journaled_state.set_spec_id(spec);
 
         let ctx = Context {
             block: env.block_env,
@@ -339,7 +340,7 @@ impl EvTxEvmFactory {
         RevmEvm {
             ctx,
             inspector,
-            instruction: EthInstructions::new_mainnet(),
+            instruction: EthInstructions::new_mainnet_with_spec(spec),
             precompiles,
             frame_stack: FrameStack::new(),
         }
@@ -531,9 +532,10 @@ mod tests {
             .transact_raw(tx)
             .expect("transaction executes without error");
 
-        let ExecutionResult::Success { gas_used, .. } = result_and_state.result else {
+        let ExecutionResult::Success { gas, .. } = result_and_state.result else {
             panic!("expected successful execution");
         };
+        let gas_used = gas.used();
 
         let state: EvmState = result_and_state.state;
         let sink_account = state

@@ -22,7 +22,7 @@ use reth_revm::{
     },
     Context,
 };
-use revm_inspector::JournalExt;
+use reth_revm::revm::inspector::JournalExt;
 use std::ops::{Deref, DerefMut};
 
 /// Convenience alias matching the stock mainnet EVM signature.
@@ -43,6 +43,7 @@ where
     P: Default,
 {
     /// Creates a new wrapper configured with the provided redirect policy.
+    #[allow(deprecated)]
     pub fn new(ctx: CTX, inspector: INSP, redirect: Option<BaseFeeRedirect>) -> Self {
         Self {
             inner: Evm {
