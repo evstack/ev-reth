@@ -1,6 +1,12 @@
 //! Contract bytecode and storage encoding.
 
 pub(crate) mod admin_proxy;
+pub(crate) mod fee_vault;
+pub(crate) mod immutables;
+pub(crate) mod mailbox;
+pub(crate) mod merkle_tree_hook;
+pub(crate) mod noop_ism;
+pub(crate) mod protocol_fee;
 
 use alloy_primitives::{Address, Bytes, B256};
 use std::collections::BTreeMap;
