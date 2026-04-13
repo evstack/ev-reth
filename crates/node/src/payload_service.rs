@@ -223,7 +223,7 @@ where
                 .unwrap_or_default()
                 .into_iter()
                 .filter_map(|tx_bytes| {
-                    match TransactionSigned::network_decode(&mut tx_bytes.as_ref()) {
+                    match TransactionSigned::decode_2718_exact(tx_bytes.as_ref()) {
                         Ok(tx) => Some(tx),
                         Err(err) => {
                             tracing::warn!(
