@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use alloy_consensus::{transaction::SignerRecoverable, TxLegacy, TypedTransaction};
+use alloy_consensus::{transaction::SignerRecoverable, Header, TxLegacy, TypedTransaction};
 use alloy_genesis::Genesis;
 use alloy_primitives::{Address, Bytes, ChainId, Signature, TxKind, B256, U256};
 use ev_primitives::{EvTxEnvelope, TransactionSigned};
@@ -15,8 +15,8 @@ use ev_revm::{
 };
 use eyre::Result;
 use reth_chainspec::{ChainSpec, ChainSpecBuilder};
+use reth_ethereum_primitives::Transaction;
 use reth_node_api::TreeConfig;
-use reth_primitives::{Header, Transaction};
 use reth_provider::test_utils::{ExtendedAccount, MockEthProvider};
 use serde_json::json;
 use tempfile::TempDir;
@@ -107,9 +107,7 @@ pub fn create_test_chain_spec_with_deploy_allowlist(
 /// This avoids a known debug-mode panic in upstream reth where deferred trie
 /// data can be synchronously awaited from a rayon proof worker thread.
 pub fn e2e_test_tree_config() -> TreeConfig {
-    TreeConfig::default()
-        .with_legacy_state_root(true)
-        .with_disable_proof_v2(true)
+    TreeConfig::default().with_legacy_state_root(true)
 }
 
 /// Shared test fixture for evolve payload builder tests

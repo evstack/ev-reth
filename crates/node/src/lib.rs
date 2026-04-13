@@ -41,7 +41,7 @@ mod test_utils;
 
 // Re-export public types for convenience.
 pub use args::EvolveArgs;
-pub use attributes::{EvolveEnginePayloadAttributes, EvolveEnginePayloadBuilderAttributes};
+pub use attributes::EvolveEnginePayloadAttributes;
 pub use builder::{create_payload_builder_service, EvolvePayloadBuilder};
 pub use chainspec::EvolveChainSpecParser;
 pub use config::{ConfigError, EvolvePayloadBuilderConfig};

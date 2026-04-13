@@ -21,7 +21,7 @@ use reth_ethereum::{
 use reth_ethereum_forks::Hardforks;
 use reth_evm::{
     ConfigureEngineEvm, ConfigureEvm, EvmEnv, EvmEnvFor, ExecutableTxIterator, ExecutionCtxFor,
-    NextBlockEnvAttributes, TransactionEnv,
+    NextBlockEnvAttributes, TransactionEnvMut,
 };
 use reth_node_builder::PayloadBuilderConfig;
 use reth_primitives_traits::{
@@ -96,7 +96,7 @@ impl<ChainSpec, EvmF> ConfigureEvm for EvEvmConfig<ChainSpec, EvmF>
 where
     ChainSpec: EthExecutorSpec + EthChainSpec<Header = Header> + Hardforks + 'static,
     EvmF: reth_evm::EvmFactory<
-            Tx: TransactionEnv,
+            Tx: TransactionEnvMut,
             Spec = SpecId,
             BlockEnv = BlockEnv,
             Precompiles = reth_evm::precompiles::PrecompilesMap,
@@ -171,6 +171,7 @@ where
             gas_limit: header.gas_limit,
             basefee: header.base_fee_per_gas.unwrap_or_default(),
             blob_excess_gas_and_price,
+            slot_num: 0, // EL client — CL slot tracking not applicable
         };
 
         Ok(EvmEnv { cfg_env, block_env })
@@ -247,6 +248,7 @@ where
             gas_limit,
             basefee: basefee.unwrap_or_default(),
             blob_excess_gas_and_price,
+            slot_num: 0, // EL client — CL slot tracking not applicable
         };
 
         Ok(EvmEnv {
@@ -268,7 +270,7 @@ where
                 .body()
                 .withdrawals
                 .as_ref()
-                .map(std::borrow::Cow::Borrowed),
+                .map(|w| std::borrow::Cow::Borrowed(w.as_slice())),
             extra_data: block.header().extra_data.clone(),
         })
     }
@@ -283,7 +285,9 @@ where
             parent_hash: parent.hash(),
             parent_beacon_block_root: attributes.parent_beacon_block_root,
             ommers: &[],
-            withdrawals: attributes.withdrawals.map(std::borrow::Cow::Owned),
+            withdrawals: attributes
+                .withdrawals
+                .map(|w| std::borrow::Cow::Owned(w.into_inner())),
             extra_data: attributes.extra_data,
         })
     }
@@ -293,7 +297,7 @@ impl<ChainSpec, EvmF> ConfigureEngineEvm<ExecutionData> for EvEvmConfig<ChainSpe
 where
     ChainSpec: EthExecutorSpec + EthChainSpec<Header = Header> + Hardforks + 'static,
     EvmF: reth_evm::EvmFactory<
-            Tx: TransactionEnv + FromRecoveredTx<EvTxEnvelope> + FromTxWithEncoded<EvTxEnvelope>,
+            Tx: TransactionEnvMut + FromRecoveredTx<EvTxEnvelope> + FromTxWithEncoded<EvTxEnvelope>,
             Spec = SpecId,
             BlockEnv = BlockEnv,
             Precompiles = reth_evm::precompiles::PrecompilesMap,
@@ -350,6 +354,7 @@ where
             gas_limit: payload.payload.gas_limit(),
             basefee: payload.payload.saturated_base_fee_per_gas(),
             blob_excess_gas_and_price,
+            slot_num: 0, // EL client — CL slot tracking not applicable
         };
 
         Ok(EvmEnv { cfg_env, block_env })
@@ -367,7 +372,7 @@ where
             withdrawals: payload
                 .payload
                 .withdrawals()
-                .map(|w| std::borrow::Cow::Owned(w.clone().into())),
+                .map(|w| std::borrow::Cow::Owned(w.clone())),
             extra_data: payload.payload.as_v1().extra_data.clone(),
         })
     }
@@ -448,7 +453,7 @@ where
     );
 
     Ok(EvEvmConfig::new_with_evm_factory(chain_spec, factory)
-        .with_extra_data(ctx.payload_builder_config().extra_data_bytes()))
+        .with_extra_data(ctx.payload_builder_config().extra_data()))
 }
 
 /// Thin wrapper so we can plug the EV executor into the node components builder.
