@@ -1,8 +1,10 @@
 use crate::{
     config::EvolvePayloadBuilderConfig, executor::EvEvmConfig, tracing_ext::RecordDurationOnDrop,
 };
-use alloy_consensus::transaction::{Transaction, TxHashRef};
-use alloy_consensus::Header;
+use alloy_consensus::{
+    transaction::{Transaction, TxHashRef},
+    Header,
+};
 use alloy_primitives::Address;
 use ev_revm::EvTxEvmFactory;
 use evolve_ev_reth::EvolvePayloadAttributes;
@@ -13,8 +15,7 @@ use reth_evm::{
     ConfigureEvm, NextBlockEnvAttributes,
 };
 use reth_payload_builder_primitives::PayloadBuilderError;
-use reth_primitives_traits::SealedBlock;
-use reth_primitives_traits::{SealedHeader, SignedTransaction};
+use reth_primitives_traits::{SealedBlock, SealedHeader, SignedTransaction};
 use reth_provider::{HeaderProvider, StateProviderFactory};
 use reth_revm::{database::StateProviderDatabase, State};
 use std::sync::Arc;

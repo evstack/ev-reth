@@ -5,8 +5,7 @@
 
 use std::sync::Arc;
 
-use alloy_consensus::Header;
-use alloy_consensus::{transaction::SignerRecoverable, TxLegacy, TypedTransaction};
+use alloy_consensus::{transaction::SignerRecoverable, Header, TxLegacy, TypedTransaction};
 use alloy_genesis::Genesis;
 use alloy_primitives::{Address, Bytes, ChainId, Signature, TxKind, B256, U256};
 use ev_primitives::{EvTxEnvelope, TransactionSigned};

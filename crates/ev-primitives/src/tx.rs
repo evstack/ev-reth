@@ -7,11 +7,10 @@ use alloy_consensus::{
 use alloy_eips::eip2930::AccessList;
 use alloy_primitives::{keccak256, Address, Bytes, Signature, TxKind, B256, U256};
 use alloy_rlp::{bytes::Buf, BufMut, Decodable, Encodable, Header, RlpDecodable, RlpEncodable};
-use reth_codecs::DecompressError;
 use reth_codecs::{
     alloy::transaction::{CompactEnvelope, Envelope, FromTxCompact, ToTxCompact},
     txtype::COMPACT_EXTENDED_IDENTIFIER_FLAG,
-    Compact,
+    Compact, DecompressError,
 };
 use reth_db_api::table::{Compress, Decompress};
 use reth_primitives_traits::InMemorySize;

@@ -3,7 +3,6 @@
 use crate::{base_fee::BaseFeeRedirect, deploy::DeployAllowlistSettings, tx_env::EvTxEnv};
 use alloy_evm::{Evm as AlloyEvm, EvmEnv};
 use alloy_primitives::{Address, Bytes};
-use reth_revm::revm::inspector::JournalExt;
 use reth_revm::{
     revm::{
         context::{BlockEnv, CfgEnv, ContextError, ContextSetters, Evm, FrameStack, TxEnv},
@@ -15,7 +14,7 @@ use reth_revm::{
             instructions::EthInstructions, EthFrame, EthPrecompiles, EvmTr, FrameInitOrResult,
             FrameTr, ItemOrResult, PrecompileProvider,
         },
-        inspector::{InspectEvm, InspectSystemCallEvm, Inspector, InspectorEvmTr},
+        inspector::{InspectEvm, InspectSystemCallEvm, Inspector, InspectorEvmTr, JournalExt},
         interpreter::{interpreter::EthInterpreter, InterpreterResult},
         primitives::hardfork::SpecId,
         state::EvmState,
