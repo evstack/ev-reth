@@ -86,7 +86,7 @@ reth-tasks = { git = "https://github.com/paradigmxyz/reth.git", tag = "v2.0.0", 
 revm = { version = "36.0.0", default-features = false }
 
 # Alloy dependencies (aligned to reth v2.0.0)
-alloy = { version = "1.8.2", features = [
+alloy = { version = "1.8.3", features = [
   "contract",
   "providers",
   "provider-http",
@@ -94,23 +94,23 @@ alloy = { version = "1.8.2", features = [
   "reqwest-rustls-tls",
 ], default-features = false }
 alloy-evm = { version = "0.30.0", default-features = false }
-alloy-eips = { version = "1.8.2", default-features = false }
-alloy-network = { version = "1.8.2", default-features = false }
-alloy-provider = { version = "1.8.2", default-features = false }
-alloy-rpc-client = { version = "1.8.2", default-features = false }
-alloy-rpc-types = { version = "1.8.2", default-features = false }
-alloy-json-rpc = { version = "1.8.2", default-features = false }
-alloy-rpc-types-eth = { version = "1.8.2", default-features = false }
-alloy-rpc-types-engine = { version = "1.8.2", default-features = false }
-alloy-signer = { version = "1.8.2", default-features = false }
-alloy-signer-local = { version = "1.8.2", features = ["mnemonic"] }
-alloy-serde = { version = "1.8.2", default-features = false }
+alloy-eips = { version = "1.8.3", default-features = false }
+alloy-network = { version = "1.8.3", default-features = false }
+alloy-provider = { version = "1.8.3", default-features = false }
+alloy-rpc-client = { version = "1.8.3", default-features = false }
+alloy-rpc-types = { version = "1.8.3", default-features = false }
+alloy-json-rpc = { version = "1.8.3", default-features = false }
+alloy-rpc-types-eth = { version = "1.8.3", default-features = false }
+alloy-rpc-types-engine = { version = "1.8.3", default-features = false }
+alloy-signer = { version = "1.8.3", default-features = false }
+alloy-signer-local = { version = "1.8.3", features = ["mnemonic"] }
+alloy-serde = { version = "1.8.3", default-features = false }
 alloy-primitives = { version = "1.5.6", default-features = false }
-alloy-consensus = { version = "1.8.2", default-features = false }
-alloy-consensus-any = { version = "1.8.2", default-features = false }
-alloy-rlp = { version = "0.3.13", default-features = false }
-alloy-genesis = { version = "1.8.2", default-features = false }
-alloy-rpc-types-txpool = { version = "1.8.2", default-features = false }
+alloy-consensus = { version = "1.8.3", default-features = false }
+alloy-consensus-any = { version = "1.8.3", default-features = false }
+alloy-rlp = { version = "0.3.15", default-features = false }
+alloy-genesis = { version = "1.8.3", default-features = false }
+alloy-rpc-types-txpool = { version = "1.8.3", default-features = false }
 alloy-sol-types = { version = "1.5.6", default-features = false }
 
 # Utility dependencies
@@ -124,7 +124,7 @@ nybbles = "0.4.8"
 # Core dependencies
 eyre = "0.6"
 tracing = "0.1"
-tokio = { version = "1.50", features = ["full"] }
+tokio = { version = "1.51", features = ["full"] }
 serde = { version = "=1.0.228", default-features = false, features = [
   "derive",
 ] }
