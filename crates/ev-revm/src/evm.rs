@@ -3,6 +3,7 @@
 use crate::{base_fee::BaseFeeRedirect, deploy::DeployAllowlistSettings, tx_env::EvTxEnv};
 use alloy_evm::{Evm as AlloyEvm, EvmEnv};
 use alloy_primitives::{Address, Bytes};
+use reth_revm::revm::inspector::JournalExt;
 use reth_revm::{
     revm::{
         context::{BlockEnv, CfgEnv, ContextError, ContextSetters, Evm, FrameStack, TxEnv},
@@ -22,7 +23,6 @@ use reth_revm::{
     },
     Context,
 };
-use reth_revm::revm::inspector::JournalExt;
 use std::ops::{Deref, DerefMut};
 
 /// Convenience alias matching the stock mainnet EVM signature.

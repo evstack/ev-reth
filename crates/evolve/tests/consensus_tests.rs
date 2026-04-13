@@ -1,9 +1,9 @@
 //! Tests for Evolve consensus implementation
 
+use alloy_consensus::Header;
 use evolve_ev_reth::consensus::EvolveConsensus;
 use reth_chainspec::MAINNET;
 use reth_consensus::{ConsensusError, HeaderValidator};
-use alloy_consensus::Header;
 use reth_primitives_traits::SealedHeader;
 
 fn create_test_header(number: u64, parent_hash: [u8; 32], timestamp: u64) -> SealedHeader {

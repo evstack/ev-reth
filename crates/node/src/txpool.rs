@@ -59,7 +59,10 @@ impl PoolTransaction for EvPooledTransaction {
     type Pooled = EvPooledTxEnvelope;
 
     fn consensus_ref(&self) -> Recovered<&Self::Consensus> {
-        Recovered::new_unchecked(self.inner.transaction.inner(), self.inner.transaction.signer())
+        Recovered::new_unchecked(
+            self.inner.transaction.inner(),
+            self.inner.transaction.signer(),
+        )
     }
 
     fn clone_into_consensus(&self) -> Recovered<Self::Consensus> {

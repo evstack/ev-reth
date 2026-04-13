@@ -2,6 +2,7 @@ use crate::{
     config::EvolvePayloadBuilderConfig, executor::EvEvmConfig, tracing_ext::RecordDurationOnDrop,
 };
 use alloy_consensus::transaction::{Transaction, TxHashRef};
+use alloy_consensus::Header;
 use alloy_primitives::Address;
 use ev_revm::EvTxEvmFactory;
 use evolve_ev_reth::EvolvePayloadAttributes;
@@ -12,9 +13,8 @@ use reth_evm::{
     ConfigureEvm, NextBlockEnvAttributes,
 };
 use reth_payload_builder_primitives::PayloadBuilderError;
-use alloy_consensus::Header;
-use reth_primitives_traits::{SealedHeader, SignedTransaction};
 use reth_primitives_traits::SealedBlock;
+use reth_primitives_traits::{SealedHeader, SignedTransaction};
 use reth_provider::{HeaderProvider, StateProviderFactory};
 use reth_revm::{database::StateProviderDatabase, State};
 use std::sync::Arc;
@@ -238,10 +238,10 @@ mod tests {
     use crate::{
         config::EvolvePayloadBuilderConfig, executor::EvolveEvmConfig, test_utils::SpanCollector,
     };
+    use alloy_consensus::Header;
     use alloy_primitives::B256;
     use evolve_ev_reth::EvolvePayloadAttributes;
     use reth_chainspec::ChainSpecBuilder;
-    use alloy_consensus::Header;
     use reth_provider::test_utils::MockEthProvider;
 
     #[tokio::test]

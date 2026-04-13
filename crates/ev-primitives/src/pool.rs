@@ -84,4 +84,3 @@ impl From<EvPooledTxEnvelope> for EvTxEnvelope {
         }
     }
 }
-

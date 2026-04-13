@@ -1434,7 +1434,11 @@ mod tests {
         );
     }
 
-    fn build_test_evm(ctx: TestContext, redirect: Option<BaseFeeRedirect>, deploy_allowlist: Option<DeployAllowlistSettings>) -> TestEvm {
+    fn build_test_evm(
+        ctx: TestContext,
+        redirect: Option<BaseFeeRedirect>,
+        deploy_allowlist: Option<DeployAllowlistSettings>,
+    ) -> TestEvm {
         let inner = ctx.build_mainnet_with_inspector(NoOpInspector);
         EvEvm::from_inner(inner, redirect, deploy_allowlist, false)
     }

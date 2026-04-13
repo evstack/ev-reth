@@ -251,7 +251,6 @@ impl Precompile for MintPrecompile {
             }
         }
     }
-
 }
 
 #[cfg(test)]

@@ -320,9 +320,8 @@ impl EvTxEvmFactory {
         inspector: I,
     ) -> EvRevmEvm<DB, I> {
         let spec = env.cfg_env.spec;
-        let precompiles = PrecompilesMap::from_static(Precompiles::new(
-            PrecompileSpecId::from_spec_id(spec),
-        ));
+        let precompiles =
+            PrecompilesMap::from_static(Precompiles::new(PrecompileSpecId::from_spec_id(spec)));
 
         let mut journaled_state = reth_revm::revm::Journal::new(db);
         journaled_state.set_spec_id(spec);
