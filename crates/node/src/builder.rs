@@ -1,7 +1,10 @@
 use crate::{
     config::EvolvePayloadBuilderConfig, executor::EvEvmConfig, tracing_ext::RecordDurationOnDrop,
 };
-use alloy_consensus::transaction::{Transaction, TxHashRef};
+use alloy_consensus::{
+    transaction::{Transaction, TxHashRef},
+    Header,
+};
 use alloy_primitives::Address;
 use ev_revm::EvTxEvmFactory;
 use evolve_ev_reth::EvolvePayloadAttributes;
@@ -12,8 +15,7 @@ use reth_evm::{
     ConfigureEvm, NextBlockEnvAttributes,
 };
 use reth_payload_builder_primitives::PayloadBuilderError;
-use reth_primitives::{transaction::SignedTransaction, Header, SealedHeader};
-use reth_primitives_traits::SealedBlock;
+use reth_primitives_traits::{SealedBlock, SealedHeader, SignedTransaction};
 use reth_provider::{HeaderProvider, StateProviderFactory};
 use reth_revm::{database::StateProviderDatabase, State};
 use std::sync::Arc;
@@ -182,7 +184,7 @@ where
             trie_updates: _,
             block,
         } = builder
-            .finish(&state_provider)
+            .finish(&state_provider, None)
             .map_err(PayloadBuilderError::other)?;
 
         let sealed_block = block.sealed_block().clone();
@@ -237,10 +239,10 @@ mod tests {
     use crate::{
         config::EvolvePayloadBuilderConfig, executor::EvolveEvmConfig, test_utils::SpanCollector,
     };
+    use alloy_consensus::Header;
     use alloy_primitives::B256;
     use evolve_ev_reth::EvolvePayloadAttributes;
     use reth_chainspec::ChainSpecBuilder;
-    use reth_primitives::Header;
     use reth_provider::test_utils::MockEthProvider;
 
     #[tokio::test]
@@ -373,7 +375,7 @@ mod tests {
             input: Bytes::default(),
         };
         let signed = alloy_consensus::Signed::new_unhashed(
-            reth_primitives::Transaction::Legacy(legacy_tx),
+            reth_ethereum_primitives::Transaction::Legacy(legacy_tx),
             Signature::test_signature(),
         );
         let tx = EvTxEnvelope::Ethereum(reth_ethereum_primitives::TransactionSigned::from(signed));

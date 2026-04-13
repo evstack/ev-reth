@@ -369,8 +369,9 @@ where
         &mut self,
         evm: &mut Self::Evm,
         result: <FRAME as FrameTr>::FrameResult,
+        result_gas: reth_revm::revm::context_interface::result::ResultGas,
     ) -> Result<ExecutionResult<Self::HaltReason>, Self::Error> {
-        self.inner.execution_result(evm, result)
+        self.inner.execution_result(evm, result, result_gas)
     }
 }
 
@@ -708,7 +709,7 @@ mod tests {
     use reth_revm::revm::context_interface::result::{EVMError, InvalidTransaction};
 
     type TestContext = Context<BlockEnv, TxEnv, CfgEnv<SpecId>, EmptyDB>;
-    type TestEvm = EvEvm<TestContext, NoOpInspector>;
+    type TestEvm = EvEvm<TestContext, NoOpInspector, EthPrecompiles>;
     type TestError = EVMError<Infallible, InvalidTransaction>;
     type TestHandler = EvHandler<TestEvm, TestError, EthFrame<EthInterpreter>>;
 
@@ -716,6 +717,8 @@ mod tests {
     use reth_revm::revm::{
         bytecode::Bytecode as RevmBytecode,
         context::{BlockEnv, CfgEnv, TxEnv},
+        handler::EthPrecompiles,
+        MainBuilder,
     };
 
     const BASE_FEE: u64 = 100;
@@ -1327,7 +1330,7 @@ mod tests {
         ctx.tx.kind = TxKind::Create;
         ctx.tx.gas_limit = 1_000_000;
 
-        let mut evm = EvEvm::new(ctx, NoOpInspector, None);
+        let mut evm = build_test_evm(ctx, None, None);
         let handler: TestHandler = EvHandler::new(None, Some(allowlist));
 
         let result = handler.validate_against_state_and_deduct_caller(&mut evm);
@@ -1349,7 +1352,7 @@ mod tests {
         // gas_price=0 so no balance is required
         ctx.tx.gas_price = 0;
 
-        let mut evm = EvEvm::new(ctx, NoOpInspector, None);
+        let mut evm = build_test_evm(ctx, None, None);
         let handler: TestHandler = EvHandler::new(None, Some(allowlist));
 
         let result = handler.validate_against_state_and_deduct_caller(&mut evm);
@@ -1372,7 +1375,7 @@ mod tests {
         ctx.tx.gas_limit = 1_000_000;
         ctx.tx.gas_price = 0;
 
-        let mut evm = EvEvm::new(ctx, NoOpInspector, None);
+        let mut evm = build_test_evm(ctx, None, None);
         let handler: TestHandler = EvHandler::new(None, None);
 
         let result = handler.validate_against_state_and_deduct_caller(&mut evm);
@@ -1396,7 +1399,7 @@ mod tests {
         ctx.tx.gas_limit = 1_000_000;
         ctx.tx.gas_price = 0;
 
-        let mut evm = EvEvm::new(ctx, NoOpInspector, None);
+        let mut evm = build_test_evm(ctx, None, None);
         let handler: TestHandler = EvHandler::new(None, Some(allowlist));
 
         let result = handler.validate_against_state_and_deduct_caller(&mut evm);
@@ -1421,7 +1424,7 @@ mod tests {
         ctx.tx.gas_limit = 1_000_000;
         ctx.tx.gas_price = 0;
 
-        let mut evm = EvEvm::new(ctx, NoOpInspector, None);
+        let mut evm = build_test_evm(ctx, None, None);
         let handler: TestHandler = EvHandler::new(None, Some(allowlist));
 
         let result = handler.validate_against_state_and_deduct_caller(&mut evm);
@@ -1429,6 +1432,15 @@ mod tests {
             result.is_ok(),
             "CALL tx should be allowed regardless of allowlist, got: {result:?}"
         );
+    }
+
+    fn build_test_evm(
+        ctx: TestContext,
+        redirect: Option<BaseFeeRedirect>,
+        deploy_allowlist: Option<DeployAllowlistSettings>,
+    ) -> TestEvm {
+        let inner = ctx.build_mainnet_with_inspector(NoOpInspector);
+        EvEvm::from_inner(inner, redirect, deploy_allowlist, false)
     }
 
     fn setup_evm(redirect: BaseFeeRedirect, beneficiary: Address) -> (TestEvm, TestHandler) {
@@ -1440,7 +1452,7 @@ mod tests {
         ctx.tx.gas_price = GAS_PRICE;
         ctx.tx.gas_limit = 1_000_000;
 
-        let mut evm = EvEvm::new(ctx, NoOpInspector, Some(redirect));
+        let mut evm = build_test_evm(ctx, Some(redirect), None);
         {
             let journal = evm.ctx_mut().journal_mut();
             journal.load_account(redirect.fee_sink()).unwrap();

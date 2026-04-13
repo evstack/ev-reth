@@ -11,7 +11,6 @@ description = "Evolve-specific types and integration for ev-reth"
 [dependencies]
 # Reth dependencies
 reth-payload-primitives.workspace = true
-reth-primitives.workspace = true
 reth-primitives-traits.workspace = true
 reth-engine-primitives.workspace = true
 reth-transaction-pool.workspace = true
@@ -43,6 +42,8 @@ eyre.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true
+alloy-consensus.workspace = true
+reth-primitives-traits.workspace = true
 
 [lints]
 workspace = true

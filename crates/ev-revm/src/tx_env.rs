@@ -1,7 +1,6 @@
-use alloy_evm::{FromRecoveredTx, FromTxWithEncoded};
+use alloy_evm::{FromRecoveredTx, FromTxWithEncoded, TransactionEnvMut};
 use alloy_primitives::{Address, Bytes, U256};
 use ev_primitives::{Call, EvTxEnvelope};
-use reth_evm::TransactionEnv;
 use reth_revm::revm::{
     context::TxEnv,
     context_interface::{
@@ -65,7 +64,7 @@ impl EvTxEnv {
     }
 
     /// Returns the underlying `TxEnv` mutably.
-    pub fn inner_mut(&mut self) -> &mut TxEnv {
+    pub const fn inner_mut(&mut self) -> &mut TxEnv {
         &mut self.inner
     }
 
@@ -187,13 +186,9 @@ impl RevmTransaction for EvTxEnv {
     }
 }
 
-impl TransactionEnv for EvTxEnv {
+impl TransactionEnvMut for EvTxEnv {
     fn set_gas_limit(&mut self, gas_limit: u64) {
         self.inner.gas_limit = gas_limit;
-    }
-
-    fn nonce(&self) -> u64 {
-        self.inner.nonce
     }
 
     fn set_nonce(&mut self, nonce: u64) {
