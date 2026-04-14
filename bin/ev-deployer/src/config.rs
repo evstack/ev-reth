@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, path::Path};
 
 /// Top-level deploy configuration.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub(crate) struct DeployConfig {
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DeployConfig {
     /// Chain configuration.
     pub chain: ChainConfig,
     /// Contract configurations.
@@ -15,15 +15,15 @@ pub(crate) struct DeployConfig {
 }
 
 /// Chain-level settings.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub(crate) struct ChainConfig {
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ChainConfig {
     /// The chain ID.
     pub chain_id: u64,
 }
 
 /// All contract configurations.
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
-pub(crate) struct ContractsConfig {
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct ContractsConfig {
     /// `AdminProxy` contract config (optional).
     pub admin_proxy: Option<AdminProxyConfig>,
     /// `Permit2` contract config (optional).
@@ -56,8 +56,8 @@ impl ContractsConfig {
 }
 
 /// `AdminProxy` configuration.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub(crate) struct AdminProxyConfig {
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AdminProxyConfig {
     /// Address to deploy at (required for genesis, ignored for deploy).
     pub address: Option<Address>,
     /// Owner address.
@@ -65,23 +65,23 @@ pub(crate) struct AdminProxyConfig {
 }
 
 /// `Permit2` configuration (Uniswap token approval manager).
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub(crate) struct Permit2Config {
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Permit2Config {
     /// Address to deploy at (required for genesis, ignored for deploy).
     pub address: Option<Address>,
 }
 
 /// Deterministic deployer (Nick's factory) configuration.
 /// Only used in genesis mode — in deploy mode this is the CREATE2 factory itself.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub(crate) struct DeterministicDeployerConfig {
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DeterministicDeployerConfig {
     /// Address (defaults to the canonical `0x4e59b44847b379578588920ca78fbf26c0b4956c`).
     pub address: Option<Address>,
 }
 
 impl DeployConfig {
     /// Load and validate config from a TOML file.
-    pub(crate) fn load(path: &Path) -> eyre::Result<Self> {
+    pub fn load(path: &Path) -> eyre::Result<Self> {
         let content = std::fs::read_to_string(path)?;
         let config: Self = toml::from_str(&content)?;
         config.validate()?;
@@ -125,7 +125,7 @@ impl DeployConfig {
     }
 
     /// Additional validation for genesis mode: all addresses must be specified.
-    pub(crate) fn validate_for_genesis(&self) -> eyre::Result<()> {
+    pub fn validate_for_genesis(&self) -> eyre::Result<()> {
         if let Some(ref ap) = self.contracts.admin_proxy {
             eyre::ensure!(
                 ap.address.is_some(),

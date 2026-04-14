@@ -38,6 +38,14 @@ build-all:
 build-deployer:
     {{cargo}} build --release --bin ev-deployer
 
+# Install ev-dev to ~/.cargo/bin
+install-ev-dev:
+    {{cargo}} install --path bin/ev-dev
+
+# Install ev-deployer to ~/.cargo/bin
+install-ev-deployer:
+    {{cargo}} install --path bin/ev-deployer
+
 # Testing ──────────────────────────────────────────────
 
 # Run all tests
