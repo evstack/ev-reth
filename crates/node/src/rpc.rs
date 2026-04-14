@@ -17,11 +17,10 @@ use reth_node_builder::rpc::{EthApiBuilder, EthApiCtx};
 use reth_rpc::EthApi;
 use reth_rpc_convert::{
     transaction::{
-        ConvertReceiptInput, ReceiptConverter, RpcTxConverter, SimTxConverter, TryIntoSimTx,
-        TxEnvConverter,
+        ConvertReceiptInput, ReceiptConverter, RpcTxConverter, SimTxConverter, TxEnvConverter,
     },
     EthTxEnvError, RpcConvert, RpcConverter, RpcTransaction, RpcTxReq, RpcTypes,
-    SignTxRequestError, SignableTxRequest, TryIntoTxEnv,
+    SignTxRequestError, SignableTxRequest, TryIntoSimTx, TryIntoTxEnv,
 };
 use reth_rpc_eth_api::{
     helpers::pending_block::BuildPendingEnv, FromEvmError, FullEthApiServer, RpcNodeCore,
@@ -300,12 +299,14 @@ impl TryIntoSimTx<EvTxEnvelope> for EvTransactionRequest {
     }
 }
 
-impl TryIntoTxEnv<EvTxEnv> for EvTransactionRequest {
+impl<Spec, BlockEnv: alloy_evm::env::BlockEnvironment> TryIntoTxEnv<EvTxEnv, Spec, BlockEnv>
+    for EvTransactionRequest
+{
     type Err = EthTxEnvError;
 
-    fn try_into_tx_env<Spec>(
+    fn try_into_tx_env(
         self,
-        evm_env: &alloy_evm::EvmEnv<Spec>,
+        evm_env: &alloy_evm::EvmEnv<Spec, BlockEnv>,
     ) -> Result<EvTxEnv, EthTxEnvError> {
         self.0.try_into_tx_env(evm_env).map(EvTxEnv::from)
     }
@@ -350,9 +351,23 @@ where
                 EvTxEnvelope::Ethereum(_) => None,
             };
             let receipt = build_receipt(input, blob_params, |receipt, next_log_index, meta| {
-                let rpc_receipt = receipt.into_rpc(next_log_index, meta);
-                let tx_type = u8::from(rpc_receipt.tx_type);
-                let inner = <alloy_consensus::Receipt<Log>>::from(rpc_receipt).with_bloom();
+                let tx_type = u8::from(receipt.tx_type);
+                let mut log_index = next_log_index;
+                let mapped = receipt.map_logs(|log| {
+                    let idx = log_index;
+                    log_index += 1;
+                    Log {
+                        inner: log,
+                        block_hash: Some(meta.block_hash),
+                        block_number: Some(meta.block_number),
+                        block_timestamp: Some(meta.timestamp),
+                        transaction_hash: Some(meta.tx_hash),
+                        transaction_index: Some(meta.index),
+                        log_index: Some(idx as u64),
+                        removed: false,
+                    }
+                });
+                let inner = <alloy_consensus::Receipt<Log>>::from(mapped).with_bloom();
                 AnyReceiptEnvelope {
                     inner,
                     r#type: tx_type,
