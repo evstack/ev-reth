@@ -11,7 +11,7 @@ pub(crate) const DETERMINISTIC_DEPLOYER_BYTECODE: &[u8] = &hex!(
 );
 
 /// Build a genesis alloc entry for the deterministic deployer.
-pub(crate) fn build(config: &DeterministicDeployerConfig) -> GenesisContract {
+pub(crate) const fn build(config: &DeterministicDeployerConfig) -> GenesisContract {
     let address = config.address.expect("address required for genesis");
 
     GenesisContract {
