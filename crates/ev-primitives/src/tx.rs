@@ -10,13 +10,10 @@ use alloy_rlp::{bytes::Buf, BufMut, Decodable, Encodable, Header, RlpDecodable, 
 use reth_codecs::{
     alloy::transaction::{CompactEnvelope, Envelope, FromTxCompact, ToTxCompact},
     txtype::COMPACT_EXTENDED_IDENTIFIER_FLAG,
-    Compact,
+    Compact, DecompressError,
 };
-use reth_db_api::{
-    table::{Compress, Decompress},
-    DatabaseError,
-};
-use reth_primitives_traits::{InMemorySize, SignedTransaction};
+use reth_db_api::table::{Compress, Decompress};
+use reth_primitives_traits::InMemorySize;
 use std::vec::Vec;
 
 /// EIP-2718 transaction type for EvNode batch + sponsorship.
@@ -523,10 +520,6 @@ impl Compact for EvTxEnvelope {
     }
 }
 
-impl SignedTransaction for EvTxEnvelope {}
-
-impl reth_primitives_traits::serde_bincode_compat::RlpBincode for EvTxEnvelope {}
-
 impl Compress for EvTxEnvelope {
     type Compressed = Vec<u8>;
 
@@ -536,7 +529,7 @@ impl Compress for EvTxEnvelope {
 }
 
 impl Decompress for EvTxEnvelope {
-    fn decompress(value: &[u8]) -> Result<Self, DatabaseError> {
+    fn decompress(value: &[u8]) -> Result<Self, DecompressError> {
         let (obj, _) = Compact::from_compact(value, value.len());
         Ok(obj)
     }

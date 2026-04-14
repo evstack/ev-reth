@@ -1,9 +1,12 @@
 FROM ghcr.io/cross-rs/cross:main
 
 # Install additional build tools and headers
+# gcc-10/g++-10 required to avoid GCC 9 memcmp bug (https://gcc.gnu.org/bugzilla/show_bug.cgi?id=95189)
 RUN apt-get update && \
     apt-get install -y \
         build-essential \
+        gcc-10 \
+        g++-10 \
         curl \
         jq \
         pkg-config \
@@ -12,8 +15,8 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Set up environment variables for x86_64 cross-compilation
-ENV CC_x86_64_unknown_linux_gnu=x86_64-linux-gnu-gcc
-ENV CXX_x86_64_unknown_linux_gnu=x86_64-linux-gnu-g++
+ENV CC_x86_64_unknown_linux_gnu=x86_64-linux-gnu-gcc-10
+ENV CXX_x86_64_unknown_linux_gnu=x86_64-linux-gnu-g++-10
 ENV AR_x86_64_unknown_linux_gnu=x86_64-linux-gnu-ar
 ENV STRIP_x86_64_unknown_linux_gnu=x86_64-linux-gnu-strip
 ENV BINDGEN_EXTRA_CLANG_ARGS_x86_64_unknown_linux_gnu="-I/usr/include -I/usr/include/x86_64-linux-gnu"

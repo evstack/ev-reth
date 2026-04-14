@@ -7,7 +7,6 @@ license = "MIT"
 
 [dependencies]
 # Reth
-reth-primitives = { workspace = true }
 reth-ethereum = { workspace = true }
 reth-revm = { workspace = true }
 

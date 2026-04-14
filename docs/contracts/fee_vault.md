@@ -37,7 +37,7 @@ This contract serves as a **fee sink** and **distribution mechanism** for a roll
 
 - **Automatic Splitting**: Funds are split automatically upon calling `distribute`. No manual withdrawal is required for the secondary recipient.
 - **Minimum Threshold**: A `minimumAmount` ensures that distribution only occurs when it is economically viable.
-- **Caller Incentive/Fee**: A `callFee` is required to trigger the distribution function.
+- **Caller Incentive/Fee**: A caller may need to pay `callFee` to trigger the distribution function (no payment is needed when `callFee` is `0`).
 
 ## Workflow
 

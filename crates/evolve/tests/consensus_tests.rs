@@ -1,9 +1,10 @@
 //! Tests for Evolve consensus implementation
 
+use alloy_consensus::Header;
 use evolve_ev_reth::consensus::EvolveConsensus;
 use reth_chainspec::MAINNET;
 use reth_consensus::{ConsensusError, HeaderValidator};
-use reth_primitives::{Header, SealedHeader};
+use reth_primitives_traits::SealedHeader;
 
 fn create_test_header(number: u64, parent_hash: [u8; 32], timestamp: u64) -> SealedHeader {
     let header = Header {
@@ -27,7 +28,7 @@ fn test_evolve_consensus_allows_same_timestamp() {
     let parent = create_test_header(1, [0u8; 32], 1000);
 
     // Create child block with SAME timestamp (this should be allowed)
-    let child_header = reth_primitives::Header {
+    let child_header = Header {
         number: 2,
         parent_hash: parent.hash(),
         timestamp: 1000,
