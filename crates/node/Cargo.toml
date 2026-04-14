@@ -23,7 +23,6 @@ reth-ethereum = { workspace = true, features = ["node", "cli", "pool"] }
 reth-ethereum-forks.workspace = true
 reth-ethereum-payload-builder.workspace = true
 reth-payload-primitives.workspace = true
-reth-primitives.workspace = true
 reth-primitives-traits.workspace = true
 reth-node-api.workspace = true
 reth-provider = { workspace = true, features = ["test-utils"] }

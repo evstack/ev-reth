@@ -15,8 +15,5 @@ bytes = { workspace = true }
 reth-codecs = { workspace = true }
 reth-db-api = { workspace = true }
 reth-ethereum-primitives = { workspace = true }
-reth-primitives-traits = { workspace = true, features = ["serde-bincode-compat"] }
+reth-primitives-traits = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-
-[features]
-serde-bincode-compat = ["reth-primitives-traits/serde-bincode-compat"]
