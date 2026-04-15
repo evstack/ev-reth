@@ -1,191 +1,226 @@
 # Upgrade Guide: v0.4.0
 
-This guide covers the changes in ev-reth v0.4.0 since v0.3.0.
+This guide covers the configuration changes required to upgrade ev-reth to v0.4.0. For a full list of changes, see the [CHANGELOG](../CHANGELOG.md).
 
-## Breaking Changes
+## Upgrading from v0.3.0
 
-### Reth Upgraded to v2.0.0
+No configuration changes required. Rebuild and deploy the new binary.
 
-The underlying Reth dependency has been upgraded from v1.11.x to v2.0.0. This is a major version bump that affects payload building, EVM execution, and transaction primitives.
+**What changes automatically:**
 
-**Key upstream changes:**
+- Reth v2.0.0 engine (same config, new internals)
+- New nodes use Storage V2 by default. Existing V1 data directories continue working as-is
+- Txpool fallback (pulling pending transactions when Engine API attributes are empty) is now only enabled in `--dev` mode
+- EIP-2718 payload decode fix takes effect immediately
 
-- **revm 36.0.0:** New EVM internals. The `is_pure` method was removed from the `Precompile` trait, and `TransactionEnv` was renamed to `TransactionEnvMut`.
-- **alloy-evm 0.30.0:** Aligned with reth v2.0.0. `TryIntoTxEnv` now takes 3 generic parameters (was 2).
-- **reth-primitives removed:** The monolithic `reth-primitives` crate was deleted upstream. Imports migrated to `alloy_consensus` and `reth_ethereum_primitives`.
-- **Payload building rework:** `PayloadBuilderAttributes` trait merged into `PayloadAttributes`. `PayloadConfig` now requires a `payload_id` field. `BuildArguments` now requires `execution_cache` and `trie_handle` fields.
-- **BlockEnv changes:** `BlockEnv` now requires a `slot_num` field. `set_state_clear_flag` was removed (handled by EVM spec).
-- **BlockBuilder::finish:** Now accepts a precomputed state root parameter.
+**Build system:** If you have scripts referencing `make`, update them to use `just`.
 
-**Action Required:** Rebuild from source. If you have custom code that imports from `reth-primitives`, update imports to `alloy_consensus` or `reth_ethereum_primitives`.
+**Storage V2 notes:**
 
-### Storage V2
+- V1 and V2 are not interchangeable. Once a node starts with V2, it cannot go back
+- No automatic migration. Switching to V2 requires a full resync
+- V1 is deprecated upstream. Plan your migration before support is removed
+- If using MDBX backup scripts (e.g. `mdbx_copy`), V2 nodes also use RocksDB for indices, so backup tooling may need updating
 
-Reth v2.0.0 introduces **Storage V2**, a new on-disk storage layout that replaces the MDBX-centric model with a tiered architecture (MDBX + RocksDB + Static Files). This delivers ~20x faster block persistence for large blocks.
+**Custom code:** If you import from `reth-primitives`, update imports to `alloy_consensus` or `reth_ethereum_primitives` (the crate was removed upstream).
 
-| | Storage V1 | Storage V2 |
-|---|---|---|
-| MDBX | Plain state + hashed state | Hashed state only |
-| Changesets | In MDBX | In Static Files (append-only) |
-| Indices | In MDBX | In RocksDB |
+## Upgrading from v0.2.2
 
-**Compatibility rules:**
+Everything in "Upgrading from v0.3.0" above, plus the following chainspec change:
 
-- **Existing V1 nodes are unaffected.** The reth v2.0.0 binary still supports Storage V1. Upgrading the binary does not force a migration.
-- **V1 and V2 are not interchangeable.** Once a node starts with V2, it cannot switch back to V1, and vice versa.
-- **No automatic V1-to-V2 migration.** Switching to V2 requires a full resync from genesis or restoring from a V2 snapshot.
-- **V1 is deprecated.** Support will be removed in a future reth release. Plan your migration to V2 accordingly.
+### Osaka Hardfork (optional)
 
-**For existing production networks on Storage V1:** No immediate action is required. The ev-reth v0.4.0 binary will continue to run with your existing V1 data directory. When you are ready to migrate to V2, coordinate a maintenance window for a full resync.
+Add `osakaTime` to your chainspec `config` section to activate the Osaka hardfork (EOF support). Without it, the chain stays on Cancun rules.
 
-**For new networks:** New nodes will use Storage V2 by default. This is the recommended layout going forward.
-
-### Txpool Fallback Restricted to Dev Mode
-
-The payload builder's txpool fallback (pulling pending transactions when Engine API attributes are empty) is now **only enabled in `--dev` mode**.
-
-Previously, this fallback was always active, which could cause non-deterministic block contents in production when Engine API attributes were empty. This is now gated behind the `--dev` flag.
-
-**Action Required:** If your setup relied on txpool fallback in production mode, you must switch to providing transactions via Engine API attributes.
-
-### Build System: Makefile to Justfile
-
-The project build system has migrated from `Makefile` to [just](https://github.com/casey/just). If you had scripts or CI referencing `make` commands, update them to use `just`.
-
-## New Features
-
-### ev-deployer CLI
-
-A new CLI tool for generating genesis alloc entries. It embeds contract runtime bytecodes directly in the binary, eliminating the need for external contract compilation.
-
-**Commands:**
-
-| Command | Description |
-|---------|-------------|
-| `ev-deployer init` | Generate a starter TOML config with all supported contracts |
-| `ev-deployer genesis` | Build genesis alloc JSON from config |
-| `ev-deployer compute-address` | Look up a configured contract's deterministic address |
-
-**Workflow:**
-
-```bash
-# Generate config template
-ev-deployer init --output deploy.toml
-
-# Edit deploy.toml with your contracts and settings
-
-# Generate alloc JSON
-ev-deployer genesis --config deploy.toml --output alloc.json
-
-# Or merge into existing genesis
-ev-deployer genesis --config deploy.toml --merge-into genesis.json --output genesis-out.json
+```json
+{
+  "config": {
+    "osakaTime": 1893456000
+  }
+}
 ```
 
-### ev-dev Local Development Chain
+Choose a timestamp far enough in the future to coordinate the upgrade across all nodes. Set to `0` on testnets to activate immediately.
 
-One-command local development chain for Evolve, similar to Hardhat Node or Anvil.
+No other configuration changes are required. The EvNode transaction type (0x76) is available automatically once the binary is upgraded.
 
-**Key features:**
+## Upgrading from v0.2.0
 
-- Pre-funded Hardhat accounts (10 by default, up to 20) with 1,000,000 ETH each
-- Chain ID 1234, 30M gas limit, Cancun hardfork
-- All Evolve features enabled: base fee redirect, 128KB contract limit, mint precompile, type 0x76 transactions
-- Transient state (resets on restart)
-- Compatible with Foundry, Hardhat, ethers.js, viem
+Everything in "Upgrading from v0.2.2" above, plus the following chainspec changes inside `config.evolve`:
 
-**Usage:**
+### Deploy Allowlist (optional)
 
-```bash
-ev-dev --port 8545 --block-time 1 --accounts 10
+Restrict top-level contract creation to approved addresses.
+
+```json
+{
+  "config": {
+    "evolve": {
+      "deployAllowlist": ["0xYourDeployerAddress"],
+      "deployAllowlistActivationHeight": 0
+    }
+  }
+}
 ```
 
-Set `--block-time 0` for on-demand block production (mine on transaction).
+For existing networks, set `deployAllowlistActivationHeight` to a future block height.
 
-### Transaction Sponsor Service
+### EIP-1559 Parameters (optional, new networks only)
 
-A Fastify-based JSON-RPC proxy that signs EvNode (0x76) transactions as sponsor on behalf of users.
+Customize base fee behavior. These apply from genesis with no activation height, so only configure for new networks.
 
-**How it works:**
-
-1. Client sends unsigned 0x76 transaction via `eth_sendRawTransaction`
-2. Service intercepts, validates against policy, signs as sponsor, forwards to node
-3. All other RPC calls are transparently proxied
-4. Zero client code changes -- just point your RPC URL to the service
-
-**Configuration (environment variables):**
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `RPC_URL` | Upstream ev-reth node URL | -- |
-| `CHAIN_ID` | Chain ID for validation | -- |
-| `SPONSOR_PRIVATE_KEY` | Sponsor wallet key | -- |
-| `MAX_GAS_LIMIT_PER_TX` | Max gas per sponsored tx | 500,000 |
-| `MAX_FEE_PER_GAS_LIMIT` | Max fee per gas ceiling | 100 Gwei |
-| `MIN_SPONSOR_BALANCE` | Min sponsor balance threshold | 1 ETH |
-| `PORT` | Service listen port | 3000 |
-
-### Granular Tracing and Observability
-
-Instrumentation spans added throughout critical code paths for detailed observability.
-
-**Covered operations:**
-
-- `build_payload` -- parent_hash, tx_count, gas_limit, duration_ms
-- `try_build` -- payload_id, duration_ms
-- `ensure_well_formed_payload` -- block_number, block_hash, duration_ms
-- `validate_transaction` -- origin, tx_hash, duration_ms
-- `execute_tx` -- debug-level spans with duration_ms
-- `build_empty_payload`, `parse_evolve_payload`, `validate_evnode`
-
-**Independent trace level control:**
-
-New environment variable `EV_TRACE_LEVEL` controls OTLP span export independently from `RUST_LOG`. This lets operators run with clean stdout logs while exporting debug-level spans to Jaeger or other backends:
-
-```bash
-RUST_LOG=info EV_TRACE_LEVEL=debug ev-reth node ...
+```json
+{
+  "config": {
+    "evolve": {
+      "baseFeeMaxChangeDenominator": 5000,
+      "baseFeeElasticityMultiplier": 10,
+      "initialBaseFeePerGas": 100000000000000000
+    }
+  }
+}
 ```
 
-## Bug Fixes
+| Field | Default | Description |
+|-------|---------|-------------|
+| `baseFeeMaxChangeDenominator` | `8` | Max base fee change per block. Higher = slower changes |
+| `baseFeeElasticityMultiplier` | `2` | Gas target multiplier |
+| `initialBaseFeePerGas` | `1000000000` | Initial base fee in wei |
 
-### EIP-2718 Payload Decode Fix
+See [EIP-1559 Configuration](eip1559-configuration.md) for tuning recommendations.
 
-Fixed a bug where the payload builder used `network_decode` (devp2p RLP wrapping) instead of `decode_2718_exact` (Engine API spec: opaque EIP-2718 bytes). This could silently drop valid type 0x76 EvNode transactions and EIP-1559/EIP-2930 transactions whose bytes were valid EIP-2718 but lacked wire-format RLP wrapping.
+## Upgrading from v0.1.x
 
-### Deploy Allowlist Test Coverage
+Everything in "Upgrading from v0.2.0" above, plus the following chainspec changes:
 
-Additional test coverage for deploy allowlist edge cases, ensuring consistent enforcement across all transaction types and gas specification scenarios.
+### Osaka Timestamp (required)
 
-## Upgrade for Existing Networks
+You **must** set `osakaTime` to a future timestamp. If omitted or set to `0`, the Osaka fork activates at genesis, which may cause unexpected behavior on existing networks.
 
-v0.4.0 is a drop-in replacement for v0.3.0. No chainspec modifications are required.
+### Base Fee Redirect
 
-1. All features from v0.3.0 (EvNode 0x76 transactions, Osaka/EOF, viem client) continue to work unchanged
-2. **Storage V1 nodes continue working as-is.** The binary upgrade does not trigger a database migration. New nodes default to Storage V2
-3. The EIP-2718 decode fix takes effect immediately
-4. Txpool fallback is now dev-mode only -- production deployments using Engine API are unaffected
-5. New tools (`ev-deployer`, `ev-dev`, sponsor service) are opt-in
+Redirect burned base fees to a sink address instead of burning them.
 
-## Migration Checklist
+```json
+{
+  "config": {
+    "evolve": {
+      "baseFeeSink": "0x00000000000000000000000000000000000000fe",
+      "baseFeeRedirectActivationHeight": 0
+    }
+  }
+}
+```
 
-- [ ] Rebuild from source with reth v2.0.0 dependencies
-- [ ] **Storage decision:** Existing V1 nodes continue as-is. New nodes use V2 by default. Plan V1-to-V2 migration (full resync) before V1 support is removed upstream
-- [ ] If using custom build scripts: migrate `make` commands to `just`
-- [ ] If using custom code that imports `reth-primitives`: update imports
-- [ ] If relying on txpool fallback in production: switch to Engine API attributes
-- [ ] If using MDBX backup scripts (e.g. `mdbx_copy`): verify they still work for your storage version. V2 nodes also use RocksDB for indices, so backup tooling may need updating
-- [ ] Review `EV_TRACE_LEVEL` for your observability setup
-- [ ] Test the upgrade on a local/testnet deployment using `ev-dev`
-- [ ] Coordinate upgrade timing with network validators/operators
-- [ ] Deploy new ev-reth binary
-- [ ] Verify node starts and syncs correctly
-- [ ] Verify existing transactions and block production continue working
+For existing networks, set `baseFeeRedirectActivationHeight` to a future block height.
+
+### Native Token Minting Precompile
+
+Enable minting and burning of the native token by authorized addresses.
+
+```json
+{
+  "config": {
+    "evolve": {
+      "mintAdmin": "0x000000000000000000000000000000000000Ad00",
+      "mintPrecompileActivationHeight": 0
+    }
+  }
+}
+```
+
+Set `mintAdmin` to the zero address to disable. For existing networks, set `mintPrecompileActivationHeight` to a future block height.
+
+### Contract Size Limit
+
+Override the default 24KB EIP-170 contract size limit.
+
+```json
+{
+  "config": {
+    "evolve": {
+      "contractSizeLimit": 131072,
+      "contractSizeLimitActivationHeight": 0
+    }
+  }
+}
+```
+
+## Complete Chainspec Reference
+
+All `config.evolve` fields available in v0.4.0:
+
+| Field | Type | Default | Since | Description |
+|-------|------|---------|-------|-------------|
+| `baseFeeSink` | `address` | -- | v0.2.0 | Receives redirected base fees |
+| `baseFeeRedirectActivationHeight` | `u64` | `0` | v0.2.0 | Block height when redirect activates |
+| `mintAdmin` | `address` | -- | v0.2.0 | Admin for mint/burn precompile |
+| `mintPrecompileActivationHeight` | `u64` | `0` | v0.2.0 | Block height when precompile activates |
+| `contractSizeLimit` | `usize` | `24576` | v0.2.0 | Max contract code size in bytes |
+| `contractSizeLimitActivationHeight` | `u64` | `0` | v0.2.0 | Block height when custom limit activates |
+| `deployAllowlist` | `address[]` | `[]` | v0.2.2 | Addresses allowed to deploy contracts (max 1024) |
+| `deployAllowlistActivationHeight` | `u64` | `0` | v0.2.2 | Block height when allowlist activates |
+| `baseFeeMaxChangeDenominator` | `u64` | `8` | v0.2.2 | Max base fee change per block |
+| `baseFeeElasticityMultiplier` | `u64` | `2` | v0.2.2 | Gas target multiplier |
+| `initialBaseFeePerGas` | `u64` | `1000000000` | v0.2.2 | Initial base fee in wei |
+
+Top-level `config` fields:
+
+| Field | Type | Default | Since | Description |
+|-------|------|---------|-------|-------------|
+| `osakaTime` | `u64` | -- | v0.3.0 | Unix timestamp to activate Osaka/EOF hardfork |
+
+## Complete Chainspec Example
+
+```json
+{
+  "config": {
+    "chainId": 12345,
+    "homesteadBlock": 0,
+    "eip150Block": 0,
+    "eip155Block": 0,
+    "eip158Block": 0,
+    "byzantiumBlock": 0,
+    "constantinopleBlock": 0,
+    "petersburgBlock": 0,
+    "istanbulBlock": 0,
+    "berlinBlock": 0,
+    "londonBlock": 0,
+    "parisBlock": 0,
+    "shanghaiTime": 0,
+    "cancunTime": 0,
+    "osakaTime": 1893456000,
+    "terminalTotalDifficulty": 0,
+    "terminalTotalDifficultyPassed": true,
+    "evolve": {
+      "baseFeeSink": "0x00000000000000000000000000000000000000fe",
+      "baseFeeRedirectActivationHeight": 0,
+      "baseFeeMaxChangeDenominator": 5000,
+      "baseFeeElasticityMultiplier": 10,
+      "initialBaseFeePerGas": 100000000000000000,
+      "mintAdmin": "0x000000000000000000000000000000000000Ad00",
+      "mintPrecompileActivationHeight": 0,
+      "contractSizeLimit": 131072,
+      "contractSizeLimitActivationHeight": 0,
+      "deployAllowlist": [
+        "0xYourDeployerAddress"
+      ],
+      "deployAllowlistActivationHeight": 0
+    }
+  },
+  "difficulty": "0x1",
+  "gasLimit": "0x2faf080",
+  "baseFeePerGas": "0x16345785d8a0000",
+  "alloc": {}
+}
+```
 
 ## Related Documentation
 
-- [Upgrade Guide: v0.3.0](UPGRADE-v0.3.0.md) -- previous version changes
-- [ADR 003: Typed Transactions for Sponsorship and Batch Calls](adr/ADR-0003-typed-transactions-sponsorship.md)
-- [Permissioned EVM Guide](guide/permissioned-evm.md)
-- [Fee System Guide](guide/fee-systems.md)
+- [EIP-1559 Configuration](eip1559-configuration.md) -- tuning base fee parameters
+- [Permissioned EVM Guide](guide/permissioned-evm.md) -- deploy allowlist details
+- [Fee System Guide](guide/fee-systems.md) -- base fee redirect and FeeVault
+- [ADR 003: Typed Transactions](adr/ADR-0003-typed-transactions-sponsorship.md) -- EvNode 0x76 spec
 
 ## Questions?
 

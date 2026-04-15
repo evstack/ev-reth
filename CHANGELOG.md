@@ -9,18 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `EV_TRACE_LEVEL` env var to control OTLP span export verbosity independently from `RUST_LOG` stdout log level ([#156](https://github.com/evstack/ev-reth/issues/156))
+- `ev-deployer` CLI (`bin/ev-deployer`) for generating genesis alloc entries with embedded contract bytecodes ([#167](https://github.com/evstack/ev-reth/pull/167))
 - `ev-dev` binary (`bin/ev-dev`): one-command local development chain with pre-funded Hardhat accounts, similar to Anvil or Hardhat Node
 - Transaction sponsor service (`bin/sponsor-service`) for signing EvNode transactions on behalf of users via JSON-RPC proxy ([#141](https://github.com/evstack/ev-reth/pull/141))
+- Granular tracing instrumentation spans across payload building, transaction validation, and EVM execution
+- `EV_TRACE_LEVEL` env var to control OTLP span export verbosity independently from `RUST_LOG` stdout log level ([#156](https://github.com/evstack/ev-reth/issues/156))
 
 ### Changed
 
+- Upgraded Reth from v1.11.x to v2.0.0 with Storage V2 support, revm 36.0.0, and alloy-evm 0.30.0 ([#207](https://github.com/evstack/ev-reth/pull/207))
+- `reth-primitives` imports migrated to `alloy_consensus` and `reth_ethereum_primitives` (upstream crate removed)
+- Txpool fallback (pulling pending transactions when Engine API attributes are empty) restricted to `--dev` mode only
+- Migrated build system from Makefile to Justfile
 - Removed unused `thiserror` dependency from `ev-precompiles` crate
 
 ### Fixed
 
+- Payload builder now uses `decode_2718_exact` instead of `network_decode` for Engine API payloads, fixing silent drops of valid type 0x76 and EIP-1559/EIP-2930 transactions ([#219](https://github.com/evstack/ev-reth/pull/219))
 - Payload builder now pulls pending transactions from the txpool in `--dev` mode, fixing `cast send` and other RPC-submitted transactions not being included in blocks
 - Txpool now uses sponsor balance for pending/queued ordering in sponsored EvNode transactions, and validates executor balance separately for call value transfers ([#141](https://github.com/evstack/ev-reth/pull/141))
+- Additional test coverage for deploy allowlist edge cases across all transaction types
 
 ## [0.3.0] - 2026-02-23
 
