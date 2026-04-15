@@ -19,6 +19,27 @@ The underlying Reth dependency has been upgraded from v1.11.x to v2.0.0. This is
 
 **Action Required:** Rebuild from source. If you have custom code that imports from `reth-primitives`, update imports to `alloy_consensus` or `reth_ethereum_primitives`.
 
+### Storage V2
+
+Reth v2.0.0 introduces **Storage V2**, a new on-disk storage layout that replaces the MDBX-centric model with a tiered architecture (MDBX + RocksDB + Static Files). This delivers ~20x faster block persistence for large blocks.
+
+| | Storage V1 | Storage V2 |
+|---|---|---|
+| MDBX | Plain state + hashed state | Hashed state only |
+| Changesets | In MDBX | In Static Files (append-only) |
+| Indices | In MDBX | In RocksDB |
+
+**Compatibility rules:**
+
+- **Existing V1 nodes are unaffected.** The reth v2.0.0 binary still supports Storage V1. Upgrading the binary does not force a migration.
+- **V1 and V2 are not interchangeable.** Once a node starts with V2, it cannot switch back to V1, and vice versa.
+- **No automatic V1-to-V2 migration.** Switching to V2 requires a full resync from genesis or restoring from a V2 snapshot.
+- **V1 is deprecated.** Support will be removed in a future reth release. Plan your migration to V2 accordingly.
+
+**For existing production networks on Storage V1:** No immediate action is required. The ev-reth v0.4.0 binary will continue to run with your existing V1 data directory. When you are ready to migrate to V2, coordinate a maintenance window for a full resync.
+
+**For new networks:** New nodes will use Storage V2 by default. This is the recommended layout going forward.
+
 ### Txpool Fallback Restricted to Dev Mode
 
 The payload builder's txpool fallback (pulling pending transactions when Engine API attributes are empty) is now **only enabled in `--dev` mode**.
@@ -139,16 +160,19 @@ Additional test coverage for deploy allowlist edge cases, ensuring consistent en
 v0.4.0 is a drop-in replacement for v0.3.0. No chainspec modifications are required.
 
 1. All features from v0.3.0 (EvNode 0x76 transactions, Osaka/EOF, viem client) continue to work unchanged
-2. The EIP-2718 decode fix takes effect immediately
-3. Txpool fallback is now dev-mode only -- production deployments using Engine API are unaffected
-4. New tools (`ev-deployer`, `ev-dev`, sponsor service) are opt-in
+2. **Storage V1 nodes continue working as-is.** The binary upgrade does not trigger a database migration. New nodes default to Storage V2
+3. The EIP-2718 decode fix takes effect immediately
+4. Txpool fallback is now dev-mode only -- production deployments using Engine API are unaffected
+5. New tools (`ev-deployer`, `ev-dev`, sponsor service) are opt-in
 
 ## Migration Checklist
 
 - [ ] Rebuild from source with reth v2.0.0 dependencies
+- [ ] **Storage decision:** Existing V1 nodes continue as-is. New nodes use V2 by default. Plan V1-to-V2 migration (full resync) before V1 support is removed upstream
 - [ ] If using custom build scripts: migrate `make` commands to `just`
 - [ ] If using custom code that imports `reth-primitives`: update imports
 - [ ] If relying on txpool fallback in production: switch to Engine API attributes
+- [ ] If using MDBX backup scripts (e.g. `mdbx_copy`): verify they still work for your storage version. V2 nodes also use RocksDB for indices, so backup tooling may need updating
 - [ ] Review `EV_TRACE_LEVEL` for your observability setup
 - [ ] Test the upgrade on a local/testnet deployment using `ev-dev`
 - [ ] Coordinate upgrade timing with network validators/operators
