@@ -2,7 +2,9 @@
 
 This guide covers the configuration changes required to upgrade ev-reth to v0.4.0. For a full list of changes, see the [CHANGELOG](../CHANGELOG.md).
 
-## Upgrading from v0.3.0
+> **Note:** v0.3.0 was never released. Operators running a v0.3.0-beta build should follow "Upgrading from v0.2.x" below.
+
+## Upgrading from v0.2.x
 
 No configuration changes required. Rebuild and deploy the new binary.
 
@@ -24,13 +26,11 @@ No configuration changes required. Rebuild and deploy the new binary.
 
 **Custom code:** If you import from `reth-primitives`, update imports to `alloy_consensus` or `reth_ethereum_primitives` (the crate was removed upstream).
 
-## Upgrading from v0.2.2
+### Osaka / EOF hardfork
 
-Everything in "Upgrading from v0.3.0" above, plus the following chainspec change:
+The Osaka hardfork (EVM Object Format, EOFv1) is available but not activated by default. If your chainspec does not already set `osakaTime`, the chain stays on Cancun rules and no action is required.
 
-### Osaka Hardfork (optional)
-
-Add `osakaTime` to your chainspec `config` section to activate the Osaka hardfork (EOF support). Without it, the chain stays on Cancun rules.
+To schedule activation, add `osakaTime` to your chainspec `config` section with a future Unix timestamp (use `0` on new testnets to activate from genesis):
 
 ```json
 {
@@ -40,111 +40,11 @@ Add `osakaTime` to your chainspec `config` section to activate the Osaka hardfor
 }
 ```
 
-Choose a timestamp far enough in the future to coordinate the upgrade across all nodes. Set to `0` on testnets to activate immediately.
-
-No other configuration changes are required. The EvNode transaction type (0x76) is available automatically once the binary is upgraded.
-
-## Upgrading from v0.2.0
-
-Everything in "Upgrading from v0.2.2" above, plus the following chainspec changes inside `config.evolve`:
-
-### Deploy Allowlist (optional)
-
-Restrict top-level contract creation to approved addresses.
-
-```json
-{
-  "config": {
-    "evolve": {
-      "deployAllowlist": ["0xYourDeployerAddress"],
-      "deployAllowlistActivationHeight": 0
-    }
-  }
-}
-```
-
-For existing networks, set `deployAllowlistActivationHeight` to a future block height.
-
-### EIP-1559 Parameters (optional, new networks only)
-
-Customize base fee behavior. These apply from genesis with no activation height, so only configure for new networks.
-
-```json
-{
-  "config": {
-    "evolve": {
-      "baseFeeMaxChangeDenominator": 5000,
-      "baseFeeElasticityMultiplier": 10,
-      "initialBaseFeePerGas": 100000000000000000
-    }
-  }
-}
-```
-
-| Field | Default | Description |
-|-------|---------|-------------|
-| `baseFeeMaxChangeDenominator` | `8` | Max base fee change per block. Higher = slower changes |
-| `baseFeeElasticityMultiplier` | `2` | Gas target multiplier |
-| `initialBaseFeePerGas` | `1000000000` | Initial base fee in wei |
-
-See [EIP-1559 Configuration](eip1559-configuration.md) for tuning recommendations.
+Osaka introduces EOFv1 contracts and related EIPs. See the [v0.2.0 upgrade guide](UPGRADE-v0.2.0.md) for the original `osakaTime` rollout notes and the [Ethereum EOF meta EIP (EIP-7692)](https://eips.ethereum.org/EIPS/eip-7692) for the full list of included changes.
 
 ## Upgrading from v0.1.x
 
-Everything in "Upgrading from v0.2.0" above, plus the following chainspec changes:
-
-### Osaka Timestamp (required)
-
-You **must** set `osakaTime` to a future timestamp. If omitted or set to `0`, the Osaka fork activates at genesis, which may cause unexpected behavior on existing networks.
-
-### Base Fee Redirect
-
-Redirect burned base fees to a sink address instead of burning them.
-
-```json
-{
-  "config": {
-    "evolve": {
-      "baseFeeSink": "0x00000000000000000000000000000000000000fe",
-      "baseFeeRedirectActivationHeight": 0
-    }
-  }
-}
-```
-
-For existing networks, set `baseFeeRedirectActivationHeight` to a future block height.
-
-### Native Token Minting Precompile
-
-Enable minting and burning of the native token by authorized addresses.
-
-```json
-{
-  "config": {
-    "evolve": {
-      "mintAdmin": "0x000000000000000000000000000000000000Ad00",
-      "mintPrecompileActivationHeight": 0
-    }
-  }
-}
-```
-
-Set `mintAdmin` to the zero address to disable. For existing networks, set `mintPrecompileActivationHeight` to a future block height.
-
-### Contract Size Limit
-
-Override the default 24KB EIP-170 contract size limit.
-
-```json
-{
-  "config": {
-    "evolve": {
-      "contractSizeLimit": 131072,
-      "contractSizeLimitActivationHeight": 0
-    }
-  }
-}
-```
+First follow [UPGRADE-v0.2.0.md](UPGRADE-v0.2.0.md) and [UPGRADE-v0.2.2.md](UPGRADE-v0.2.2.md) to reach v0.2.x, then apply "Upgrading from v0.2.x" above. Those guides cover the required `osakaTime`, base fee redirect, native token minting precompile, contract size limit, deploy allowlist, and EIP-1559 parameter chainspec changes.
 
 ## Complete Chainspec Reference
 
@@ -168,7 +68,7 @@ Top-level `config` fields:
 
 | Field | Type | Default | Since | Description |
 |-------|------|---------|-------|-------------|
-| `osakaTime` | `u64` | -- | v0.3.0 | Unix timestamp to activate Osaka/EOF hardfork |
+| `osakaTime` | `u64` | -- | v0.2.0 | Unix timestamp to activate Osaka/EOF hardfork |
 
 ## Complete Chainspec Example
 
