@@ -179,7 +179,7 @@ where
         if max_tx_gas_usage > block_available_gas {
             return Err(
                 BlockValidationError::TransactionGasLimitMoreThanAvailableBlockGas {
-                    transaction_gas_limit: tx.tx().gas_limit(),
+                    transaction_gas_limit: max_tx_gas_usage,
                     block_available_gas,
                 }
                 .into(),
