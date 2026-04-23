@@ -135,6 +135,7 @@ where
             // and ensures version-specific fields are initialized.
             withdrawals: Some(Default::default()),
             extra_data: Default::default(),
+            slot_number: attributes.slot_number,
         };
 
         let mut builder = self

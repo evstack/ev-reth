@@ -355,6 +355,10 @@ where
         &self.inner.ctx.block
     }
 
+    fn cfg_env(&self) -> &CfgEnv<Self::Spec> {
+        &self.inner.ctx.cfg
+    }
+
     fn chain_id(&self) -> u64 {
         self.inner.ctx.cfg.chain_id
     }
@@ -450,6 +454,10 @@ where
 
     fn block(&self) -> &BlockEnv {
         &self.inner.ctx.block
+    }
+
+    fn cfg_env(&self) -> &CfgEnv<Self::Spec> {
+        &self.inner.ctx.cfg
     }
 
     fn chain_id(&self) -> u64 {

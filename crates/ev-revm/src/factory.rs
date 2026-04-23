@@ -534,7 +534,7 @@ mod tests {
         let ExecutionResult::Success { gas, .. } = result_and_state.result else {
             panic!("expected successful execution");
         };
-        let gas_used = gas.used();
+        let gas_used = gas.tx_gas_used();
 
         let state: EvmState = result_and_state.state;
         let sink_account = state
