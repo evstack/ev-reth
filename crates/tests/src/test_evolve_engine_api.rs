@@ -314,6 +314,7 @@ async fn test_e2e_engine_api_gas_limit_handling() -> Result<()> {
             suggested_fee_recipient: fee_recipient,
             withdrawals: Some(vec![]),
             parent_beacon_block_root: Some(B256::ZERO),
+            slot_number: None,
         },
         transactions: Some(invalid_batch),
         gas_limit: Some(0),

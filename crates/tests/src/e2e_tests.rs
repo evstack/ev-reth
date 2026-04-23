@@ -124,6 +124,7 @@ pub(crate) async fn build_block_with_transactions(
             suggested_fee_recipient,
             withdrawals: Some(vec![]),
             parent_beacon_block_root: Some(B256::ZERO),
+            slot_number: None,
         },
         transactions: Some(transactions),
         gas_limit,

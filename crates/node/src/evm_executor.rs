@@ -1,3 +1,4 @@
+use core::cmp::min;
 use std::{borrow::Cow, boxed::Box, vec::Vec};
 
 use alloy_consensus::{Transaction, TransactionEnvelope, TxReceipt};
@@ -6,7 +7,7 @@ use alloy_evm::{
     block::{
         state_changes::{balance_increment_state, post_block_balance_increments},
         BlockExecutionError, BlockExecutionResult, BlockExecutor, BlockExecutorFactory,
-        BlockExecutorFor, BlockValidationError, ExecutableTx, OnStateHook,
+        BlockExecutorFor, BlockValidationError, ExecutableTx, GasOutput, OnStateHook,
         StateChangePostBlockSource, StateChangeSource, SystemCaller,
     },
     eth::{
@@ -90,7 +91,9 @@ pub struct EvBlockExecutor<'a, Evm, Spec, R: ReceiptBuilder> {
     system_caller: SystemCaller<Spec>,
     receipt_builder: R,
     receipts: Vec<R::Receipt>,
-    gas_used: u64,
+    cumulative_tx_gas_used: u64,
+    block_regular_gas_used: u64,
+    block_state_gas_used: u64,
     blob_gas_used: u64,
 }
 
@@ -101,16 +104,33 @@ where
 {
     /// Creates a new block executor with the provided EVM, context, spec, and receipt builder.
     pub fn new(evm: Evm, ctx: EthBlockExecutionCtx<'a>, spec: Spec, receipt_builder: R) -> Self {
+        let tx_count_hint = ctx.tx_count_hint.unwrap_or_default();
         Self {
             evm,
             ctx,
-            receipts: Vec::new(),
-            gas_used: 0,
+            receipts: Vec::with_capacity(tx_count_hint),
+            cumulative_tx_gas_used: 0,
+            block_regular_gas_used: 0,
+            block_state_gas_used: 0,
             blob_gas_used: 0,
             system_caller: SystemCaller::new(spec.clone()),
             spec,
             receipt_builder,
         }
+    }
+}
+
+impl<Evm, Spec, R> EvBlockExecutor<'_, Evm, Spec, R>
+where
+    R: ReceiptBuilder,
+{
+    /// Returns the maximum of regular and state gas used by transactions in this block.
+    #[inline]
+    pub const fn max_block_gas_used(&self) -> u64 {
+        if self.block_regular_gas_used > self.block_state_gas_used {
+            return self.block_regular_gas_used;
+        }
+        self.block_state_gas_used
     }
 }
 
@@ -144,9 +164,19 @@ where
     ) -> Result<Self::Result, BlockExecutionError> {
         let (tx_env, tx) = tx.into_parts();
 
-        let block_available_gas = self.evm.block().gas_limit() - self.gas_used;
+        let block_gas_used = if self.evm.cfg_env().enable_amsterdam_eip8037 {
+            self.block_regular_gas_used
+        } else {
+            self.cumulative_tx_gas_used
+        };
+        let block_available_gas = self.evm.block().gas_limit() - block_gas_used;
 
-        if tx.tx().gas_limit() > block_available_gas {
+        let mut max_tx_gas_usage = tx.tx().gas_limit();
+        if let Some(tx_gas_limit_cap) = self.evm.cfg_env().tx_gas_limit_cap {
+            max_tx_gas_usage = min(max_tx_gas_usage, tx_gas_limit_cap);
+        }
+
+        if max_tx_gas_usage > block_available_gas {
             return Err(
                 BlockValidationError::TransactionGasLimitMoreThanAvailableBlockGas {
                     transaction_gas_limit: tx.tx().gas_limit(),
@@ -168,7 +198,10 @@ where
         })
     }
 
-    fn commit_transaction(&mut self, output: Self::Result) -> Result<u64, BlockExecutionError> {
+    fn commit_transaction(
+        &mut self,
+        output: Self::Result,
+    ) -> Result<GasOutput, BlockExecutionError> {
         let EvTxResult {
             result: ResultAndState { result, state },
             blob_gas_used,
@@ -178,8 +211,13 @@ where
         self.system_caller
             .on_state(StateChangeSource::Transaction(self.receipts.len()), &state);
 
-        let gas_used = result.gas_used();
-        self.gas_used += gas_used;
+        let tx_gas_used = result.gas().tx_gas_used();
+        let regular_gas_used = result.gas().block_regular_gas_used();
+        let state_gas_used = result.gas().block_state_gas_used();
+
+        self.block_regular_gas_used += regular_gas_used;
+        self.block_state_gas_used += state_gas_used;
+        self.cumulative_tx_gas_used += tx_gas_used;
 
         if self
             .spec
@@ -194,12 +232,12 @@ where
                 evm: &self.evm,
                 result,
                 state: &state,
-                cumulative_gas_used: self.gas_used,
+                cumulative_gas_used: self.cumulative_tx_gas_used,
             }));
 
         self.evm.db_mut().commit(state);
 
-        Ok(gas_used)
+        Ok(GasOutput::with_state_gas(tx_gas_used, state_gas_used))
     }
 
     fn receipts(&self) -> &[Self::Receipt] {
@@ -222,10 +260,8 @@ where
                 requests.push_request_with_type(eip6110::DEPOSIT_REQUEST_TYPE, deposit_requests);
             }
 
-            requests.extend(
-                self.system_caller
-                    .apply_post_execution_changes(&mut self.evm)?,
-            );
+            self.system_caller
+                .append_post_execution_changes(&mut self.evm, &mut requests)?;
             requests
         } else {
             Requests::default()
@@ -270,12 +306,18 @@ where
             })
         })?;
 
+        let gas_used = if self.evm.cfg_env().enable_amsterdam_eip8037 {
+            self.max_block_gas_used()
+        } else {
+            self.cumulative_tx_gas_used
+        };
+
         Ok((
             self.evm,
             BlockExecutionResult {
                 receipts: self.receipts,
                 requests,
-                gas_used: self.gas_used,
+                gas_used,
                 blob_gas_used: self.blob_gas_used,
             },
         ))

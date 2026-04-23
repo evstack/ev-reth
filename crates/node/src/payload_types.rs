@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use alloy_eips::eip7685::Requests;
+use alloy_eips::{eip7685::Requests, eip7928::EMPTY_BLOCK_ACCESS_LIST_HASH};
 use alloy_primitives::{Bytes, U256};
 use alloy_rpc_types_engine::{
     BlobsBundleV1, BlobsBundleV2, ExecutionPayloadEnvelopeV2, ExecutionPayloadEnvelopeV3,
@@ -226,12 +226,18 @@ impl TryFrom<EvBuiltPayload> for ExecutionPayloadEnvelopeV6 {
             }
         };
 
+        let block_hash = block.hash();
+        let block_access_list = block.header().block_access_list_hash.map_or_else(
+            || Bytes::copy_from_slice(EMPTY_BLOCK_ACCESS_LIST_HASH.as_slice()),
+            |hash| Bytes::copy_from_slice(hash.as_slice()),
+        );
+        let slot_number = block.header().slot_number.unwrap_or_default();
+        let block = Arc::unwrap_or_clone(block).into_block();
+
         let execution_payload = ExecutionPayloadV4 {
-            payload_inner: ExecutionPayloadV3::from_block_unchecked(
-                block.hash(),
-                &Arc::unwrap_or_clone(block).into_block(),
-            ),
-            block_access_list: Bytes::new(),
+            payload_inner: ExecutionPayloadV3::from_block_unchecked(block_hash, &block),
+            block_access_list,
+            slot_number,
         };
 
         Ok(Self {

@@ -248,7 +248,7 @@ where
             gas_limit,
             basefee: basefee.unwrap_or_default(),
             blob_excess_gas_and_price,
-            slot_num: 0, // EL client — CL slot tracking not applicable
+            slot_num: attributes.slot_number.unwrap_or_default(),
         };
 
         Ok(EvmEnv {
@@ -272,6 +272,7 @@ where
                 .as_ref()
                 .map(|w| std::borrow::Cow::Borrowed(w.as_slice())),
             extra_data: block.header().extra_data.clone(),
+            slot_number: block.header().slot_number,
         })
     }
 
@@ -289,6 +290,7 @@ where
                 .withdrawals
                 .map(|w| std::borrow::Cow::Owned(w.into_inner())),
             extra_data: attributes.extra_data,
+            slot_number: attributes.slot_number,
         })
     }
 }
@@ -354,7 +356,7 @@ where
             gas_limit: payload.payload.gas_limit(),
             basefee: payload.payload.saturated_base_fee_per_gas(),
             blob_excess_gas_and_price,
-            slot_num: 0, // EL client — CL slot tracking not applicable
+            slot_num: payload.payload.slot_number().unwrap_or_default(),
         };
 
         Ok(EvmEnv { cfg_env, block_env })
@@ -374,6 +376,7 @@ where
                 .withdrawals()
                 .map(|w| std::borrow::Cow::Owned(w.clone())),
             extra_data: payload.payload.as_v1().extra_data.clone(),
+            slot_number: payload.payload.slot_number(),
         })
     }
 

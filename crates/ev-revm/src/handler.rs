@@ -141,7 +141,9 @@ where
                         tx,
                         calls,
                         ctx.cfg().spec().into(),
-                        false,
+                        ctx.cfg().is_eip7623_disabled(),
+                        ctx.cfg().is_amsterdam_eip8037_enabled(),
+                        ctx.cfg().tx_gas_limit_cap(),
                     )
                     .map_err(From::from);
                 }
@@ -155,13 +157,18 @@ where
         self.inner.load_accounts(evm)
     }
 
-    fn apply_eip7702_auth_list(&self, evm: &mut Self::Evm) -> Result<u64, Self::Error> {
-        self.inner.apply_eip7702_auth_list(evm)
+    fn apply_eip7702_auth_list(
+        &self,
+        evm: &mut Self::Evm,
+        init_and_floor_gas: &mut InitialAndFloorGas,
+    ) -> Result<u64, Self::Error> {
+        self.inner.apply_eip7702_auth_list(evm, init_and_floor_gas)
     }
 
     fn validate_against_state_and_deduct_caller(
         &self,
         evm: &mut Self::Evm,
+        _init_and_floor_gas: &mut InitialAndFloorGas,
     ) -> Result<(), Self::Error> {
         self.ensure_deploy_allowed(evm)?;
 
@@ -215,8 +222,9 @@ where
         &mut self,
         evm: &mut Self::Evm,
         gas_limit: u64,
+        reservoir: u64,
     ) -> Result<FRAME::FrameInit, Self::Error> {
-        self.inner.first_frame_input(evm, gas_limit)
+        self.inner.first_frame_input(evm, gas_limit, reservoir)
     }
 
     fn execution(
@@ -235,10 +243,15 @@ where
         };
 
         let base_tx = evm.ctx().tx().clone();
-        let gas_limit = base_tx.gas_limit();
+        let tx_gas_limit = base_tx.gas_limit();
+        let (mut remaining_gas, mut reservoir) = init_and_floor_gas.initial_gas_and_reservoir(
+            tx_gas_limit,
+            evm.ctx().cfg().tx_gas_limit_cap(),
+            evm.ctx().cfg().is_amsterdam_eip8037_enabled(),
+        );
         let checkpoint = evm.ctx_mut().journal_mut().checkpoint();
-        let mut remaining_gas = gas_limit.saturating_sub(init_and_floor_gas.initial_gas);
         let mut total_refunded: i64 = 0;
+        let mut total_state_gas_spent: u64 = 0;
         let mut last_result: Option<FrameResult> = None;
 
         // Execute each call in the batch sequentially.
@@ -249,11 +262,16 @@ where
             let mut call_tx = base_tx.clone();
             call_tx.set_batch_call(call);
             evm.ctx_mut().set_tx(call_tx);
-            let first_frame_input = self.inner.first_frame_input(evm, remaining_gas)?;
+            let first_frame_input = self
+                .inner
+                .first_frame_input(evm, remaining_gas, reservoir)?;
             let mut frame_result = self.inner.run_exec_loop(evm, first_frame_input)?;
             let instruction_result = frame_result.interpreter_result().result;
             total_refunded = total_refunded.saturating_add(frame_result.gas().refunded());
             remaining_gas = frame_result.gas().remaining();
+            reservoir = frame_result.gas().reservoir();
+            total_state_gas_spent =
+                total_state_gas_spent.saturating_add(frame_result.gas().state_gas_spent());
 
             if !instruction_result.is_ok() {
                 evm.ctx_mut().journal_mut().checkpoint_revert(checkpoint);
@@ -273,7 +291,14 @@ where
                         caller_account.data.set_nonce(nonce.saturating_add(1));
                     }
                 }
-                finalize_batch_gas(&mut frame_result, gas_limit, remaining_gas, 0);
+                finalize_batch_gas(
+                    &mut frame_result,
+                    tx_gas_limit,
+                    remaining_gas,
+                    reservoir,
+                    total_state_gas_spent,
+                    0,
+                );
                 return Ok(frame_result);
             }
 
@@ -283,7 +308,14 @@ where
         evm.ctx_mut().journal_mut().checkpoint_commit();
 
         let mut frame_result = last_result.expect("batch execution requires at least one call");
-        finalize_batch_gas(&mut frame_result, gas_limit, remaining_gas, total_refunded);
+        finalize_batch_gas(
+            &mut frame_result,
+            tx_gas_limit,
+            remaining_gas,
+            reservoir,
+            total_state_gas_spent,
+            total_refunded,
+        );
 
         Ok(frame_result)
     }
@@ -478,14 +510,18 @@ fn validate_batch_initial_tx_gas<Tx: Transaction>(
     calls: &[ev_primitives::Call],
     spec: SpecId,
     is_eip7623_disabled: bool,
+    is_eip8037_enabled: bool,
+    tx_gas_limit_cap: u64,
 ) -> Result<InitialAndFloorGas, reth_revm::revm::context_interface::result::InvalidTransaction> {
-    let mut initial_gas = 0u64;
+    let mut initial_total_gas = 0u64;
+    let mut initial_state_gas = 0u64;
     let mut floor_gas = 0u64;
 
     for call in calls {
         let call_gas =
             calculate_initial_tx_gas(spec, call.input.as_ref(), call.to.is_create(), 0, 0, 0);
-        initial_gas = initial_gas.saturating_add(call_gas.initial_gas);
+        initial_total_gas = initial_total_gas.saturating_add(call_gas.initial_total_gas);
+        initial_state_gas = initial_state_gas.saturating_add(call_gas.initial_state_gas);
         floor_gas = floor_gas.saturating_add(call_gas.floor_gas);
     }
 
@@ -501,14 +537,15 @@ fn validate_batch_initial_tx_gas<Tx: Transaction>(
         }
     }
 
-    initial_gas = initial_gas
+    initial_total_gas = initial_total_gas
         .saturating_add(accounts.saturating_mul(ACCESS_LIST_ADDRESS))
         .saturating_add(storages.saturating_mul(ACCESS_LIST_STORAGE_KEY));
 
     if spec.is_enabled_in(SpecId::PRAGUE) {
-        initial_gas = initial_gas.saturating_add(
-            (tx.authorization_list_len() as u64).saturating_mul(eip7702::PER_EMPTY_ACCOUNT_COST),
-        );
+        let auth_state_gas =
+            (tx.authorization_list_len() as u64).saturating_mul(eip7702::PER_EMPTY_ACCOUNT_COST);
+        initial_total_gas = initial_total_gas.saturating_add(auth_state_gas);
+        initial_state_gas = initial_state_gas.saturating_add(auth_state_gas);
     } else {
         floor_gas = 0;
     }
@@ -517,11 +554,11 @@ fn validate_batch_initial_tx_gas<Tx: Transaction>(
         floor_gas = 0;
     }
 
-    if initial_gas > tx.gas_limit() {
+    if initial_total_gas > tx.gas_limit() {
         return Err(
             reth_revm::revm::context_interface::result::InvalidTransaction::CallGasCostMoreThanGasLimit {
                 gas_limit: tx.gas_limit(),
-                initial_gas,
+                initial_gas: initial_total_gas,
             },
         );
     }
@@ -535,13 +572,32 @@ fn validate_batch_initial_tx_gas<Tx: Transaction>(
         );
     }
 
-    Ok(InitialAndFloorGas::new(initial_gas, floor_gas))
+    if is_eip8037_enabled && tx.gas_limit() > tx_gas_limit_cap {
+        let min_regular_gas = initial_total_gas
+            .saturating_sub(initial_state_gas)
+            .max(floor_gas);
+        if min_regular_gas > tx_gas_limit_cap {
+            return Err(
+                reth_revm::revm::context_interface::result::InvalidTransaction::GasFloorMoreThanGasLimit {
+                    gas_floor: min_regular_gas,
+                    gas_limit: tx_gas_limit_cap,
+                },
+            );
+        }
+    }
+
+    let mut gas =
+        InitialAndFloorGas::new_with_state_gas(initial_total_gas, initial_state_gas, floor_gas);
+    gas.eip7702_reservoir_refund = 0;
+    Ok(gas)
 }
 
 fn finalize_batch_gas(
     frame_result: &mut FrameResult,
     tx_gas_limit: u64,
     remaining_gas: u64,
+    reservoir: u64,
+    state_gas_spent: u64,
     refund: i64,
 ) {
     let instruction_result = frame_result.interpreter_result().result;
@@ -551,6 +607,11 @@ fn finalize_batch_gas(
     }
     if instruction_result.is_ok() {
         gas.record_refund(refund);
+        gas.set_state_gas_spent(state_gas_spent);
+        gas.set_reservoir(reservoir);
+    } else {
+        gas.set_state_gas_spent(0);
+        gas.set_reservoir(reservoir.saturating_add(state_gas_spent));
     }
     *frame_result.gas_mut() = gas;
 }
@@ -718,6 +779,7 @@ mod tests {
         bytecode::Bytecode as RevmBytecode,
         context::{BlockEnv, CfgEnv, TxEnv},
         handler::EthPrecompiles,
+        interpreter::InitialAndFloorGas,
         MainBuilder,
     };
 
@@ -805,16 +867,17 @@ mod tests {
             calculate_initial_tx_gas(SpecId::PRAGUE, calls[1].input.as_ref(), false, 0, 0, 0);
         let access_list_cost = ACCESS_LIST_ADDRESS + 2 * ACCESS_LIST_STORAGE_KEY;
 
-        let result = validate_batch_initial_tx_gas(&tx_env, &calls, SpecId::PRAGUE, false)
-            .expect("batch gas should validate");
+        let result =
+            validate_batch_initial_tx_gas(&tx_env, &calls, SpecId::PRAGUE, false, false, u64::MAX)
+                .expect("batch gas should validate");
 
         let expected_initial = gas_call_1
-            .initial_gas
-            .saturating_add(gas_call_2.initial_gas)
+            .initial_total_gas
+            .saturating_add(gas_call_2.initial_total_gas)
             .saturating_add(access_list_cost);
         let expected_floor = gas_call_1.floor_gas.saturating_add(gas_call_2.floor_gas);
 
-        assert_eq!(result.initial_gas, expected_initial);
+        assert_eq!(result.initial_total_gas, expected_initial);
         assert_eq!(result.floor_gas, expected_floor);
     }
 
@@ -831,8 +894,9 @@ mod tests {
             input: Bytes::from(vec![0x11; 64]),
         }];
 
-        let err = validate_batch_initial_tx_gas(&tx_env, &calls, SpecId::CANCUN, false)
-            .expect_err("should reject when gas limit is too low");
+        let err =
+            validate_batch_initial_tx_gas(&tx_env, &calls, SpecId::CANCUN, false, false, u64::MAX)
+                .expect_err("should reject when gas limit is too low");
 
         assert!(matches!(
             err,
@@ -1333,7 +1397,9 @@ mod tests {
         let mut evm = build_test_evm(ctx, None, None);
         let handler: TestHandler = EvHandler::new(None, Some(allowlist));
 
-        let result = handler.validate_against_state_and_deduct_caller(&mut evm);
+        let mut init_and_floor_gas = InitialAndFloorGas::default();
+        let result =
+            handler.validate_against_state_and_deduct_caller(&mut evm, &mut init_and_floor_gas);
         assert!(matches!(result, Err(EVMError::Custom(_))));
     }
 
@@ -1355,7 +1421,9 @@ mod tests {
         let mut evm = build_test_evm(ctx, None, None);
         let handler: TestHandler = EvHandler::new(None, Some(allowlist));
 
-        let result = handler.validate_against_state_and_deduct_caller(&mut evm);
+        let mut init_and_floor_gas = InitialAndFloorGas::default();
+        let result =
+            handler.validate_against_state_and_deduct_caller(&mut evm, &mut init_and_floor_gas);
         assert!(
             result.is_ok(),
             "empty allowlist should allow any caller to deploy, got: {result:?}"
@@ -1378,7 +1446,9 @@ mod tests {
         let mut evm = build_test_evm(ctx, None, None);
         let handler: TestHandler = EvHandler::new(None, None);
 
-        let result = handler.validate_against_state_and_deduct_caller(&mut evm);
+        let mut init_and_floor_gas = InitialAndFloorGas::default();
+        let result =
+            handler.validate_against_state_and_deduct_caller(&mut evm, &mut init_and_floor_gas);
         assert!(
             result.is_ok(),
             "no allowlist configured should allow any caller to deploy, got: {result:?}"
@@ -1402,7 +1472,9 @@ mod tests {
         let mut evm = build_test_evm(ctx, None, None);
         let handler: TestHandler = EvHandler::new(None, Some(allowlist));
 
-        let result = handler.validate_against_state_and_deduct_caller(&mut evm);
+        let mut init_and_floor_gas = InitialAndFloorGas::default();
+        let result =
+            handler.validate_against_state_and_deduct_caller(&mut evm, &mut init_and_floor_gas);
         assert!(
             result.is_ok(),
             "allowlisted caller should be allowed to deploy, got: {result:?}"
@@ -1427,7 +1499,9 @@ mod tests {
         let mut evm = build_test_evm(ctx, None, None);
         let handler: TestHandler = EvHandler::new(None, Some(allowlist));
 
-        let result = handler.validate_against_state_and_deduct_caller(&mut evm);
+        let mut init_and_floor_gas = InitialAndFloorGas::default();
+        let result =
+            handler.validate_against_state_and_deduct_caller(&mut evm, &mut init_and_floor_gas);
         assert!(
             result.is_ok(),
             "CALL tx should be allowed regardless of allowlist, got: {result:?}"
