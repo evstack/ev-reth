@@ -163,6 +163,15 @@ impl EvolveTestFixture {
         let mint_precompile = config
             .mint_precompile_settings()
             .map(|(admin, activation)| MintPrecompileSettings::new(admin, activation));
+        let proposer_control_precompile = config.proposer_control_precompile_settings().map(
+            |(admin, activation, initial_next_proposer)| {
+                ev_revm::ProposerControlPrecompileSettings::new(
+                    admin,
+                    activation,
+                    initial_next_proposer,
+                )
+            },
+        );
         let contract_size_limit = config
             .contract_size_limit_settings()
             .map(|(limit, activation)| ContractSizeLimitSettings::new(limit, activation));
@@ -172,6 +181,7 @@ impl EvolveTestFixture {
         let evm_factory = EvTxEvmFactory::new(
             base_fee_redirect,
             mint_precompile,
+            proposer_control_precompile,
             deploy_allowlist,
             contract_size_limit,
         );

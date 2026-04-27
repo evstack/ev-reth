@@ -16,7 +16,10 @@ use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
 use url::Url;
 
-use ev_node::{log_startup, EvolveArgs, EvolveChainSpecParser, EvolveNode};
+use ev_node::{
+    log_startup, EvolveArgs, EvolveChainSpecParser, EvolveNode, EvolvePayloadBuilderConfig,
+    EvolveProposerApiImpl, EvolveProposerApiServer,
+};
 
 #[global_allocator]
 static ALLOC: reth_cli_util::allocator::Allocator = reth_cli_util::allocator::new_allocator();
@@ -105,9 +108,18 @@ fn main() {
                     let evolve_cfg = EvolveConfig::default();
                     let evolve_txpool =
                         EvolveTxpoolApiImpl::new(ctx.pool().clone(), evolve_cfg.max_txpool_bytes);
+                    let proposer_cfg =
+                        EvolvePayloadBuilderConfig::from_chain_spec(ctx.config().chain.as_ref())?;
+                    let initial_next_proposer = proposer_cfg
+                        .proposer_control_precompile_settings()
+                        .map(|(_, _, initial_next_proposer)| initial_next_proposer)
+                        .unwrap_or_default();
+                    let proposer_api =
+                        EvolveProposerApiImpl::new(ctx.provider().clone(), initial_next_proposer);
 
                     // Merge into all enabled transports (HTTP / WS)
                     ctx.modules.merge_configured(evolve_txpool.into_rpc())?;
+                    ctx.modules.merge_configured(proposer_api.into_rpc())?;
                     Ok(())
                 })
                 .launch()

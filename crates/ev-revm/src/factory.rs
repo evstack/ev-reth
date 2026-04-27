@@ -9,7 +9,10 @@ use alloy_evm::{
     Database, EvmEnv, EvmFactory,
 };
 use alloy_primitives::{Address, U256};
-use ev_precompiles::mint::{MintPrecompile, MINT_PRECOMPILE_ADDR};
+use ev_precompiles::{
+    mint::{MintPrecompile, MINT_PRECOMPILE_ADDR},
+    proposer::{ProposerControlPrecompile, PROPOSER_CONTROL_PRECOMPILE_ADDR},
+};
 use reth_evm_ethereum::EthEvmConfig;
 use reth_revm::{
     inspector::NoOpInspector,
@@ -78,6 +81,41 @@ impl MintPrecompileSettings {
     }
 }
 
+/// Settings for enabling the proposer control precompile at a specific block height.
+#[derive(Debug, Clone, Copy)]
+pub struct ProposerControlPrecompileSettings {
+    admin: Address,
+    activation_height: u64,
+    initial_next_proposer: Address,
+}
+
+impl ProposerControlPrecompileSettings {
+    /// Creates a new settings object.
+    pub const fn new(
+        admin: Address,
+        activation_height: u64,
+        initial_next_proposer: Address,
+    ) -> Self {
+        Self {
+            admin,
+            activation_height,
+            initial_next_proposer,
+        }
+    }
+
+    const fn activation_height(&self) -> u64 {
+        self.activation_height
+    }
+
+    const fn admin(&self) -> Address {
+        self.admin
+    }
+
+    const fn initial_next_proposer(&self) -> Address {
+        self.initial_next_proposer
+    }
+}
+
 /// Settings for custom contract size limit with activation height.
 #[derive(Debug, Clone, Copy)]
 pub struct ContractSizeLimitSettings {
@@ -109,6 +147,7 @@ pub struct EvEvmFactory<F> {
     inner: F,
     redirect: Option<BaseFeeRedirectSettings>,
     mint_precompile: Option<MintPrecompileSettings>,
+    proposer_control_precompile: Option<ProposerControlPrecompileSettings>,
     deploy_allowlist: Option<DeployAllowlistSettings>,
     contract_size_limit: Option<ContractSizeLimitSettings>,
 }
@@ -119,6 +158,7 @@ impl<F> EvEvmFactory<F> {
         inner: F,
         redirect: Option<BaseFeeRedirectSettings>,
         mint_precompile: Option<MintPrecompileSettings>,
+        proposer_control_precompile: Option<ProposerControlPrecompileSettings>,
         deploy_allowlist: Option<DeployAllowlistSettings>,
         contract_size_limit: Option<ContractSizeLimitSettings>,
     ) -> Self {
@@ -126,6 +166,7 @@ impl<F> EvEvmFactory<F> {
             inner,
             redirect,
             mint_precompile,
+            proposer_control_precompile,
             deploy_allowlist,
             contract_size_limit,
         }
@@ -157,6 +198,33 @@ impl<F> EvEvmFactory<F> {
             let id_for_call = id;
             Some(DynPrecompile::new_stateful(id_for_call, move |input| {
                 mint_for_call.call(input)
+            }))
+        });
+    }
+
+    fn install_proposer_control_precompile(
+        &self,
+        precompiles: &mut PrecompilesMap,
+        block_number: U256,
+    ) {
+        let Some(settings) = self.proposer_control_precompile else {
+            return;
+        };
+        if block_number < U256::from(settings.activation_height()) {
+            return;
+        }
+
+        let proposer_control = Arc::new(ProposerControlPrecompile::new(
+            settings.admin(),
+            settings.initial_next_proposer(),
+        ));
+        let id = ProposerControlPrecompile::id().clone();
+
+        precompiles.apply_precompile(&PROPOSER_CONTROL_PRECOMPILE_ADDR, move |_| {
+            let proposer_control_for_call = Arc::clone(&proposer_control);
+            let id_for_call = id;
+            Some(DynPrecompile::new_stateful(id_for_call, move |input| {
+                proposer_control_for_call.call(input)
             }))
         });
     }
@@ -204,6 +272,7 @@ impl EvmFactory for EvEvmFactory<EthEvmFactory> {
         {
             let inner = evm.inner_mut();
             self.install_mint_precompile(&mut inner.precompiles, block_number);
+            self.install_proposer_control_precompile(&mut inner.precompiles, block_number);
         }
         evm
     }
@@ -229,6 +298,7 @@ impl EvmFactory for EvEvmFactory<EthEvmFactory> {
         {
             let inner = evm.inner_mut();
             self.install_mint_precompile(&mut inner.precompiles, block_number);
+            self.install_proposer_control_precompile(&mut inner.precompiles, block_number);
         }
         evm
     }
@@ -239,6 +309,7 @@ impl EvmFactory for EvEvmFactory<EthEvmFactory> {
 pub struct EvTxEvmFactory {
     redirect: Option<BaseFeeRedirectSettings>,
     mint_precompile: Option<MintPrecompileSettings>,
+    proposer_control_precompile: Option<ProposerControlPrecompileSettings>,
     deploy_allowlist: Option<DeployAllowlistSettings>,
     contract_size_limit: Option<ContractSizeLimitSettings>,
 }
@@ -262,12 +333,14 @@ impl EvTxEvmFactory {
     pub const fn new(
         redirect: Option<BaseFeeRedirectSettings>,
         mint_precompile: Option<MintPrecompileSettings>,
+        proposer_control_precompile: Option<ProposerControlPrecompileSettings>,
         deploy_allowlist: Option<DeployAllowlistSettings>,
         contract_size_limit: Option<ContractSizeLimitSettings>,
     ) -> Self {
         Self {
             redirect,
             mint_precompile,
+            proposer_control_precompile,
             deploy_allowlist,
             contract_size_limit,
         }
@@ -299,6 +372,33 @@ impl EvTxEvmFactory {
             let id_for_call = id;
             Some(DynPrecompile::new_stateful(id_for_call, move |input| {
                 mint_for_call.call(input)
+            }))
+        });
+    }
+
+    fn install_proposer_control_precompile(
+        &self,
+        precompiles: &mut PrecompilesMap,
+        block_number: U256,
+    ) {
+        let Some(settings) = self.proposer_control_precompile else {
+            return;
+        };
+        if block_number < U256::from(settings.activation_height()) {
+            return;
+        }
+
+        let proposer_control = Arc::new(ProposerControlPrecompile::new(
+            settings.admin(),
+            settings.initial_next_proposer(),
+        ));
+        let id = ProposerControlPrecompile::id().clone();
+
+        precompiles.apply_precompile(&PROPOSER_CONTROL_PRECOMPILE_ADDR, move |_| {
+            let proposer_control_for_call = Arc::clone(&proposer_control);
+            let id_for_call = id;
+            Some(DynPrecompile::new_stateful(id_for_call, move |input| {
+                proposer_control_for_call.call(input)
             }))
         });
     }
@@ -377,6 +477,7 @@ impl EvmFactory for EvTxEvmFactory {
         {
             let inner = evm.inner_mut();
             self.install_mint_precompile(&mut inner.precompiles, block_number);
+            self.install_proposer_control_precompile(&mut inner.precompiles, block_number);
         }
         evm
     }
@@ -401,6 +502,7 @@ impl EvmFactory for EvTxEvmFactory {
         {
             let inner = evm.inner_mut();
             self.install_mint_precompile(&mut inner.precompiles, block_number);
+            self.install_proposer_control_precompile(&mut inner.precompiles, block_number);
         }
         evm
     }
@@ -411,6 +513,7 @@ pub fn with_ev_handler<ChainSpec>(
     config: EthEvmConfig<ChainSpec, EthEvmFactory>,
     redirect: Option<BaseFeeRedirectSettings>,
     mint_precompile: Option<MintPrecompileSettings>,
+    proposer_control_precompile: Option<ProposerControlPrecompileSettings>,
     deploy_allowlist: Option<DeployAllowlistSettings>,
     contract_size_limit: Option<ContractSizeLimitSettings>,
 ) -> EthEvmConfig<ChainSpec, EvEvmFactory<EthEvmFactory>> {
@@ -422,6 +525,7 @@ pub fn with_ev_handler<ChainSpec>(
         *executor_factory.evm_factory(),
         redirect,
         mint_precompile,
+        proposer_control_precompile,
         deploy_allowlist,
         contract_size_limit,
     );
@@ -444,6 +548,7 @@ mod tests {
     use alloy_evm::{Evm, EvmEnv};
     use alloy_primitives::{address, keccak256, Address, Bytes, TxKind, U256};
     use alloy_sol_types::{sol, SolCall};
+    use ev_precompiles::proposer::PROPOSER_CONTROL_PRECOMPILE_ADDR;
     use reth_revm::{
         revm::{
             bytecode::Bytecode as RevmBytecode,
@@ -458,6 +563,10 @@ mod tests {
     sol! {
         contract MintAdminProxy {
             function mint(address to, uint256 amount);
+        }
+
+        interface IProposerControl {
+            function setNextProposer(address proposer) external;
         }
     }
 
@@ -508,6 +617,7 @@ mod tests {
         let mut evm = EvEvmFactory::new(
             alloy_evm::eth::EthEvmFactory::default(),
             Some(BaseFeeRedirectSettings::new(redirect, 0)),
+            None,
             None,
             None,
             None,
@@ -606,6 +716,7 @@ mod tests {
             Some(MintPrecompileSettings::new(contract, 0)),
             None,
             None,
+            None,
         )
         .create_evm(state, evm_env);
 
@@ -645,6 +756,7 @@ mod tests {
         let factory = EvEvmFactory::new(
             alloy_evm::eth::EthEvmFactory::default(),
             Some(BaseFeeRedirectSettings::new(BaseFeeRedirect::new(sink), 5)),
+            None,
             None,
             None,
             None,
@@ -718,6 +830,7 @@ mod tests {
             Some(MintPrecompileSettings::new(contract, 3)),
             None,
             None,
+            None,
         );
 
         let tx_env = || crate::factory::TxEnv {
@@ -765,5 +878,99 @@ mod tests {
             .get(&mintee)
             .expect("mint precompile should mint after activation");
         assert_eq!(mintee_account.info.balance, amount);
+    }
+
+    #[test]
+    fn proposer_control_precompile_respects_activation_height() {
+        let admin = address!("0x0000000000000000000000000000000000000aaa");
+        let next = address!("0x0000000000000000000000000000000000000bbb");
+
+        let build_state = || {
+            let mut state = State::builder()
+                .with_database(CacheDB::<EmptyDB>::default())
+                .with_bundle_update()
+                .build();
+
+            state.insert_account(
+                admin,
+                AccountInfo {
+                    balance: U256::from(10_000_000_000u64),
+                    nonce: 0,
+                    code_hash: KECCAK_EMPTY,
+                    code: None,
+                    account_id: None,
+                },
+            );
+
+            state
+        };
+
+        let factory = EvEvmFactory::new(
+            alloy_evm::eth::EthEvmFactory::default(),
+            None,
+            None,
+            Some(ProposerControlPrecompileSettings::new(
+                admin,
+                3,
+                Address::ZERO,
+            )),
+            None,
+            None,
+        );
+
+        let tx_env = || crate::factory::TxEnv {
+            caller: admin,
+            kind: TxKind::Call(PROPOSER_CONTROL_PRECOMPILE_ADDR),
+            gas_limit: 500_000,
+            gas_price: 1,
+            value: U256::ZERO,
+            data: IProposerControl::setNextProposerCall { proposer: next }
+                .abi_encode()
+                .into(),
+            ..Default::default()
+        };
+
+        let mut before_env: alloy_evm::EvmEnv<SpecId> = EvmEnv::default();
+        before_env.cfg_env.chain_id = 1;
+        before_env.cfg_env.spec = SpecId::CANCUN;
+        before_env.block_env.number = U256::from(2);
+        before_env.block_env.basefee = 1;
+        before_env.block_env.gas_limit = 30_000_000;
+
+        let mut evm_before = factory.create_evm(build_state(), before_env);
+        let result_before = evm_before
+            .transact_raw(tx_env())
+            .expect("pre-activation call executes");
+        let state: EvmState = result_before.state;
+        if let Some(account) = state.get(&PROPOSER_CONTROL_PRECOMPILE_ADDR) {
+            assert!(
+                account.storage.get(&U256::ZERO).is_none(),
+                "precompile must not write storage before activation height"
+            );
+        }
+
+        let mut after_env: alloy_evm::EvmEnv<SpecId> = EvmEnv::default();
+        after_env.cfg_env.chain_id = 1;
+        after_env.cfg_env.spec = SpecId::CANCUN;
+        after_env.block_env.number = U256::from(3);
+        after_env.block_env.basefee = 1;
+        after_env.block_env.gas_limit = 30_000_000;
+
+        let mut evm_after = factory.create_evm(build_state(), after_env);
+        let result_after = evm_after
+            .transact_raw(tx_env())
+            .expect("post-activation call executes");
+        let state: EvmState = result_after.state;
+        let proposer_account = state
+            .get(&PROPOSER_CONTROL_PRECOMPILE_ADDR)
+            .expect("proposer control precompile account should be touched");
+        let slot = proposer_account
+            .storage
+            .get(&U256::ZERO)
+            .expect("next proposer slot should be written");
+        assert_eq!(
+            slot.present_value,
+            U256::from_be_bytes(next.into_word().into())
+        );
     }
 }
