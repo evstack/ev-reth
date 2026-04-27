@@ -18,6 +18,12 @@ struct ChainspecEvolveConfig {
     pub mint_admin: Option<Address>,
     #[serde(default, rename = "mintPrecompileActivationHeight")]
     pub mint_precompile_activation_height: Option<u64>,
+    #[serde(default, rename = "proposerControlAdmin")]
+    pub proposer_control_admin: Option<Address>,
+    #[serde(default, rename = "proposerControlActivationHeight")]
+    pub proposer_control_activation_height: Option<u64>,
+    #[serde(default, rename = "initialNextProposer")]
+    pub initial_next_proposer: Option<Address>,
     /// Maximum contract code size in bytes. Defaults to 24KB (EIP-170) if not specified.
     #[serde(default, rename = "contractSizeLimit")]
     pub contract_size_limit: Option<usize>,
@@ -47,6 +53,15 @@ pub struct EvolvePayloadBuilderConfig {
     /// Optional activation height for mint precompile; defaults to 0 when admin set.
     #[serde(default)]
     pub mint_precompile_activation_height: Option<u64>,
+    /// Optional proposer control precompile admin address sourced from the chainspec.
+    #[serde(default)]
+    pub proposer_control_admin: Option<Address>,
+    /// Optional activation height for proposer control precompile; defaults to 0 when admin set.
+    #[serde(default)]
+    pub proposer_control_activation_height: Option<u64>,
+    /// Optional initial next proposer returned until the precompile storage is updated.
+    #[serde(default)]
+    pub initial_next_proposer: Option<Address>,
     /// Maximum contract code size in bytes. Defaults to 24KB (EIP-170).
     #[serde(default)]
     pub contract_size_limit: Option<usize>,
@@ -69,6 +84,9 @@ impl EvolvePayloadBuilderConfig {
             mint_admin: None,
             base_fee_redirect_activation_height: None,
             mint_precompile_activation_height: None,
+            proposer_control_admin: None,
+            proposer_control_activation_height: None,
+            initial_next_proposer: None,
             contract_size_limit: None,
             contract_size_limit_activation_height: None,
             deploy_allowlist: Vec::new(),
@@ -93,6 +111,21 @@ impl EvolvePayloadBuilderConfig {
                     .mint_admin
                     .and_then(|addr| if addr.is_zero() { None } else { Some(addr) });
             config.mint_precompile_activation_height = extras.mint_precompile_activation_height;
+            config.proposer_control_admin = extras.proposer_control_admin.and_then(|addr| {
+                if addr.is_zero() {
+                    None
+                } else {
+                    Some(addr)
+                }
+            });
+            config.proposer_control_activation_height = extras.proposer_control_activation_height;
+            config.initial_next_proposer = extras.initial_next_proposer.and_then(|addr| {
+                if addr.is_zero() {
+                    None
+                } else {
+                    Some(addr)
+                }
+            });
 
             if config.base_fee_sink.is_some()
                 && config.base_fee_redirect_activation_height.is_none()
@@ -102,6 +135,12 @@ impl EvolvePayloadBuilderConfig {
 
             if config.mint_admin.is_some() && config.mint_precompile_activation_height.is_none() {
                 config.mint_precompile_activation_height = Some(0);
+            }
+
+            if config.proposer_control_admin.is_some()
+                && config.proposer_control_activation_height.is_none()
+            {
+                config.proposer_control_activation_height = Some(0);
             }
 
             config.contract_size_limit = extras.contract_size_limit;
@@ -202,6 +241,15 @@ impl EvolvePayloadBuilderConfig {
         })
     }
 
+    /// Returns the proposer control precompile admin, activation height, and initial proposer.
+    pub fn proposer_control_precompile_settings(&self) -> Option<(Address, u64, Address)> {
+        self.proposer_control_admin.map(|admin| {
+            let activation = self.proposer_control_activation_height.unwrap_or(0);
+            let initial_next_proposer = self.initial_next_proposer.unwrap_or(Address::ZERO);
+            (admin, activation, initial_next_proposer)
+        })
+    }
+
     /// Returns the sink if the redirect is active for the provided block number.
     pub fn base_fee_sink_for_block(&self, block_number: u64) -> Option<Address> {
         self.base_fee_redirect_settings()
@@ -276,8 +324,10 @@ mod tests {
 
         assert_eq!(config.base_fee_sink, None);
         assert_eq!(config.mint_admin, Some(mint_admin));
+        assert_eq!(config.proposer_control_admin, None);
         assert_eq!(config.base_fee_redirect_activation_height, None);
         assert_eq!(config.mint_precompile_activation_height, Some(0));
+        assert_eq!(config.proposer_control_activation_height, None);
     }
 
     #[test]
@@ -298,6 +348,63 @@ mod tests {
         assert_eq!(config.base_fee_redirect_activation_height, Some(42));
         assert_eq!(config.mint_admin, Some(admin));
         assert_eq!(config.mint_precompile_activation_height, Some(64));
+    }
+
+    #[test]
+    fn test_proposer_control_defaults_activation_to_zero() {
+        let admin = address!("00000000000000000000000000000000000000cc");
+        let initial_next_proposer = address!("00000000000000000000000000000000000000dd");
+        let extras = json!({
+            "proposerControlAdmin": admin,
+            "initialNextProposer": initial_next_proposer
+        });
+
+        let chainspec = create_test_chainspec_with_extras(Some(extras));
+        let config = EvolvePayloadBuilderConfig::from_chain_spec(&chainspec).unwrap();
+
+        assert_eq!(config.proposer_control_admin, Some(admin));
+        assert_eq!(config.proposer_control_activation_height, Some(0));
+        assert_eq!(config.initial_next_proposer, Some(initial_next_proposer));
+        assert_eq!(
+            config.proposer_control_precompile_settings(),
+            Some((admin, 0, initial_next_proposer))
+        );
+    }
+
+    #[test]
+    fn test_proposer_control_activation_override_and_zero_initial_ignored() {
+        let admin = address!("00000000000000000000000000000000000000cc");
+        let extras = json!({
+            "proposerControlAdmin": admin,
+            "proposerControlActivationHeight": 128,
+            "initialNextProposer": "0x0000000000000000000000000000000000000000"
+        });
+
+        let chainspec = create_test_chainspec_with_extras(Some(extras));
+        let config = EvolvePayloadBuilderConfig::from_chain_spec(&chainspec).unwrap();
+
+        assert_eq!(config.proposer_control_admin, Some(admin));
+        assert_eq!(config.proposer_control_activation_height, Some(128));
+        assert_eq!(config.initial_next_proposer, None);
+        assert_eq!(
+            config.proposer_control_precompile_settings(),
+            Some((admin, 128, Address::ZERO))
+        );
+    }
+
+    #[test]
+    fn test_proposer_control_admin_zero_disables() {
+        let extras = json!({
+            "proposerControlAdmin": "0x0000000000000000000000000000000000000000",
+            "initialNextProposer": "0x00000000000000000000000000000000000000dd"
+        });
+
+        let chainspec = create_test_chainspec_with_extras(Some(extras));
+        let config = EvolvePayloadBuilderConfig::from_chain_spec(&chainspec).unwrap();
+
+        assert_eq!(config.proposer_control_admin, None);
+        assert_eq!(config.proposer_control_activation_height, None);
+        assert!(config.proposer_control_precompile_settings().is_none());
     }
 
     #[test]
@@ -333,8 +440,10 @@ mod tests {
 
         assert_eq!(config.base_fee_sink, None);
         assert_eq!(config.mint_admin, None);
+        assert_eq!(config.proposer_control_admin, None);
         assert_eq!(config.base_fee_redirect_activation_height, None);
         assert_eq!(config.mint_precompile_activation_height, None);
+        assert_eq!(config.proposer_control_activation_height, None);
     }
 
     #[test]
@@ -371,8 +480,10 @@ mod tests {
         let config = EvolvePayloadBuilderConfig::default();
         assert_eq!(config.base_fee_sink, None);
         assert_eq!(config.mint_admin, None);
+        assert_eq!(config.proposer_control_admin, None);
         assert_eq!(config.base_fee_redirect_activation_height, None);
         assert_eq!(config.mint_precompile_activation_height, None);
+        assert_eq!(config.proposer_control_activation_height, None);
         assert!(config.deploy_allowlist.is_empty());
         assert_eq!(config.deploy_allowlist_activation_height, None);
     }
@@ -383,8 +494,10 @@ mod tests {
         let config = EvolvePayloadBuilderConfig::new();
         assert_eq!(config.base_fee_sink, None);
         assert_eq!(config.mint_admin, None);
+        assert_eq!(config.proposer_control_admin, None);
         assert_eq!(config.base_fee_redirect_activation_height, None);
         assert_eq!(config.mint_precompile_activation_height, None);
+        assert_eq!(config.proposer_control_activation_height, None);
         assert_eq!(config.contract_size_limit, None);
         assert!(config.deploy_allowlist.is_empty());
         assert_eq!(config.deploy_allowlist_activation_height, None);
@@ -399,8 +512,10 @@ mod tests {
         let config_with_sink = EvolvePayloadBuilderConfig {
             base_fee_sink: Some(address!("0000000000000000000000000000000000000001")),
             mint_admin: Some(address!("00000000000000000000000000000000000000aa")),
+            proposer_control_admin: Some(address!("00000000000000000000000000000000000000bb")),
             base_fee_redirect_activation_height: Some(0),
             mint_precompile_activation_height: Some(0),
+            proposer_control_activation_height: Some(0),
             ..Default::default()
         };
         assert!(config_with_sink.validate().is_ok());

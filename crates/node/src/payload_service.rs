@@ -107,6 +107,16 @@ where
             config.mint_precompile_activation_height =
                 self.config.mint_precompile_activation_height;
         }
+        if self.config.proposer_control_admin.is_some() {
+            config.proposer_control_admin = self.config.proposer_control_admin;
+        }
+        if self.config.proposer_control_activation_height.is_some() {
+            config.proposer_control_activation_height =
+                self.config.proposer_control_activation_height;
+        }
+        if self.config.initial_next_proposer.is_some() {
+            config.initial_next_proposer = self.config.initial_next_proposer;
+        }
 
         config.validate()?;
 
