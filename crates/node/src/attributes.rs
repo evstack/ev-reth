@@ -40,6 +40,10 @@ impl PayloadAttributes for EvolveEnginePayloadAttributes {
     fn parent_beacon_block_root(&self) -> Option<B256> {
         self.inner.parent_beacon_block_root()
     }
+
+    fn slot_number(&self) -> Option<u64> {
+        self.inner.slot_number()
+    }
 }
 
 impl From<RpcPayloadAttributes> for EvolveEnginePayloadAttributes {
@@ -77,6 +81,10 @@ impl PayloadAttributesBuilder<EvolveEnginePayloadAttributes>
                 .chain_spec
                 .is_cancun_active_at_timestamp(timestamp)
                 .then(B256::random),
+            slot_number: self
+                .chain_spec
+                .is_amsterdam_active_at_timestamp(timestamp)
+                .then_some(0),
         };
 
         EvolveEnginePayloadAttributes {

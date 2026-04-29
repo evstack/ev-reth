@@ -10,7 +10,10 @@ use alloy_evm::{
     EvmInternals, EvmInternalsError,
 };
 use alloy_primitives::{address, Address, Bytes, U256};
-use revm::{bytecode::Bytecode, precompile::PrecompileOutput};
+use revm::{
+    bytecode::Bytecode,
+    precompile::{PrecompileHalt, PrecompileOutput},
+};
 use std::sync::OnceLock;
 
 sol! {
@@ -31,6 +34,24 @@ pub struct MintPrecompile {
     admin: Address,
 }
 
+#[derive(Debug)]
+enum MintPrecompileError {
+    Fatal(PrecompileError),
+    Halt(PrecompileHalt),
+}
+
+type MintPrecompileResult<T> = Result<T, MintPrecompileError>;
+
+impl MintPrecompileError {
+    fn fatal(err: EvmInternalsError) -> Self {
+        Self::Fatal(PrecompileError::Fatal(err.to_string()))
+    }
+
+    const fn halt_static(reason: &'static str) -> Self {
+        Self::Halt(PrecompileHalt::other_static(reason))
+    }
+}
+
 impl MintPrecompile {
     // Use a lazily-initialized static for the ID since `custom` is not const.
     pub fn id() -> &'static PrecompileId {
@@ -47,14 +68,14 @@ impl MintPrecompile {
         Self { admin }
     }
 
-    fn map_internals_error(err: EvmInternalsError) -> PrecompileError {
-        PrecompileError::Other(err.to_string().into())
+    fn map_internals_error(err: EvmInternalsError) -> MintPrecompileError {
+        MintPrecompileError::fatal(err)
     }
 
     fn ensure_account_created(
         internals: &mut EvmInternals<'_>,
         addr: Address,
-    ) -> Result<(), PrecompileError> {
+    ) -> MintPrecompileResult<()> {
         // load immutably first to check state
         let account = internals
             .load_account(addr)
@@ -85,12 +106,12 @@ impl MintPrecompile {
         internals: &mut EvmInternals<'_>,
         addr: Address,
         amount: U256,
-    ) -> Result<(), PrecompileError> {
+    ) -> MintPrecompileResult<()> {
         let mut account = internals
             .load_account_mut(addr)
             .map_err(Self::map_internals_error)?;
         if !account.incr_balance(amount) {
-            return Err(PrecompileError::Other("balance overflow".into()));
+            return Err(MintPrecompileError::halt_static("balance overflow"));
         }
         Ok(())
     }
@@ -99,21 +120,21 @@ impl MintPrecompile {
         internals: &mut EvmInternals<'_>,
         addr: Address,
         amount: U256,
-    ) -> Result<(), PrecompileError> {
+    ) -> MintPrecompileResult<()> {
         let mut account = internals
             .load_account_mut(addr)
             .map_err(Self::map_internals_error)?;
         if !account.decr_balance(amount) {
-            return Err(PrecompileError::Other("insufficient balance".into()));
+            return Err(MintPrecompileError::halt_static("insufficient balance"));
         }
         Ok(())
     }
 
-    fn ensure_admin(&self, caller: Address) -> Result<(), PrecompileError> {
+    fn ensure_admin(&self, caller: Address) -> MintPrecompileResult<()> {
         if caller == self.admin {
             Ok(())
         } else {
-            Err(PrecompileError::Other("unauthorized caller".into()))
+            Err(MintPrecompileError::halt_static("unauthorized caller"))
         }
     }
 
@@ -121,7 +142,7 @@ impl MintPrecompile {
         &self,
         internals: &mut EvmInternals<'_>,
         caller: Address,
-    ) -> Result<(), PrecompileError> {
+    ) -> MintPrecompileResult<()> {
         if caller == self.admin {
             tracing::debug!(target: "mint_precompile", ?caller, "authorization granted: admin");
             return Ok(());
@@ -133,14 +154,14 @@ impl MintPrecompile {
             Ok(())
         } else {
             tracing::warn!(target: "mint_precompile", ?caller, "authorization denied: not admin and not allowlisted");
-            Err(PrecompileError::Other("unauthorized caller".into()))
+            Err(MintPrecompileError::halt_static("unauthorized caller"))
         }
     }
 
     fn is_allowlisted(
         internals: &mut EvmInternals<'_>,
         addr: Address,
-    ) -> Result<bool, PrecompileError> {
+    ) -> MintPrecompileResult<bool> {
         Self::ensure_account_created(internals, MINT_PRECOMPILE_ADDR)?;
         let key = Self::allowlist_key(addr);
         let value = internals
@@ -163,7 +184,7 @@ impl MintPrecompile {
         internals: &mut EvmInternals<'_>,
         addr: Address,
         allowed: bool,
-    ) -> Result<(), PrecompileError> {
+    ) -> MintPrecompileResult<()> {
         Self::ensure_account_created(internals, MINT_PRECOMPILE_ADDR)?;
         let value = if allowed { U256::from(1) } else { U256::ZERO };
         internals
@@ -189,6 +210,7 @@ impl Precompile for MintPrecompile {
     fn call(&self, mut input: PrecompileInput<'_>) -> PrecompileResult {
         let caller: Address = input.caller;
         let gas_limit = input.gas;
+        let reservoir = input.reservoir;
         let data_len = input.data.len();
 
         tracing::info!(
@@ -202,53 +224,66 @@ impl Precompile for MintPrecompile {
         // 1) Decode by ABI — this inspects the 4-byte selector and picks the right variant.
         let decoded = match INativeToken::INativeTokenCalls::abi_decode(input.data) {
             Ok(v) => v,
-            Err(e) => return Err(PrecompileError::Other(e.to_string().into())),
+            Err(e) => {
+                return Ok(PrecompileOutput::halt(
+                    PrecompileHalt::other(e.to_string()),
+                    reservoir,
+                ))
+            }
         };
         let internals = input.internals_mut();
 
         // 2) Dispatch to the right handler.
-        match decoded {
-            INativeToken::INativeTokenCalls::mint(call) => {
-                self.ensure_authorized(internals, caller)?;
-                let to = call.to;
-                let amount = call.amount;
+        let result = (|| -> MintPrecompileResult<Bytes> {
+            match decoded {
+                INativeToken::INativeTokenCalls::mint(call) => {
+                    self.ensure_authorized(internals, caller)?;
+                    let to = call.to;
+                    let amount = call.amount;
 
-                Self::ensure_account_created(internals, to)?;
-                Self::add_balance(internals, to, amount)?;
-                internals
-                    .touch_account(to)
-                    .map_err(Self::map_internals_error)?;
+                    Self::ensure_account_created(internals, to)?;
+                    Self::add_balance(internals, to, amount)?;
+                    internals
+                        .touch_account(to)
+                        .map_err(Self::map_internals_error)?;
 
-                Ok(PrecompileOutput::new(0, Bytes::new()))
-            }
-            INativeToken::INativeTokenCalls::burn(call) => {
-                self.ensure_authorized(internals, caller)?;
-                let from = call.from;
-                let amount = call.amount;
+                    Ok(Bytes::new())
+                }
+                INativeToken::INativeTokenCalls::burn(call) => {
+                    self.ensure_authorized(internals, caller)?;
+                    let from = call.from;
+                    let amount = call.amount;
 
-                Self::ensure_account_created(internals, from)?;
-                Self::sub_balance(internals, from, amount)?;
-                internals
-                    .touch_account(from)
-                    .map_err(Self::map_internals_error)?;
+                    Self::ensure_account_created(internals, from)?;
+                    Self::sub_balance(internals, from, amount)?;
+                    internals
+                        .touch_account(from)
+                        .map_err(Self::map_internals_error)?;
 
-                Ok(PrecompileOutput::new(0, Bytes::new()))
+                    Ok(Bytes::new())
+                }
+                INativeToken::INativeTokenCalls::addToAllowList(call) => {
+                    self.ensure_admin(caller)?;
+                    Self::set_allowlisted(internals, call.account, true)?;
+                    Ok(Bytes::new())
+                }
+                INativeToken::INativeTokenCalls::removeFromAllowList(call) => {
+                    self.ensure_admin(caller)?;
+                    Self::set_allowlisted(internals, call.account, false)?;
+                    Ok(Bytes::new())
+                }
+                INativeToken::INativeTokenCalls::allowlist(call) => {
+                    let is_allowed = Self::is_allowlisted(internals, call.account)?;
+                    let result = is_allowed.abi_encode();
+                    Ok(result.into())
+                }
             }
-            INativeToken::INativeTokenCalls::addToAllowList(call) => {
-                self.ensure_admin(caller)?;
-                Self::set_allowlisted(internals, call.account, true)?;
-                Ok(PrecompileOutput::new(0, Bytes::new()))
-            }
-            INativeToken::INativeTokenCalls::removeFromAllowList(call) => {
-                self.ensure_admin(caller)?;
-                Self::set_allowlisted(internals, call.account, false)?;
-                Ok(PrecompileOutput::new(0, Bytes::new()))
-            }
-            INativeToken::INativeTokenCalls::allowlist(call) => {
-                let is_allowed = Self::is_allowlisted(internals, call.account)?;
-                let result = is_allowed.abi_encode();
-                Ok(PrecompileOutput::new(0, result.into()))
-            }
+        })();
+
+        match result {
+            Ok(bytes) => Ok(PrecompileOutput::new(0, bytes, reservoir)),
+            Err(MintPrecompileError::Halt(reason)) => Ok(PrecompileOutput::halt(reason, reservoir)),
+            Err(MintPrecompileError::Fatal(err)) => Err(err),
         }
     }
 }
@@ -292,6 +327,7 @@ mod tests {
         let input = PrecompileInput {
             data,
             gas: GAS_LIMIT,
+            reservoir: 0,
             caller,
             value: U256::ZERO,
             target_address: MINT_PRECOMPILE_ADDR,
@@ -301,6 +337,21 @@ mod tests {
         };
 
         precompile.call(input)
+    }
+
+    fn assert_halt_message(result: PrecompileResult, expected: &str) {
+        match result {
+            Ok(output) => {
+                assert!(output.is_halt(), "expected halt output, got {output:?}");
+                match output.halt_reason() {
+                    Some(PrecompileHalt::Other(msg)) => {
+                        assert_eq!(msg.as_ref(), expected, "unexpected halt message")
+                    }
+                    other => panic!("expected custom halt reason, got {other:?}"),
+                }
+            }
+            Err(err) => panic!("expected halting precompile output, got fatal error {err:?}"),
+        }
     }
 
     fn account_balance(journal: &TestJournal, address: Address) -> Option<U256> {
@@ -447,15 +498,7 @@ mod tests {
             &burn_calldata,
         );
 
-        match result {
-            Err(PrecompileError::Other(msg)) => {
-                assert_eq!(
-                    msg, "insufficient balance",
-                    "expected insufficient balance error"
-                )
-            }
-            other => panic!("expected underflow error, got {other:?}"),
-        }
+        assert_halt_message(result, "insufficient balance");
 
         let balance = account_balance(&journal, holder).expect("holder account exists");
         assert_eq!(
@@ -489,15 +532,7 @@ mod tests {
             &calldata,
         );
 
-        match result {
-            Err(PrecompileError::Other(msg)) => {
-                assert_eq!(
-                    msg, "unauthorized caller",
-                    "expected unauthorized caller error"
-                )
-            }
-            other => panic!("expected unauthorized error, got {other:?}"),
-        }
+        assert_halt_message(result, "unauthorized caller");
 
         assert!(
             !journal.inner.state.contains_key(&recipient),
@@ -621,13 +656,7 @@ mod tests {
             &mint_calldata,
         );
 
-        match result {
-            Err(PrecompileError::Other(msg)) => assert_eq!(
-                msg, "unauthorized caller",
-                "removed address should no longer be authorized"
-            ),
-            other => panic!("expected unauthorized error, got {other:?}"),
-        }
+        assert_halt_message(result, "unauthorized caller");
 
         assert!(
             !journal.inner.state.contains_key(&recipient),
@@ -736,12 +765,6 @@ mod tests {
             &add_calldata,
         );
 
-        match result {
-            Err(PrecompileError::Other(msg)) => assert_eq!(
-                msg, "unauthorized caller",
-                "non-admin must not modify allowlist"
-            ),
-            other => panic!("expected unauthorized error, got {other:?}"),
-        }
+        assert_halt_message(result, "unauthorized caller");
     }
 }

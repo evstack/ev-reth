@@ -247,7 +247,8 @@ where
             fee_recipient,
             parent_header.hash(),
             block_number,
-        );
+        )
+        .with_slot_number(attributes.slot_number());
 
         // Build the payload using the evolve payload builder - use spawn_blocking for async work.
         let evolve_builder = self.evolve_builder.clone();
@@ -312,7 +313,8 @@ where
             fee_recipient,
             parent_header.hash(),
             block_number,
-        );
+        )
+        .with_slot_number(attributes.slot_number());
 
         // Build empty payload - use spawn_blocking for async work.
         let evolve_builder = self.evolve_builder.clone();
@@ -420,6 +422,7 @@ mod tests {
                 suggested_fee_recipient: Address::random(),
                 withdrawals: Some(vec![]),
                 parent_beacon_block_root: Some(B256::ZERO),
+                slot_number: None,
             },
             transactions: None,
             gas_limit: Some(30_000_000),
@@ -516,6 +519,7 @@ mod tests {
                 suggested_fee_recipient: Address::random(),
                 withdrawals: Some(vec![]),
                 parent_beacon_block_root: Some(B256::ZERO),
+                slot_number: None,
             },
             transactions: None,
             gas_limit: Some(30_000_000),
@@ -602,6 +606,7 @@ mod tests {
                 suggested_fee_recipient: Address::random(),
                 withdrawals: Some(vec![]),
                 parent_beacon_block_root: Some(B256::ZERO),
+                slot_number: None,
             },
             transactions: Some(vec![invalid_tx]),
             gas_limit: Some(30_000_000),

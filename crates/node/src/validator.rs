@@ -175,8 +175,10 @@ fn parse_evolve_payload(
             .map(|w| alloy_consensus::proofs::calculate_withdrawals_root(w)),
         blob_gas_used: payload.blob_gas_used(),
         excess_blob_gas: payload.excess_blob_gas(),
+        block_access_list_hash: payload.bal_hash(),
         parent_beacon_block_root: sidecar.parent_beacon_block_root(),
         requests_hash: sidecar.requests_hash(),
+        slot_number: payload.slot_number(),
     };
 
     // Build block body.
