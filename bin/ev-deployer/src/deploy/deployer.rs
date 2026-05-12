@@ -12,14 +12,16 @@ use async_trait::async_trait;
 
 /// Receipt from a confirmed transaction.
 #[derive(Debug)]
-pub(crate) struct TxReceipt {
+pub struct TxReceipt {
+    /// Hash of the confirmed transaction.
     pub tx_hash: B256,
+    /// Whether the transaction executed successfully.
     pub success: bool,
 }
 
 /// Abstracts on-chain operations for the deploy pipeline.
 #[async_trait]
-pub(crate) trait ChainDeployer: Send + Sync {
+pub trait ChainDeployer: Send + Sync {
     /// Get the chain ID of the connected chain.
     async fn chain_id(&self) -> eyre::Result<u64>;
 
@@ -32,13 +34,19 @@ pub(crate) trait ChainDeployer: Send + Sync {
 }
 
 /// Live deployer using alloy provider + signer.
-pub(crate) struct LiveDeployer {
+pub struct LiveDeployer {
     provider: Box<dyn Provider>,
+}
+
+impl std::fmt::Debug for LiveDeployer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LiveDeployer").finish_non_exhaustive()
+    }
 }
 
 impl LiveDeployer {
     /// Create a new `LiveDeployer` from an RPC URL and a hex-encoded private key.
-    pub(crate) fn new(rpc_url: &str, private_key_hex: &str) -> eyre::Result<Self> {
+    pub fn new(rpc_url: &str, private_key_hex: &str) -> eyre::Result<Self> {
         let key_hex = private_key_hex
             .strip_prefix("0x")
             .unwrap_or(private_key_hex);

@@ -9,7 +9,7 @@ use serde_json::{Map, Value};
 use std::path::Path;
 
 /// Build the alloc JSON from config.
-pub(crate) fn build_alloc(config: &DeployConfig) -> Value {
+pub fn build_alloc(config: &DeployConfig) -> Value {
     let mut alloc = Map::new();
 
     if let Some(ref ap_config) = config.contracts.admin_proxy {
@@ -31,14 +31,15 @@ pub(crate) fn build_alloc(config: &DeployConfig) -> Value {
 }
 
 /// Build alloc and merge into an existing genesis JSON file.
-pub(crate) fn merge_into(
-    config: &DeployConfig,
-    genesis_path: &Path,
-    force: bool,
-) -> eyre::Result<Value> {
+pub fn merge_into(config: &DeployConfig, genesis_path: &Path, force: bool) -> eyre::Result<Value> {
     let content = std::fs::read_to_string(genesis_path)?;
     let mut genesis: Value = serde_json::from_str(&content)?;
+    merge_alloc(config, &mut genesis, force)?;
+    Ok(genesis)
+}
 
+/// Merge deployer contracts into a genesis JSON value in memory.
+pub fn merge_alloc(config: &DeployConfig, genesis: &mut Value, force: bool) -> eyre::Result<()> {
     let alloc = build_alloc(config);
 
     let genesis_alloc = genesis
@@ -62,7 +63,7 @@ pub(crate) fn merge_into(
         genesis_alloc.insert(canonical, entry.clone());
     }
 
-    Ok(genesis)
+    Ok(())
 }
 
 fn normalize_addr(addr: &str) -> String {

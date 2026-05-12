@@ -4,7 +4,7 @@ use crate::config::DeployConfig;
 use serde_json::{Map, Value};
 
 /// Build an address manifest JSON from config.
-pub(crate) fn build_manifest(config: &DeployConfig) -> Value {
+pub fn build_manifest(config: &DeployConfig) -> Value {
     let mut manifest = Map::new();
 
     if let Some(ref ap) = config.contracts.admin_proxy {
