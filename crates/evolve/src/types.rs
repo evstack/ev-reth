@@ -19,6 +19,8 @@ pub struct EvolvePayloadAttributes {
     pub parent_hash: B256,
     /// Block number
     pub block_number: u64,
+    /// Slot number for post-Amsterdam payloads.
+    pub slot_number: Option<u64>,
 }
 
 impl EvolvePayloadAttributes {
@@ -40,7 +42,14 @@ impl EvolvePayloadAttributes {
             suggested_fee_recipient,
             parent_hash,
             block_number,
+            slot_number: None,
         }
+    }
+
+    /// Sets the slot number for post-Amsterdam payloads.
+    pub const fn with_slot_number(mut self, slot_number: Option<u64>) -> Self {
+        self.slot_number = slot_number;
+        self
     }
 
     /// Validates the payload attributes
