@@ -17,6 +17,11 @@ pub(crate) fn build_alloc(config: &DeployConfig) -> Value {
         insert_contract(&mut alloc, &contract);
     }
 
+    if let Some(ref p2_config) = config.contracts.permit2 {
+        let contract = contracts::permit2::build(p2_config, config.chain.chain_id);
+        insert_contract(&mut alloc, &contract);
+    }
+
     Value::Object(alloc)
 }
 
@@ -102,6 +107,7 @@ mod tests {
                     address: address!("000000000000000000000000000000000000ad00"),
                     owner: address!("f39Fd6e51aad88F6F4ce6aB8827279cffFb92266"),
                 }),
+                permit2: None,
             },
         }
     }
