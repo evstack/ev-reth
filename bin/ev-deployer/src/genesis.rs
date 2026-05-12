@@ -9,7 +9,7 @@ use serde_json::{Map, Value};
 use std::path::Path;
 
 /// Build the alloc JSON from config.
-pub(crate) fn build_alloc(config: &DeployConfig) -> Value {
+pub fn build_alloc(config: &DeployConfig) -> Value {
     let mut alloc = Map::new();
 
     if let Some(ref ap_config) = config.contracts.admin_proxy {
@@ -22,18 +22,24 @@ pub(crate) fn build_alloc(config: &DeployConfig) -> Value {
         insert_contract(&mut alloc, &contract);
     }
 
+    if let Some(ref dd_config) = config.contracts.deterministic_deployer {
+        let contract = contracts::deterministic_deployer::build(dd_config);
+        insert_contract(&mut alloc, &contract);
+    }
+
     Value::Object(alloc)
 }
 
 /// Build alloc and merge into an existing genesis JSON file.
-pub(crate) fn merge_into(
-    config: &DeployConfig,
-    genesis_path: &Path,
-    force: bool,
-) -> eyre::Result<Value> {
+pub fn merge_into(config: &DeployConfig, genesis_path: &Path, force: bool) -> eyre::Result<Value> {
     let content = std::fs::read_to_string(genesis_path)?;
     let mut genesis: Value = serde_json::from_str(&content)?;
+    merge_alloc(config, &mut genesis, force)?;
+    Ok(genesis)
+}
 
+/// Merge deployer contracts into a genesis JSON value in memory.
+pub fn merge_alloc(config: &DeployConfig, genesis: &mut Value, force: bool) -> eyre::Result<()> {
     let alloc = build_alloc(config);
 
     let genesis_alloc = genesis
@@ -57,7 +63,7 @@ pub(crate) fn merge_into(
         genesis_alloc.insert(canonical, entry.clone());
     }
 
-    Ok(genesis)
+    Ok(())
 }
 
 fn normalize_addr(addr: &str) -> String {
@@ -104,10 +110,11 @@ mod tests {
             chain: ChainConfig { chain_id: 1234 },
             contracts: ContractsConfig {
                 admin_proxy: Some(AdminProxyConfig {
-                    address: address!("000000000000000000000000000000000000ad00"),
+                    address: Some(address!("000000000000000000000000000000000000ad00")),
                     owner: address!("f39Fd6e51aad88F6F4ce6aB8827279cffFb92266"),
                 }),
                 permit2: None,
+                deterministic_deployer: None,
             },
         }
     }
@@ -206,5 +213,28 @@ mod tests {
 
         let result = merge_into(&test_config(), tmp.path(), false);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn deterministic_deployer_in_alloc() {
+        let config = DeployConfig {
+            chain: ChainConfig { chain_id: 1234 },
+            contracts: ContractsConfig {
+                admin_proxy: None,
+                permit2: None,
+                deterministic_deployer: Some(DeterministicDeployerConfig {
+                    address: Some(address!("4e59b44847b379578588920cA78FbF26c0B4956C")),
+                }),
+            },
+        };
+        let alloc = build_alloc(&config);
+        let obj = alloc.as_object().unwrap();
+        let key = "4e59b44847b379578588920ca78fbf26c0b4956c";
+        assert!(obj.contains_key(key), "missing key {key} in {obj:?}");
+
+        let entry = obj.get(key).unwrap().as_object().unwrap();
+        assert_eq!(entry["balance"], "0x0");
+        assert!(entry["code"].as_str().unwrap().starts_with("0x"));
+        assert!(entry["storage"].as_object().unwrap().is_empty());
     }
 }
