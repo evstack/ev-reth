@@ -15,10 +15,11 @@ pub use api::EvBuilder;
 pub use base_fee::{BaseFeeRedirect, BaseFeeRedirectError};
 pub use config::{BaseFeeConfig, ConfigError};
 pub use deploy::DeployAllowlistSettings;
+pub use ev_precompiles::proposer::PROPOSER_CONTROL_PRECOMPILE_ADDR;
 pub use evm::{DefaultEvEvm, EvEvm};
 pub use factory::{
     with_ev_handler, BaseFeeRedirectSettings, ContractSizeLimitSettings, EvEvmFactory,
-    EvTxEvmFactory, MintPrecompileSettings,
+    EvTxEvmFactory, MintPrecompileSettings, ProposerControlPrecompileSettings,
 };
 pub use handler::EvHandler;
 pub use tx_env::EvTxEnv;

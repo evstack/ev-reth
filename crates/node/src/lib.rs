@@ -27,6 +27,8 @@ pub mod node;
 pub mod payload_service;
 /// Payload types for `EvPrimitives`.
 pub mod payload_types;
+/// RPC accessors for proposer-control state.
+pub mod proposer_rpc;
 /// RPC wiring for EvTxEnvelope support.
 pub mod rpc;
 /// Drop guard for recording `duration_ms` on tracing spans.
@@ -50,4 +52,5 @@ pub use executor::{build_evm_config, EvolveEvmConfig, EvolveExecutorBuilder};
 pub use node::{log_startup, EvolveEngineTypes, EvolveNode, EvolveNodeAddOns};
 pub use payload_service::{EvolveEnginePayloadBuilder, EvolvePayloadBuilderBuilder};
 pub use payload_types::EvBuiltPayload;
+pub use proposer_rpc::{EvolveProposerApiImpl, EvolveProposerApiServer};
 pub use validator::{EvolveEngineValidator, EvolveEngineValidatorBuilder};
