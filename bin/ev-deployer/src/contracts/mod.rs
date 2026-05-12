@@ -1,6 +1,8 @@
 //! Contract bytecode and storage encoding.
 
 pub(crate) mod admin_proxy;
+pub(crate) mod immutables;
+pub(crate) mod permit2;
 
 use alloy_primitives::{Address, Bytes, B256};
 use std::collections::BTreeMap;

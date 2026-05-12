@@ -14,15 +14,6 @@ The binary is output to `target/release/ev-deployer`.
 
 EV Deployer uses a TOML config file to define what contracts to include and how to configure them. See [`examples/devnet.toml`](examples/devnet.toml) for a complete example.
 
-```toml
-[chain]
-chain_id = 1234
-
-[contracts.admin_proxy]
-address = "0x000000000000000000000000000000000000Ad00"
-owner = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
-```
-
 ### Config reference
 
 #### `[chain]`
@@ -37,6 +28,12 @@ owner = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
 |-----------|---------|---------------------------|
 | `address` | address | Address to deploy at      |
 | `owner`   | address | Owner (must not be zero)  |
+
+#### `[contracts.permit2]`
+
+| Field     | Type    | Description                                              |
+|-----------|---------|----------------------------------------------------------|
+| `address` | address | Address to deploy at (canonical: `0x000000000022D473030F116dDEE9F6B43aC78BA3`) |
 
 ## Usage
 
@@ -88,7 +85,8 @@ Output:
 
 ```json
 {
-  "admin_proxy": "0x000000000000000000000000000000000000Ad00"
+  "admin_proxy": "0x000000000000000000000000000000000000Ad00",
+  "permit2": "0x000000000022D473030F116dDEE9F6B43aC78BA3"
 }
 ```
 
@@ -100,9 +98,10 @@ ev-deployer compute-address --config deploy.toml --contract admin_proxy
 
 ## Contracts
 
-| Contract       | Description                                         |
-|----------------|-----------------------------------------------------|
-| `admin_proxy`  | Proxy contract with owner-based access control      |
+| Contract      | Description                                        |
+|---------------|----------------------------------------------------|
+| `admin_proxy` | Proxy contract with owner-based access control     |
+| `permit2`     | Uniswap canonical token approval manager           |
 
 Runtime bytecodes are embedded in the binary — no external toolchain is needed at deploy time.
 

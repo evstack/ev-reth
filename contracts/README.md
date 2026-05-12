@@ -1,6 +1,6 @@
 # EV-Reth Contracts
 
-Smart contracts for EV-Reth, including the FeeVault for bridging collected fees to Celestia.
+Smart contracts for EV-Reth, including the FeeVault for collecting and distributing fees.
 
 ## AdminProxy
 
@@ -8,14 +8,17 @@ The AdminProxy contract solves the bootstrap problem for admin addresses at gene
 
 See [AdminProxy documentation](../docs/contracts/admin_proxy.md) for detailed setup and usage instructions.
 
-## FeeVault
+## FeeVault (optional)
 
-The FeeVault contract collects base fees and bridges them to Celestia via Hyperlane. It supports:
+The FeeVault is an **optional** contract for chains that need on-chain fee splitting logic. The base fee redirect (`baseFeeSink`) works with any address — an EOA or multisig is sufficient if you just need fees sent to a single destination.
 
-- Configurable fee splitting between bridge and another recipient
-- Minimum amount thresholds before bridging
-- Call fee for incentivizing bridge calls
-- Owner-controlled configuration
+FeeVault is useful when you need:
+
+- **Automatic splitting** of accumulated fees between two recipients (e.g., 80% to a bridge contract, 20% to a treasury)
+- **Minimum threshold** to avoid distributing uneconomically small amounts
+- **Keeper incentive** (`callFee`) so anyone can trigger distribution and get compensated
+
+If your chain only needs fees routed to a single address, skip FeeVault and point `baseFeeSink` directly at that address.
 
 ## Prerequisites
 
@@ -45,17 +48,14 @@ All configuration is set via constructor arguments at deploy time:
 |----------|----------|-------------|
 | `OWNER` | Yes | Owner address (can configure the vault post-deployment) |
 | `SALT` | No | CREATE2 salt (default: `0x0`). Use any bytes32 value |
-| `DESTINATION_DOMAIN` | Yes* | Hyperlane destination chain ID |
-| `RECIPIENT_ADDRESS` | Yes* | Recipient on destination chain (bytes32, left-padded) |
-| `MINIMUM_AMOUNT` | No | Minimum wei to bridge (default: 0) |
-| `CALL_FEE` | No | Fee in wei for calling `sendToCelestia()` (default: 0) |
+| `MINIMUM_AMOUNT` | No | Minimum wei to distribute (default: 0) |
+| `CALL_FEE` | No | Fee in wei for calling `distribute()` (default: 0) |
 | `BRIDGE_SHARE_BPS` | No | Basis points to bridge (default: 10000 = 100%) |
-| `OTHER_RECIPIENT` | No** | Address to receive non-bridged portion |
+| `OTHER_RECIPIENT` | No* | Address to receive non-bridged portion |
 
-*Required for the vault to be operational (can be set to 0 at deploy and configured later via setters)
-**Required if `BRIDGE_SHARE_BPS` < 10000
+*Required if `BRIDGE_SHARE_BPS` < 10000
 
-**Note:** `HYP_NATIVE_MINTER` must be set via `setHypNativeMinter()` after deployment for the vault to be operational.
+**Note:** `BRIDGE_RECIPIENT` must be set via `setBridgeRecipient()` after deployment for the vault to be operational.
 
 ### Choosing a Salt
 
@@ -89,8 +89,6 @@ export OWNER=0xYourOwnerAddress
 export SALT=0x0000000000000000000000000000000000000000000000000000000000000001
 
 # Optional - configure at deploy time (can also be set later)
-export DESTINATION_DOMAIN=1234
-export RECIPIENT_ADDRESS=0x000000000000000000000000...  # bytes32, left-padded cosmos address
 export MINIMUM_AMOUNT=1000000000000000000  # 1 ETH in wei
 export CALL_FEE=100000000000000  # 0.0001 ETH
 export BRIDGE_SHARE_BPS=8000  # 80% to bridge
@@ -107,32 +105,15 @@ forge script script/DeployFeeVault.s.sol:DeployFeeVault \
     --broadcast
 ```
 
-### Post-Deployment: Set HypNativeMinter
+### Post-Deployment: Set Bridge Recipient
 
-After deploying the HypNativeMinter contract, link it to the FeeVault:
+After deployment, set the bridge recipient address:
 
 ```shell
-cast send <FEEVAULT_ADDRESS> "setHypNativeMinter(address)" <HYP_NATIVE_MINTER_ADDRESS> \
+cast send <FEEVAULT_ADDRESS> "setBridgeRecipient(address)" <BRIDGE_RECIPIENT_ADDRESS> \
     --rpc-url <RPC_URL> \
     --private-key <PRIVATE_KEY>
 ```
-
-### Converting Cosmos Addresses to bytes32
-
-The `recipientAddress` must be a bytes32. To convert a bech32 Cosmos address:
-
-1. Decode the bech32 to get the 20-byte address
-2. Left-pad with zeros to 32 bytes
-
-Example using cast:
-
-```shell
-# Left-pad a 20-byte address to 32 bytes
-cast pad --left --len 32 1234567890abcdef1234567890abcdef12345678
-# Output: 0x0000000000000000000000001234567890abcdef1234567890abcdef12345678
-```
-
-Note: When calling `transferRemote()` via cast, you may need to omit the `0x` prefix depending on your invocation method.
 
 ## Admin Functions
 
@@ -140,10 +121,9 @@ All functions are owner-only:
 
 | Function | Description |
 |----------|-------------|
-| `setHypNativeMinter(address)` | Set the Hyperlane minter contract |
-| `setRecipient(uint32, bytes32)` | Set destination domain and recipient |
-| `setMinimumAmount(uint256)` | Set minimum amount to bridge |
-| `setCallFee(uint256)` | Set fee for calling sendToCelestia |
+| `setBridgeRecipient(address)` | Set the bridge recipient address |
+| `setMinimumAmount(uint256)` | Set minimum amount to distribute |
+| `setCallFee(uint256)` | Set fee for calling distribute |
 | `setBridgeShare(uint256)` | Set bridge percentage (basis points) |
 | `setOtherRecipient(address)` | Set recipient for non-bridged funds |
 | `transferOwnership(address)` | Transfer contract ownership |
