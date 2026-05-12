@@ -2960,12 +2960,18 @@ dependencies = [
 name = "ev-deployer"
 version = "0.1.0"
 dependencies = [
+ "alloy",
  "alloy-primitives",
+ "alloy-rpc-types-eth",
+ "alloy-signer-local",
+ "async-trait",
  "clap",
  "eyre",
+ "rand 0.10.1",
  "serde",
  "serde_json",
  "tempfile",
+ "tokio",
  "toml",
 ]
 
@@ -2976,6 +2982,7 @@ dependencies = [
  "alloy-primitives",
  "alloy-signer-local",
  "clap",
+ "ev-deployer",
  "ev-node",
  "evolve-ev-reth",
  "eyre",
