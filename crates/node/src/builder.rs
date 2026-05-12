@@ -170,7 +170,7 @@ where
 
             match builder.execute_transaction(recovered_tx) {
                 Ok(gas_used) => {
-                    debug!(gas_used, "transaction executed successfully");
+                    debug!(gas_used = ?gas_used, "transaction executed successfully");
                 }
                 Err(err) => {
                     tracing::warn!(error = ?err, tx_hash = %tx.tx_hash(), "transaction execution failed");

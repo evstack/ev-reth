@@ -7,8 +7,8 @@ use alloy_evm::{
     block::{
         state_changes::{balance_increment_state, post_block_balance_increments},
         BlockExecutionError, BlockExecutionResult, BlockExecutor, BlockExecutorFactory,
-        BlockExecutorFor, BlockValidationError, ExecutableTx, GasOutput, OnStateHook,
-        StateChangePostBlockSource, StateChangeSource, SystemCaller,
+        BlockValidationError, ExecutableTx, GasOutput, OnStateHook, StateChangePostBlockSource,
+        StateChangeSource, SystemCaller,
     },
     eth::{
         dao_fork, eip6110,
@@ -41,7 +41,11 @@ pub struct EvTxResult<H, T> {
     pub tx_type: T,
 }
 
-impl<H, T> alloy_evm::block::TxResult for EvTxResult<H, T> {
+impl<H, T> alloy_evm::block::TxResult for EvTxResult<H, T>
+where
+    H: Send + 'static,
+    T: Send + 'static,
+{
     type HaltReason = H;
 
     fn result(&self) -> &ResultAndState<Self::HaltReason> {
@@ -142,6 +146,7 @@ where
     >,
     Spec: EthExecutorSpec,
     R: ReceiptBuilder<Transaction: Transaction + Encodable2718, Receipt: TxReceipt<Log = Log>>,
+    <R::Transaction as TransactionEnvelope>::TxType: Send + 'static,
 {
     type Transaction = R::Transaction;
     type Receipt = R::Receipt;
@@ -198,10 +203,7 @@ where
         })
     }
 
-    fn commit_transaction(
-        &mut self,
-        output: Self::Result,
-    ) -> Result<GasOutput, BlockExecutionError> {
+    fn commit_transaction(&mut self, output: Self::Result) -> GasOutput {
         let EvTxResult {
             result: ResultAndState { result, state },
             blob_gas_used,
@@ -237,7 +239,7 @@ where
 
         self.evm.db_mut().commit(state);
 
-        Ok(GasOutput::with_state_gas(tx_gas_used, state_gas_used))
+        GasOutput::with_state_gas(tx_gas_used, state_gas_used)
     }
 
     fn receipts(&self) -> &[Self::Receipt] {
@@ -373,16 +375,22 @@ impl<R, Spec, EvmFactory> EvBlockExecutorFactory<R, Spec, EvmFactory> {
 
 impl<R, Spec, EvmF> BlockExecutorFactory for EvBlockExecutorFactory<R, Spec, EvmF>
 where
-    R: ReceiptBuilder<Transaction: Transaction + Encodable2718, Receipt: TxReceipt<Log = Log>>
-        + Clone,
-    Spec: EthExecutorSpec + Clone,
+    R: ReceiptBuilder<Transaction: Transaction + Encodable2718, Receipt: TxReceipt<Log = Log>>,
+    Spec: EthExecutorSpec,
     EvmF: EvmFactory<Tx: FromRecoveredTx<R::Transaction> + FromTxWithEncoded<R::Transaction>>,
+    <R::Transaction as TransactionEnvelope>::TxType: Send + 'static,
     Self: 'static,
 {
     type EvmFactory = EvmF;
     type ExecutionCtx<'a> = EthBlockExecutionCtx<'a>;
     type Transaction = R::Transaction;
     type Receipt = R::Receipt;
+    type TxExecutionResult = EvTxResult<
+        <EvmF as EvmFactory>::HaltReason,
+        <R::Transaction as TransactionEnvelope>::TxType,
+    >;
+    type Executor<'a, DB: alloy_evm::block::state::StateDB, I: Inspector<EvmF::Context<DB>>> =
+        EvBlockExecutor<'a, EvmF::Evm<DB, I>, &'a Spec, &'a R>;
 
     fn evm_factory(&self) -> &Self::EvmFactory {
         &self.evm_factory
@@ -392,11 +400,11 @@ where
         &'a self,
         evm: EvmF::Evm<DB, I>,
         ctx: Self::ExecutionCtx<'a>,
-    ) -> impl BlockExecutorFor<'a, Self, DB, I>
+    ) -> Self::Executor<'a, DB, I>
     where
-        DB: alloy_evm::block::state::StateDB + 'a,
-        I: Inspector<EvmF::Context<DB>> + 'a,
+        DB: alloy_evm::block::state::StateDB,
+        I: Inspector<EvmF::Context<DB>>,
     {
-        EvBlockExecutor::new(evm, ctx, self.spec.clone(), self.receipt_builder.clone())
+        EvBlockExecutor::new(evm, ctx, &self.spec, &self.receipt_builder)
     }
 }
