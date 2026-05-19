@@ -169,7 +169,7 @@ impl App {
         })
     }
 
-    pub(crate) fn next_panel(&mut self) {
+    pub(crate) const fn next_panel(&mut self) {
         self.active_panel = match self.active_panel {
             Panel::Blocks => Panel::Logs,
             Panel::Logs => Panel::Accounts,
@@ -177,7 +177,7 @@ impl App {
         };
     }
 
-    pub(crate) fn scroll_up(&mut self) {
+    pub(crate) const fn scroll_up(&mut self) {
         match self.active_panel {
             Panel::Logs => self.log_scroll = self.log_scroll.saturating_add(1),
             Panel::Blocks => {
