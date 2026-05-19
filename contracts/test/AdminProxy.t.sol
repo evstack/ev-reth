@@ -362,8 +362,6 @@ contract AdminProxyTest is Test {
         // Deploy FeeVault with proxy as owner
         FeeVault vault = new FeeVault(
             address(proxy), // proxy is owner
-            1234,
-            bytes32(uint256(0xbeef)),
             1 ether,
             0.1 ether,
             10000,

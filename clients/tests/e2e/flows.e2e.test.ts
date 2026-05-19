@@ -1,6 +1,15 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { createClient, hexToBigInt, http, type Hex, toHex } from 'viem';
+import {
+  createClient,
+  createPublicClient,
+  createWalletClient,
+  defineChain,
+  hexToBigInt,
+  http,
+  type Hex,
+  toHex,
+} from 'viem';
 import { privateKeyToAccount, sign } from 'viem/accounts';
 import { randomBytes } from 'node:crypto';
 import { createEvnodeClient, type Call } from '../../src/index.ts';
@@ -11,6 +20,14 @@ const EXECUTOR_KEY = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7b
 const TRANSFER_AMOUNT = BigInt('1000000000000000'); // 0.001 ETH
 const SPONSOR_FUND_WEI = BigInt('10000000000000000'); // 0.01 ETH
 const RECEIPT_TIMEOUT_MS = 30_000;
+const EV_RETH_TEST_CHAIN = defineChain({
+  id: 1234,
+  name: 'ev-reth e2e',
+  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+  rpcUrls: {
+    default: { http: ['http://127.0.0.1:8545'] },
+  },
+});
 
 describe('flows e2e', { timeout: 120_000 }, () => {
   let ctx: TestContext;
@@ -50,6 +67,48 @@ describe('flows e2e', { timeout: 120_000 }, () => {
 
     const balanceAfter = await getBalance(client, executorAccount.address);
     assert.ok(balanceBefore > balanceAfter, 'executor should have spent gas');
+  });
+
+  it('standard viem transfer estimates 21000 gas and sends without gas override', async () => {
+    const { executorAccount } = makeClient();
+    const transport = http(rpcUrl);
+    const publicClient = createPublicClient({
+      chain: EV_RETH_TEST_CHAIN,
+      transport,
+    });
+    const walletClient = createWalletClient({
+      account: executorAccount,
+      chain: EV_RETH_TEST_CHAIN,
+      transport,
+    });
+    const recipient = privateKeyToAccount(toHex(randomBytes(32)) as `0x${string}`).address;
+
+    const estimatedGas = await publicClient.estimateGas({
+      account: executorAccount.address,
+      to: recipient,
+      value: TRANSFER_AMOUNT,
+    });
+    assert.equal(estimatedGas, 21_000n, 'plain ETH transfer should estimate to intrinsic gas');
+
+    const recipientBefore = await publicClient.getBalance({ address: recipient });
+    const hash = await walletClient.sendTransaction({
+      to: recipient,
+      value: TRANSFER_AMOUNT,
+    });
+    const receipt = await publicClient.waitForTransactionReceipt({
+      hash,
+      timeout: RECEIPT_TIMEOUT_MS,
+    });
+
+    assert.equal(receipt.status, 'success', 'standard viem transfer should succeed');
+    assert.equal(receipt.gasUsed, 21_000n, 'plain ETH transfer should use intrinsic gas');
+
+    const recipientAfter = await publicClient.getBalance({ address: recipient });
+    assert.equal(
+      recipientAfter - recipientBefore,
+      TRANSFER_AMOUNT,
+      'recipient should receive exact transfer amount',
+    );
   });
 
   it('unsponsored batch (two transfers)', async () => {

@@ -4,71 +4,49 @@ pragma solidity ^0.8.24;
 import {Test, console} from "forge-std/Test.sol";
 import {FeeVault} from "../src/FeeVault.sol";
 
-contract MockHypNativeMinter {
-    event TransferRemoteCalled(uint32 destination, bytes32 recipient, uint256 amount);
-
-    function transferRemote(uint32 _destination, bytes32 _recipient, uint256 _amount)
-        external
-        payable
-        returns (bytes32 messageId)
-    {
-        require(msg.value == _amount, "MockHypNativeMinter: value mismatch");
-        emit TransferRemoteCalled(_destination, _recipient, _amount);
-        return bytes32(uint256(1)); // Return a dummy messageId
-    }
-}
-
 contract FeeVaultTest is Test {
     FeeVault public feeVault;
-    MockHypNativeMinter public mockMinter;
     address public owner;
     address public user;
+    address public bridgeRecipient;
     address public otherRecipient;
 
-    uint32 public destination = 1234;
-    bytes32 public recipient = bytes32(uint256(0xdeadbeef));
     uint256 public minAmount = 1 ether;
     uint256 public fee = 0.1 ether;
 
     function setUp() public {
         owner = address(this);
         user = address(0x1);
+        bridgeRecipient = address(0x42);
         otherRecipient = address(0x99);
-        mockMinter = new MockHypNativeMinter();
 
         feeVault = new FeeVault(
             owner,
-            destination,
-            recipient,
             minAmount,
             fee,
             10000, // 100% bridge share
             otherRecipient
         );
 
-        feeVault.setHypNativeMinter(address(mockMinter));
+        feeVault.setBridgeRecipient(bridgeRecipient);
     }
 
-    function test_GetConfig() public {
+    function test_GetConfig() public view {
         (
             address cfgOwner,
-            uint32 cfgDestination,
-            bytes32 cfgRecipient,
+            address cfgBridgeRecipient,
+            address cfgOtherRecipient,
             uint256 cfgMinAmount,
             uint256 cfgCallFee,
-            uint256 cfgBridgeShare,
-            address cfgOtherRecipient,
-            address cfgHypNativeMinter
+            uint256 cfgBridgeShare
         ) = feeVault.getConfig();
 
         assertEq(cfgOwner, owner);
-        assertEq(cfgDestination, destination);
-        assertEq(cfgRecipient, recipient);
+        assertEq(cfgBridgeRecipient, bridgeRecipient);
+        assertEq(cfgOtherRecipient, otherRecipient);
         assertEq(cfgMinAmount, minAmount);
         assertEq(cfgCallFee, fee);
         assertEq(cfgBridgeShare, 10000);
-        assertEq(cfgOtherRecipient, otherRecipient);
-        assertEq(cfgHypNativeMinter, address(mockMinter));
     }
 
     function test_Receive() public {
@@ -78,36 +56,28 @@ contract FeeVaultTest is Test {
         assertEq(address(feeVault).balance, amount, "Balance mismatch");
     }
 
-    function test_SendToCelestia_100PercentBridge() public {
+    function test_Distribute_100PercentBridge() public {
         // Fund with minAmount
         (bool success,) = address(feeVault).call{value: minAmount}("");
         require(success);
 
         uint256 totalAmount = minAmount + fee;
 
-        vm.expectEmit(true, true, true, true, address(mockMinter));
-        emit MockHypNativeMinter.TransferRemoteCalled(destination, recipient, totalAmount);
-
-        // Expect the event from FeeVault
         vm.expectEmit(true, true, true, true, address(feeVault));
-        emit FeeVault.SentToCelestia(totalAmount, recipient, bytes32(uint256(1)));
+        emit FeeVault.FundsDistributed(totalAmount, totalAmount, 0);
 
         vm.prank(user);
         vm.deal(user, fee);
-        feeVault.sendToCelestia{value: fee}();
+        feeVault.distribute{value: fee}();
 
-        assertEq(address(feeVault).balance, 0, "Collector should be empty");
+        assertEq(address(feeVault).balance, 0, "Vault should be empty");
+        assertEq(bridgeRecipient.balance, totalAmount, "Bridge recipient should receive funds");
     }
 
-    function test_SendToCelestia_Split5050() public {
+    function test_Distribute_Split5050() public {
         // Set split to 50%
         feeVault.setBridgeShare(5000);
 
-        // Fund with 2 ether.
-        // Fee is 0.1 ether.
-        // Total new funds = 2.1 ether.
-        // Bridge = 1.05 ether. Other = 1.05 ether.
-        // Min amount is 1 ether, so 1.05 >= 1.0 is OK.
         uint256 fundAmount = 2 ether;
         (bool success,) = address(feeVault).call{value: fundAmount}("");
         require(success);
@@ -116,46 +86,47 @@ contract FeeVaultTest is Test {
         uint256 expectedBridge = totalNew / 2;
         uint256 expectedOther = totalNew - expectedBridge;
 
-        vm.expectEmit(true, true, true, true, address(mockMinter));
-        emit MockHypNativeMinter.TransferRemoteCalled(destination, recipient, expectedBridge);
-
         vm.prank(user);
         vm.deal(user, fee);
-        feeVault.sendToCelestia{value: fee}();
+        feeVault.distribute{value: fee}();
 
-        assertEq(address(feeVault).balance, 0, "Collector should be empty");
+        assertEq(address(feeVault).balance, 0, "Vault should be empty");
+        assertEq(bridgeRecipient.balance, expectedBridge, "Bridge recipient should receive funds");
         assertEq(otherRecipient.balance, expectedOther, "Other recipient should receive funds");
     }
 
-    function test_SendToCelestia_InsufficientFee() public {
+    function test_Distribute_InsufficientFee() public {
         vm.prank(user);
         vm.deal(user, fee);
-        // Send less than fee
         vm.expectRevert("FeeVault: insufficient fee");
-        feeVault.sendToCelestia{value: fee - 1}();
+        feeVault.distribute{value: fee - 1}();
     }
 
-    function test_SendToCelestia_BelowMinAmount_AfterSplit() public {
+    function test_Distribute_BelowMinAmount_AfterSplit() public {
         feeVault.setBridgeShare(1000); // 10% bridge
 
-        // Fund with 2 ether. Total 2.1.
-        // Bridge = 0.21. Other = 1.89.
-        // Min amount is 1.0. 0.21 < 1.0. Should revert.
         (bool success,) = address(feeVault).call{value: 2 ether}("");
         require(success);
 
         vm.prank(user);
         vm.deal(user, fee);
         vm.expectRevert("FeeVault: minimum amount not met");
-        feeVault.sendToCelestia{value: fee}();
+        feeVault.distribute{value: fee}();
+    }
+
+    function test_Distribute_BridgeRecipientNotSet() public {
+        FeeVault freshVault = new FeeVault(owner, minAmount, fee, 10000, otherRecipient);
+
+        (bool success,) = address(freshVault).call{value: minAmount}("");
+        require(success);
+
+        vm.prank(user);
+        vm.deal(user, fee);
+        vm.expectRevert("FeeVault: bridge recipient not set");
+        freshVault.distribute{value: fee}();
     }
 
     function test_AdminFunctions() public {
-        // Test setRecipient
-        feeVault.setRecipient(5678, bytes32(uint256(0xbeef)));
-        assertEq(feeVault.destinationDomain(), 5678);
-        assertEq(feeVault.recipientAddress(), bytes32(uint256(0xbeef)));
-
         // Test setMinimumAmount
         feeVault.setMinimumAmount(5 ether);
         assertEq(feeVault.minimumAmount(), 5 ether);
@@ -192,10 +163,6 @@ contract FeeVaultTest is Test {
     function test_AdminAccessControl() public {
         vm.prank(user);
         vm.expectRevert("FeeVault: caller is not the owner");
-        feeVault.setRecipient(1, bytes32(0));
-
-        vm.prank(user);
-        vm.expectRevert("FeeVault: caller is not the owner");
         feeVault.setMinimumAmount(1);
 
         vm.prank(user);
@@ -216,30 +183,17 @@ contract FeeVaultTest is Test {
 
         vm.prank(user);
         vm.expectRevert("FeeVault: caller is not the owner");
-        feeVault.setHypNativeMinter(address(0x123));
+        feeVault.setBridgeRecipient(address(0x123));
     }
 
-    function test_SetHypNativeMinter() public {
-        MockHypNativeMinter newMinter = new MockHypNativeMinter();
-        feeVault.setHypNativeMinter(address(newMinter));
-        assertEq(address(feeVault.hypNativeMinter()), address(newMinter));
+    function test_SetBridgeRecipient() public {
+        address newRecipient = address(0x55);
+        feeVault.setBridgeRecipient(newRecipient);
+        assertEq(feeVault.bridgeRecipient(), newRecipient);
     }
 
-    function test_SetHypNativeMinter_ZeroAddress() public {
+    function test_SetBridgeRecipient_ZeroAddress() public {
         vm.expectRevert("FeeVault: zero address");
-        feeVault.setHypNativeMinter(address(0));
-    }
-
-    function test_SendToCelestia_MinterNotSet() public {
-        // Deploy fresh vault without minter
-        FeeVault freshVault = new FeeVault(owner, destination, recipient, minAmount, fee, 10000, otherRecipient);
-
-        (bool success,) = address(freshVault).call{value: minAmount}("");
-        require(success);
-
-        vm.prank(user);
-        vm.deal(user, fee);
-        vm.expectRevert("FeeVault: minter not set");
-        freshVault.sendToCelestia{value: fee}();
+        feeVault.setBridgeRecipient(address(0));
     }
 }

@@ -1,35 +1,21 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-interface IHypNativeMinter {
-    function transferRemote(uint32 _destination, bytes32 _recipient, uint256 _amount)
-        external
-        payable
-        returns (bytes32 messageId);
-}
-
 contract FeeVault {
-    IHypNativeMinter public hypNativeMinter;
-
     address public owner;
-    uint32 public destinationDomain;
-    bytes32 public recipientAddress;
+    address public bridgeRecipient;
+    address public otherRecipient;
     uint256 public minimumAmount;
     uint256 public callFee;
-
-    // Split accounting
-    address public otherRecipient;
     uint256 public bridgeShareBps; // Basis points (0-10000) for bridge share
 
-    event SentToCelestia(uint256 amount, bytes32 recipient, bytes32 messageId);
+    event FundsDistributed(uint256 total, uint256 bridgeAmount, uint256 otherAmount);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
-    event HypNativeMinterUpdated(address hypNativeMinter);
-    event RecipientUpdated(uint32 destinationDomain, bytes32 recipientAddress);
+    event BridgeRecipientUpdated(address bridgeRecipient);
     event MinimumAmountUpdated(uint256 minimumAmount);
     event CallFeeUpdated(uint256 callFee);
     event BridgeShareUpdated(uint256 bridgeShareBps);
     event OtherRecipientUpdated(address otherRecipient);
-    event FundsSplit(uint256 totalNew, uint256 bridgeAmount, uint256 otherAmount);
 
     modifier onlyOwner() {
         require(msg.sender == owner, "FeeVault: caller is not the owner");
@@ -38,8 +24,6 @@ contract FeeVault {
 
     constructor(
         address _owner,
-        uint32 _destinationDomain,
-        bytes32 _recipientAddress,
         uint256 _minimumAmount,
         uint256 _callFee,
         uint256 _bridgeShareBps,
@@ -49,8 +33,6 @@ contract FeeVault {
         require(_bridgeShareBps <= 10000, "FeeVault: invalid bps");
 
         owner = _owner;
-        destinationDomain = _destinationDomain;
-        recipientAddress = _recipientAddress;
         minimumAmount = _minimumAmount;
         callFee = _callFee;
         bridgeShareBps = _bridgeShareBps == 0 ? 10000 : _bridgeShareBps;
@@ -61,8 +43,8 @@ contract FeeVault {
 
     receive() external payable {}
 
-    function sendToCelestia() external payable {
-        require(address(hypNativeMinter) != address(0), "FeeVault: minter not set");
+    function distribute() external payable {
+        require(bridgeRecipient != address(0), "FeeVault: bridge recipient not set");
         require(msg.value >= callFee, "FeeVault: insufficient fee");
 
         uint256 currentBalance = address(this).balance;
@@ -73,20 +55,18 @@ contract FeeVault {
 
         require(bridgeAmount >= minimumAmount, "FeeVault: minimum amount not met");
 
-        emit FundsSplit(currentBalance, bridgeAmount, otherAmount);
+        emit FundsDistributed(currentBalance, bridgeAmount, otherAmount);
 
         // Send other amount if any
         if (otherAmount > 0) {
             require(otherRecipient != address(0), "FeeVault: other recipient not set");
-            (bool success,) = otherRecipient.call{value: otherAmount}("");
-            require(success, "FeeVault: transfer failed");
+            (bool sent,) = otherRecipient.call{value: otherAmount}("");
+            require(sent, "FeeVault: transfer failed");
         }
 
-        // Bridge the bridge amount
-        bytes32 messageId =
-            hypNativeMinter.transferRemote{value: bridgeAmount}(destinationDomain, recipientAddress, bridgeAmount);
-
-        emit SentToCelestia(bridgeAmount, recipientAddress, messageId);
+        // Send bridge amount
+        (bool success,) = bridgeRecipient.call{value: bridgeAmount}("");
+        require(success, "FeeVault: bridge transfer failed");
     }
 
     // Admin functions
@@ -97,10 +77,10 @@ contract FeeVault {
         owner = newOwner;
     }
 
-    function setRecipient(uint32 _destinationDomain, bytes32 _recipientAddress) external onlyOwner {
-        destinationDomain = _destinationDomain;
-        recipientAddress = _recipientAddress;
-        emit RecipientUpdated(_destinationDomain, _recipientAddress);
+    function setBridgeRecipient(address _bridgeRecipient) external onlyOwner {
+        require(_bridgeRecipient != address(0), "FeeVault: zero address");
+        bridgeRecipient = _bridgeRecipient;
+        emit BridgeRecipientUpdated(_bridgeRecipient);
     }
 
     function setMinimumAmount(uint256 _minimumAmount) external onlyOwner {
@@ -125,36 +105,18 @@ contract FeeVault {
         emit OtherRecipientUpdated(_otherRecipient);
     }
 
-    function setHypNativeMinter(address _hypNativeMinter) external onlyOwner {
-        require(_hypNativeMinter != address(0), "FeeVault: zero address");
-        hypNativeMinter = IHypNativeMinter(_hypNativeMinter);
-        emit HypNativeMinterUpdated(_hypNativeMinter);
-    }
-
-    /// @notice Return the full configuration currently stored in the contract.
     function getConfig()
         external
         view
         returns (
             address _owner,
-            uint32 _destinationDomain,
-            bytes32 _recipientAddress,
+            address _bridgeRecipient,
+            address _otherRecipient,
             uint256 _minimumAmount,
             uint256 _callFee,
-            uint256 _bridgeShareBps,
-            address _otherRecipient,
-            address _hypNativeMinter
+            uint256 _bridgeShareBps
         )
     {
-        return (
-            owner,
-            destinationDomain,
-            recipientAddress,
-            minimumAmount,
-            callFee,
-            bridgeShareBps,
-            otherRecipient,
-            address(hypNativeMinter)
-        );
+        return (owner, bridgeRecipient, otherRecipient, minimumAmount, callFee, bridgeShareBps);
     }
 }

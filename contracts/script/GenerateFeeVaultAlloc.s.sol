@@ -8,27 +8,23 @@ abstract contract FeeVaultAllocBase is Script {
     struct Config {
         address feeVaultAddress;
         address owner;
-        uint32 destinationDomain;
-        bytes32 recipientAddress;
+        address bridgeRecipient;
+        address otherRecipient;
         uint256 minimumAmount;
         uint256 callFee;
         uint256 bridgeShareBpsRaw;
         uint256 bridgeShareBps;
-        address otherRecipient;
-        address hypNativeMinter;
         bytes32 salt;
         address deployer;
     }
 
     function loadConfig() internal view returns (Config memory cfg) {
         cfg.owner = vm.envAddress("OWNER");
-        cfg.destinationDomain = uint32(vm.envOr("DESTINATION_DOMAIN", uint256(0)));
-        cfg.recipientAddress = vm.envOr("RECIPIENT_ADDRESS", bytes32(0));
+        cfg.bridgeRecipient = vm.envOr("BRIDGE_RECIPIENT", address(0));
+        cfg.otherRecipient = vm.envOr("OTHER_RECIPIENT", address(0));
         cfg.minimumAmount = vm.envOr("MINIMUM_AMOUNT", uint256(0));
         cfg.callFee = vm.envOr("CALL_FEE", uint256(0));
         cfg.bridgeShareBpsRaw = vm.envOr("BRIDGE_SHARE_BPS", uint256(0));
-        cfg.otherRecipient = vm.envOr("OTHER_RECIPIENT", address(0));
-        cfg.hypNativeMinter = vm.envOr("HYP_NATIVE_MINTER", address(0));
         cfg.feeVaultAddress = vm.envOr("FEE_VAULT_ADDRESS", address(0));
         cfg.deployer = vm.envOr("DEPLOYER", address(0));
         cfg.salt = vm.envOr("SALT", bytes32(0));
@@ -42,15 +38,7 @@ abstract contract FeeVaultAllocBase is Script {
             bytes32 initCodeHash = keccak256(
                 abi.encodePacked(
                     type(FeeVault).creationCode,
-                    abi.encode(
-                        cfg.owner,
-                        cfg.destinationDomain,
-                        cfg.recipientAddress,
-                        cfg.minimumAmount,
-                        cfg.callFee,
-                        cfg.bridgeShareBpsRaw,
-                        cfg.otherRecipient
-                    )
+                    abi.encode(cfg.owner, cfg.minimumAmount, cfg.callFee, cfg.bridgeShareBpsRaw, cfg.otherRecipient)
                 )
             );
             cfg.feeVaultAddress = address(
@@ -64,29 +52,19 @@ abstract contract FeeVaultAllocBase is Script {
     function computeSlots(Config memory cfg)
         internal
         pure
-        returns (
-            bytes32 slot0,
-            bytes32 slot1,
-            bytes32 slot2,
-            bytes32 slot3,
-            bytes32 slot4,
-            bytes32 slot5,
-            bytes32 slot6
-        )
+        returns (bytes32 slot0, bytes32 slot1, bytes32 slot2, bytes32 slot3, bytes32 slot4, bytes32 slot5)
     {
-        slot0 = bytes32(uint256(uint160(cfg.hypNativeMinter)));
-        slot1 = bytes32((uint256(cfg.destinationDomain) << 160) | uint256(uint160(cfg.owner)));
-        slot2 = cfg.recipientAddress;
+        slot0 = bytes32(uint256(uint160(cfg.owner)));
+        slot1 = bytes32(uint256(uint160(cfg.bridgeRecipient)));
+        slot2 = bytes32(uint256(uint160(cfg.otherRecipient)));
         slot3 = bytes32(cfg.minimumAmount);
         slot4 = bytes32(cfg.callFee);
-        slot5 = bytes32(uint256(uint160(cfg.otherRecipient)));
-        slot6 = bytes32(cfg.bridgeShareBps);
+        slot5 = bytes32(cfg.bridgeShareBps);
     }
 
     function addressKey(address addr) internal pure returns (string memory) {
         bytes memory full = bytes(vm.toString(addr));
         bytes memory key = new bytes(40);
-        // Fixed-length copy for address key without 0x prefix.
         for (uint256 i = 0; i < 40; i++) {
             key[i] = full[i + 2];
         }
@@ -102,13 +80,11 @@ contract GenerateFeeVaultAlloc is FeeVaultAllocBase {
         Config memory cfg = loadConfig();
         bytes memory runtimeCode = type(FeeVault).runtimeCode;
 
-        (bytes32 slot0, bytes32 slot1, bytes32 slot2, bytes32 slot3, bytes32 slot4, bytes32 slot5, bytes32 slot6) =
-            computeSlots(cfg);
+        (bytes32 slot0, bytes32 slot1, bytes32 slot2, bytes32 slot3, bytes32 slot4, bytes32 slot5) = computeSlots(cfg);
 
         console.log("========== FeeVault Genesis Alloc ==========");
         console.log("FeeVault address:", cfg.feeVaultAddress);
         console.log("Owner:", cfg.owner);
-        console.log("Destination domain:", cfg.destinationDomain);
         console.log("Bridge share bps (raw):", cfg.bridgeShareBpsRaw);
         console.log("Bridge share bps (effective):", cfg.bridgeShareBps);
         console.log("");
@@ -119,8 +95,8 @@ contract GenerateFeeVaultAlloc is FeeVaultAllocBase {
         if (cfg.bridgeShareBps < 10000 && cfg.otherRecipient == address(0)) {
             console.log("WARNING: OTHER_RECIPIENT is zero but bridge share < 10000.");
         }
-        if (cfg.hypNativeMinter == address(0)) {
-            console.log("NOTE: HYP_NATIVE_MINTER is zero; set it before calling sendToCelestia().");
+        if (cfg.bridgeRecipient == address(0)) {
+            console.log("NOTE: BRIDGE_RECIPIENT is zero; set it before calling distribute().");
         }
         console.log("");
 
@@ -137,8 +113,7 @@ contract GenerateFeeVaultAlloc is FeeVaultAllocBase {
         console.log('        "0x2": "%s",', vm.toString(slot2));
         console.log('        "0x3": "%s",', vm.toString(slot3));
         console.log('        "0x4": "%s",', vm.toString(slot4));
-        console.log('        "0x5": "%s",', vm.toString(slot5));
-        console.log('        "0x6": "%s"', vm.toString(slot6));
+        console.log('        "0x5": "%s"', vm.toString(slot5));
         console.log("      }");
         console.log("    }");
         console.log("  }");
@@ -157,8 +132,7 @@ contract GenerateFeeVaultAllocJSON is FeeVaultAllocBase {
         Config memory cfg = loadConfig();
         bytes memory runtimeCode = type(FeeVault).runtimeCode;
 
-        (bytes32 slot0, bytes32 slot1, bytes32 slot2, bytes32 slot3, bytes32 slot4, bytes32 slot5, bytes32 slot6) =
-            computeSlots(cfg);
+        (bytes32 slot0, bytes32 slot1, bytes32 slot2, bytes32 slot3, bytes32 slot4, bytes32 slot5) = computeSlots(cfg);
 
         string memory json = string(
             abi.encodePacked(
@@ -178,8 +152,6 @@ contract GenerateFeeVaultAllocJSON is FeeVaultAllocBase {
                 vm.toString(slot4),
                 '","0x5":"',
                 vm.toString(slot5),
-                '","0x6":"',
-                vm.toString(slot6),
                 '"}}}'
             )
         );
