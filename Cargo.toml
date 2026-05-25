@@ -86,7 +86,7 @@ reth-tasks = { git = "https://github.com/paradigmxyz/reth.git", tag = "v2.2.0", 
 revm = { version = "38.0.0", default-features = false }
 
 # Alloy dependencies (aligned to reth v2.2.0)
-alloy = { version = "2.0.4", features = [
+alloy = { version = "2.0.5", features = [
   "contract",
   "providers",
   "provider-http",
