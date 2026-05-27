@@ -9,7 +9,7 @@ use alloy_evm::{
     revm::precompile::{PrecompileError, PrecompileId, PrecompileResult},
     EvmInternals, EvmInternalsError,
 };
-use alloy_primitives::{address, Address, Bytes, U256};
+use alloy_primitives::{address, Address, Bytes, B256, U256};
 use revm::{
     bytecode::Bytecode,
     precompile::{PrecompileHalt, PrecompileOutput},
@@ -18,8 +18,8 @@ use std::sync::OnceLock;
 
 sol! {
     interface IProposerControl {
-        function nextProposer() external view returns (address);
-        function setNextProposer(address proposer) external;
+        function nextProposer() external view returns (bytes32);
+        function setNextProposer(bytes32 proposer) external;
         function admin() external view returns (address);
     }
 }
@@ -33,7 +33,7 @@ const NEXT_PROPOSER_SLOT: U256 = U256::ZERO;
 #[derive(Clone, Debug, Default)]
 pub struct ProposerControlPrecompile {
     admin: Address,
-    initial_next_proposer: Address,
+    initial_next_proposer: B256,
 }
 
 #[derive(Debug)]
@@ -66,7 +66,7 @@ impl ProposerControlPrecompile {
         BYTECODE.get_or_init(|| Bytecode::new_raw(Bytes::from_static(&[0xFE])))
     }
 
-    pub const fn new(admin: Address, initial_next_proposer: Address) -> Self {
+    pub const fn new(admin: Address, initial_next_proposer: B256) -> Self {
         Self {
             admin,
             initial_next_proposer,
@@ -114,7 +114,7 @@ impl ProposerControlPrecompile {
     fn next_proposer(
         &self,
         internals: &mut EvmInternals<'_>,
-    ) -> ProposerControlPrecompileResult<Address> {
+    ) -> ProposerControlPrecompileResult<B256> {
         let value = internals
             .sload(PROPOSER_CONTROL_PRECOMPILE_ADDR, NEXT_PROPOSER_SLOT)
             .map_err(Self::map_internals_error)?;
@@ -122,12 +122,12 @@ impl ProposerControlPrecompile {
         if raw_value.is_zero() {
             return Ok(self.initial_next_proposer);
         }
-        Ok(Address::from_word(raw_value.into()))
+        Ok(B256::from(raw_value))
     }
 
     fn set_next_proposer(
         internals: &mut EvmInternals<'_>,
-        proposer: Address,
+        proposer: B256,
     ) -> ProposerControlPrecompileResult<()> {
         if proposer.is_zero() {
             return Err(ProposerControlPrecompileError::halt_static(
@@ -136,7 +136,7 @@ impl ProposerControlPrecompile {
         }
 
         Self::ensure_account_created(internals)?;
-        let value = U256::from_be_bytes(proposer.into_word().into());
+        let value = U256::from_be_bytes(proposer.0);
         internals
             .sstore(PROPOSER_CONTROL_PRECOMPILE_ADDR, NEXT_PROPOSER_SLOT, value)
             .map_err(Self::map_internals_error)?;
@@ -204,7 +204,7 @@ impl Precompile for ProposerControlPrecompile {
 mod tests {
     use super::*;
     use alloy::sol_types::SolCall;
-    use alloy_primitives::address;
+    use alloy_primitives::{address, B256};
     use revm::{
         context::{
             journal::{Journal, JournalInner},
@@ -278,7 +278,7 @@ mod tests {
     #[test]
     fn returns_initial_next_proposer_when_storage_unset() {
         let admin = address!("0x0000000000000000000000000000000000000aaa");
-        let initial = address!("0x0000000000000000000000000000000000000bbb");
+        let initial = B256::from([0xbb; 32]);
         let precompile = ProposerControlPrecompile::new(admin, initial);
         let (mut journal, block_env, cfg_env, tx_env) = setup_context();
 
@@ -293,7 +293,7 @@ mod tests {
             &data,
             true,
         ));
-        let decoded = Address::abi_decode(&bytes).expect("address output decodes");
+        let decoded = B256::abi_decode(&bytes).expect("bytes32 output decodes");
 
         assert_eq!(decoded, initial);
     }
@@ -301,8 +301,8 @@ mod tests {
     #[test]
     fn admin_can_set_next_proposer() {
         let admin = address!("0x0000000000000000000000000000000000000aaa");
-        let initial = address!("0x0000000000000000000000000000000000000bbb");
-        let next = address!("0x0000000000000000000000000000000000000ccc");
+        let initial = B256::from([0xbb; 32]);
+        let next = B256::from([0xcc; 32]);
         let precompile = ProposerControlPrecompile::new(admin, initial);
         let (mut journal, block_env, cfg_env, tx_env) = setup_context();
 
@@ -330,7 +330,7 @@ mod tests {
             &get_data,
             true,
         ));
-        let decoded = Address::abi_decode(&bytes).expect("address output decodes");
+        let decoded = B256::abi_decode(&bytes).expect("bytes32 output decodes");
 
         assert_eq!(decoded, next);
     }
@@ -339,8 +339,8 @@ mod tests {
     fn non_admin_cannot_set_next_proposer() {
         let admin = address!("0x0000000000000000000000000000000000000aaa");
         let caller = address!("0x0000000000000000000000000000000000000bbb");
-        let next = address!("0x0000000000000000000000000000000000000ccc");
-        let precompile = ProposerControlPrecompile::new(admin, Address::ZERO);
+        let next = B256::from([0xcc; 32]);
+        let precompile = ProposerControlPrecompile::new(admin, B256::ZERO);
         let (mut journal, block_env, cfg_env, tx_env) = setup_context();
 
         let data = IProposerControl::setNextProposerCall { proposer: next }.abi_encode();
@@ -361,11 +361,11 @@ mod tests {
     #[test]
     fn rejects_zero_next_proposer() {
         let admin = address!("0x0000000000000000000000000000000000000aaa");
-        let precompile = ProposerControlPrecompile::new(admin, Address::ZERO);
+        let precompile = ProposerControlPrecompile::new(admin, B256::ZERO);
         let (mut journal, block_env, cfg_env, tx_env) = setup_context();
 
         let data = IProposerControl::setNextProposerCall {
-            proposer: Address::ZERO,
+            proposer: B256::ZERO,
         }
         .abi_encode();
         let result = run_call(
@@ -385,8 +385,8 @@ mod tests {
     #[test]
     fn rejects_state_change_in_static_call() {
         let admin = address!("0x0000000000000000000000000000000000000aaa");
-        let next = address!("0x0000000000000000000000000000000000000bbb");
-        let precompile = ProposerControlPrecompile::new(admin, Address::ZERO);
+        let next = B256::from([0xbb; 32]);
+        let precompile = ProposerControlPrecompile::new(admin, B256::ZERO);
         let (mut journal, block_env, cfg_env, tx_env) = setup_context();
 
         let data = IProposerControl::setNextProposerCall { proposer: next }.abi_encode();
@@ -407,7 +407,7 @@ mod tests {
     #[test]
     fn admin_getter_returns_configured_admin() {
         let admin = address!("0x0000000000000000000000000000000000000aaa");
-        let precompile = ProposerControlPrecompile::new(admin, Address::ZERO);
+        let precompile = ProposerControlPrecompile::new(admin, B256::ZERO);
         let (mut journal, block_env, cfg_env, tx_env) = setup_context();
 
         let data = IProposerControl::adminCall {}.abi_encode();

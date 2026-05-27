@@ -1,7 +1,7 @@
 //! RPC accessors for Evolve proposer control state.
 
 use alloy_eips::BlockNumberOrTag;
-use alloy_primitives::{Address, B256};
+use alloy_primitives::{B256, U256};
 use async_trait::async_trait;
 use jsonrpsee_core::RpcResult;
 use jsonrpsee_proc_macros::rpc;
@@ -16,19 +16,19 @@ const INTERNAL_ERROR: i32 = -32603;
 pub trait EvolveProposerApi {
     /// Returns the next proposer stored by the proposer-control precompile.
     #[method(name = "getNextProposer")]
-    async fn get_next_proposer(&self, block: Option<BlockNumberOrTag>) -> RpcResult<Address>;
+    async fn get_next_proposer(&self, block: Option<BlockNumberOrTag>) -> RpcResult<B256>;
 }
 
 /// Implementation of the Evolve proposer-control RPC API.
 #[derive(Debug, Clone)]
 pub struct EvolveProposerApiImpl<Provider> {
     provider: Provider,
-    initial_next_proposer: Address,
+    initial_next_proposer: B256,
 }
 
 impl<Provider> EvolveProposerApiImpl<Provider> {
     /// Creates a new proposer-control API.
-    pub const fn new(provider: Provider, initial_next_proposer: Address) -> Self {
+    pub const fn new(provider: Provider, initial_next_proposer: B256) -> Self {
         Self {
             provider,
             initial_next_proposer,
@@ -45,7 +45,7 @@ impl<Provider> EvolveProposerApiServer for EvolveProposerApiImpl<Provider>
 where
     Provider: StateProviderFactory + Send + Sync + 'static,
 {
-    async fn get_next_proposer(&self, block: Option<BlockNumberOrTag>) -> RpcResult<Address> {
+    async fn get_next_proposer(&self, block: Option<BlockNumberOrTag>) -> RpcResult<B256> {
         let block = block.unwrap_or(BlockNumberOrTag::Latest);
         let state = self
             .provider
@@ -64,7 +64,7 @@ where
         if value.is_zero() {
             Ok(self.initial_next_proposer)
         } else {
-            Ok(Address::from_word(value.into()))
+            Ok(B256::from(U256::from(value)))
         }
     }
 }

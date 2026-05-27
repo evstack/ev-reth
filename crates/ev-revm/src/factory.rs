@@ -8,7 +8,7 @@ use alloy_evm::{
     precompiles::{DynPrecompile, Precompile, PrecompilesMap},
     Database, EvmEnv, EvmFactory,
 };
-use alloy_primitives::{Address, U256};
+use alloy_primitives::{Address, B256, U256};
 use ev_precompiles::{
     mint::{MintPrecompile, MINT_PRECOMPILE_ADDR},
     proposer::{ProposerControlPrecompile, PROPOSER_CONTROL_PRECOMPILE_ADDR},
@@ -86,16 +86,12 @@ impl MintPrecompileSettings {
 pub struct ProposerControlPrecompileSettings {
     admin: Address,
     activation_height: u64,
-    initial_next_proposer: Address,
+    initial_next_proposer: B256,
 }
 
 impl ProposerControlPrecompileSettings {
     /// Creates a new settings object.
-    pub const fn new(
-        admin: Address,
-        activation_height: u64,
-        initial_next_proposer: Address,
-    ) -> Self {
+    pub const fn new(admin: Address, activation_height: u64, initial_next_proposer: B256) -> Self {
         Self {
             admin,
             activation_height,
@@ -111,7 +107,7 @@ impl ProposerControlPrecompileSettings {
         self.admin
     }
 
-    const fn initial_next_proposer(&self) -> Address {
+    const fn initial_next_proposer(&self) -> B256 {
         self.initial_next_proposer
     }
 }
@@ -566,7 +562,7 @@ mod tests {
         }
 
         interface IProposerControl {
-            function setNextProposer(address proposer) external;
+            function setNextProposer(bytes32 proposer) external;
         }
     }
 
@@ -883,7 +879,7 @@ mod tests {
     #[test]
     fn proposer_control_precompile_respects_activation_height() {
         let admin = address!("0x0000000000000000000000000000000000000aaa");
-        let next = address!("0x0000000000000000000000000000000000000bbb");
+        let next = B256::from([0xbb; 32]);
 
         let build_state = || {
             let mut state = State::builder()
@@ -909,11 +905,7 @@ mod tests {
             alloy_evm::eth::EthEvmFactory::default(),
             None,
             None,
-            Some(ProposerControlPrecompileSettings::new(
-                admin,
-                3,
-                Address::ZERO,
-            )),
+            Some(ProposerControlPrecompileSettings::new(admin, 3, B256::ZERO)),
             None,
             None,
         );
@@ -968,9 +960,6 @@ mod tests {
             .storage
             .get(&U256::ZERO)
             .expect("next proposer slot should be written");
-        assert_eq!(
-            slot.present_value,
-            U256::from_be_bytes(next.into_word().into())
-        );
+        assert_eq!(slot.present_value, U256::from_be_bytes(next.0));
     }
 }

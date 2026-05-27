@@ -1,4 +1,4 @@
-use alloy_primitives::Address;
+use alloy_primitives::{Address, B256};
 use reth_chainspec::ChainSpec;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -23,7 +23,7 @@ struct ChainspecEvolveConfig {
     #[serde(default, rename = "proposerControlActivationHeight")]
     pub proposer_control_activation_height: Option<u64>,
     #[serde(default, rename = "initialNextProposer")]
-    pub initial_next_proposer: Option<Address>,
+    pub initial_next_proposer: Option<B256>,
     /// Maximum contract code size in bytes. Defaults to 24KB (EIP-170) if not specified.
     #[serde(default, rename = "contractSizeLimit")]
     pub contract_size_limit: Option<usize>,
@@ -61,7 +61,7 @@ pub struct EvolvePayloadBuilderConfig {
     pub proposer_control_activation_height: Option<u64>,
     /// Optional initial next proposer returned until the precompile storage is updated.
     #[serde(default)]
-    pub initial_next_proposer: Option<Address>,
+    pub initial_next_proposer: Option<B256>,
     /// Maximum contract code size in bytes. Defaults to 24KB (EIP-170).
     #[serde(default)]
     pub contract_size_limit: Option<usize>,
@@ -242,10 +242,10 @@ impl EvolvePayloadBuilderConfig {
     }
 
     /// Returns the proposer control precompile admin, activation height, and initial proposer.
-    pub fn proposer_control_precompile_settings(&self) -> Option<(Address, u64, Address)> {
+    pub fn proposer_control_precompile_settings(&self) -> Option<(Address, u64, B256)> {
         self.proposer_control_admin.map(|admin| {
             let activation = self.proposer_control_activation_height.unwrap_or(0);
-            let initial_next_proposer = self.initial_next_proposer.unwrap_or(Address::ZERO);
+            let initial_next_proposer = self.initial_next_proposer.unwrap_or(B256::ZERO);
             (admin, activation, initial_next_proposer)
         })
     }
@@ -275,7 +275,7 @@ pub enum ConfigError {
 mod tests {
     use super::*;
     use alloy_genesis::Genesis;
-    use alloy_primitives::{address, Address};
+    use alloy_primitives::{address, Address, B256};
     use reth_chainspec::ChainSpecBuilder;
     use serde_json::json;
 
@@ -353,7 +353,7 @@ mod tests {
     #[test]
     fn test_proposer_control_defaults_activation_to_zero() {
         let admin = address!("00000000000000000000000000000000000000cc");
-        let initial_next_proposer = address!("00000000000000000000000000000000000000dd");
+        let initial_next_proposer = B256::from([0xdd; 32]);
         let extras = json!({
             "proposerControlAdmin": admin,
             "initialNextProposer": initial_next_proposer
@@ -377,7 +377,7 @@ mod tests {
         let extras = json!({
             "proposerControlAdmin": admin,
             "proposerControlActivationHeight": 128,
-            "initialNextProposer": "0x0000000000000000000000000000000000000000"
+            "initialNextProposer": "0x0000000000000000000000000000000000000000000000000000000000000000"
         });
 
         let chainspec = create_test_chainspec_with_extras(Some(extras));
@@ -388,7 +388,7 @@ mod tests {
         assert_eq!(config.initial_next_proposer, None);
         assert_eq!(
             config.proposer_control_precompile_settings(),
-            Some((admin, 128, Address::ZERO))
+            Some((admin, 128, B256::ZERO))
         );
     }
 
@@ -396,7 +396,7 @@ mod tests {
     fn test_proposer_control_admin_zero_disables() {
         let extras = json!({
             "proposerControlAdmin": "0x0000000000000000000000000000000000000000",
-            "initialNextProposer": "0x00000000000000000000000000000000000000dd"
+            "initialNextProposer": "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
         });
 
         let chainspec = create_test_chainspec_with_extras(Some(extras));
