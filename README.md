@@ -164,6 +164,58 @@ With custom configuration:
     --ws.api all
 ```
 
+### Lightweight Chainspec Startup
+
+Large custom genesis files can be expensive to parse on every restart because the `alloc` map is
+part of the chainspec. After a datadir has already been initialized from the full genesis, ev-reth
+can start from a lightweight chainspec that omits `alloc`. When ev-reth starts from a file-based
+full genesis, it automatically writes a sibling lightweight file for future starts. For example,
+`/path/to/genesis.json` produces `/path/to/genesis.light.json`.
+If that file already exists for a different genesis hash, ev-reth preserves it and writes a
+hash-specific file such as `/path/to/genesis.78dec18c6d7d.light.json` instead.
+
+```bash
+./target/release/ev-reth node \
+    --chain light:/path/to/chainspec-light.json \
+    --datadir <DATA_DIR>
+```
+
+The lightweight file must include the canonical genesis identity plus the normal non-allocation
+genesis fields:
+
+```json
+{
+  "genesisHash": "0x...",
+  "stateRoot": "0x...",
+  "requiresInitializedDatadir": true,
+  "genesis": {
+    "config": {
+      "chainId": 1234,
+      "eip155Block": 0,
+      "eip158Block": 0,
+      "londonBlock": 0,
+      "terminalTotalDifficulty": 0,
+      "evolve": {
+        "baseFeeSink": "0x00000000000000000000000000000000000000fe"
+      }
+    },
+    "nonce": "0x0",
+    "timestamp": "0x0",
+    "extraData": "0x",
+    "gasLimit": "0x1c9c380",
+    "difficulty": "0x0",
+    "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "coinbase": "0x0000000000000000000000000000000000000000",
+    "baseFeePerGas": "0x3b9aca00"
+  }
+}
+```
+
+Use the full genesis, or a trusted datadir snapshot created from it, for first startup. Lightweight
+mode is only for subsequent starts: it rejects `alloc`, trusts the supplied `genesisHash`, and
+relies on Reth's stored genesis-hash check to reject the wrong datadir. Set `genesisHash` to the
+block 0 hash stored in the datadir you intend to open.
+
 ### Engine API Integration
 
 When using the Engine API, you can include transactions in the payload attributes:
