@@ -45,7 +45,7 @@ impl EvolvePayloadBuilderBuilder {
     /// Create a new builder with evolve args.
     pub fn new() -> Self {
         let config = EvolvePayloadBuilderConfig::new();
-        info!("Created Evolve payload builder with config: {:?}", config);
+        info!("created evolve payload builder");
         Self { config }
     }
 }
@@ -138,7 +138,7 @@ where
         if let Some(sink) = self.config.base_fee_sink_for_block(block_number) {
             info!(
                 target: "ev-reth",
-                fee_sink = ?sink,
+                fee_sink = %sink,
                 block_number,
                 "Suggested fee recipient missing; defaulting to base-fee sink"
             );

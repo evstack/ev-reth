@@ -52,7 +52,7 @@ where
         if let Some((sink, activation)) = config.base_fee_redirect_settings() {
             info!(
                 target: "ev-reth",
-                fee_sink = ?sink,
+                fee_sink = %sink,
                 activation_height = activation,
                 "Base fee redirect enabled via chainspec"
             );
@@ -69,7 +69,7 @@ where
     #[instrument(skip(self, attributes), fields(
         parent_hash = %attributes.parent_hash,
         tx_count = attributes.transactions.len(),
-        gas_limit = ?attributes.gas_limit,
+        gas_limit = attributes.gas_limit.unwrap_or(0),
         duration_ms = tracing::field::Empty,
     ))]
     pub async fn build_payload(
@@ -118,7 +118,7 @@ where
                 suggested_fee_recipient = sink;
                 info!(
                     target: "ev-reth",
-                    fee_sink = ?sink,
+                    fee_sink = %sink,
                     block_number,
                     "Suggested fee recipient missing; defaulting to base-fee sink"
                 );
@@ -170,10 +170,10 @@ where
 
             match builder.execute_transaction(recovered_tx) {
                 Ok(gas_used) => {
-                    debug!(gas_used = ?gas_used, "transaction executed successfully");
+                    debug!(gas_used, "transaction executed successfully");
                 }
                 Err(err) => {
-                    tracing::warn!(error = ?err, tx_hash = %tx.tx_hash(), "transaction execution failed");
+                    tracing::warn!(error = %err, tx_hash = %tx.tx_hash(), "transaction execution failed");
                 }
             }
         }
@@ -192,7 +192,7 @@ where
 
         info!(
             block_number = sealed_block.number,
-            block_hash = ?sealed_block.hash(),
+            block_hash = %sealed_block.hash(),
             tx_count = sealed_block.transaction_count(),
             gas_used = sealed_block.gas_used,
             "built block"
@@ -221,13 +221,13 @@ where
     let config = match EvolvePayloadBuilderConfig::from_chain_spec(&chain_spec) {
         Ok(config) => config,
         Err(err) => {
-            tracing::warn!(target: "ev-reth", error = ?err, "Failed to parse chainspec extras");
+            tracing::warn!(target: "ev-reth", error = %err, "Failed to parse chainspec extras");
             return None;
         }
     };
 
     if let Err(err) = config.validate() {
-        tracing::warn!(target: "ev-reth", error = ?err, "Invalid evolve payload builder configuration");
+        tracing::warn!(target: "ev-reth", error = %err, "Invalid evolve payload builder configuration");
         return None;
     }
 
