@@ -60,8 +60,6 @@ pub async fn run(pipeline_cfg: &PipelineConfig, deployer: &dyn ChainDeployer) ->
         state
     };
 
-    let salt = state.create2_salt;
-
     // ── Step 2: Deploy Permit2 ──
     if let Some(ref p2_config) = pipeline_cfg.config.contracts.permit2 {
         eprintln!("[3/4] Deploying Permit2...");
@@ -70,8 +68,9 @@ pub async fn run(pipeline_cfg: &PipelineConfig, deployer: &dyn ChainDeployer) ->
             eprintln!("       WARN: contracts.permit2.address is ignored in deploy mode");
         }
 
+        let permit2_salt = contracts::permit2::PERMIT2_CANONICAL_SALT;
         let initcode = contracts::permit2::PERMIT2_INITCODE.to_vec();
-        let address = compute_address(salt, &initcode);
+        let address = compute_address(permit2_salt, &initcode);
 
         let expected_runtime = contracts::permit2::expected_runtime_bytecode(chain_id, address);
 
@@ -81,7 +80,7 @@ pub async fn run(pipeline_cfg: &PipelineConfig, deployer: &dyn ChainDeployer) ->
             &DeployContractParams {
                 name: "permit2",
                 address,
-                salt,
+                salt: permit2_salt,
                 initcode: &initcode,
                 expected_runtime: &expected_runtime,
                 state_path: &pipeline_cfg.state_path,

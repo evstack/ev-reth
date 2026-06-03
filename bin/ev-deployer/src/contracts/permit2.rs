@@ -73,6 +73,14 @@ pub(crate) const HASHED_NAME: B256 = B256::new(hex!(
     "9ac997416e8ff9d2ff6bebeb7149f65cdae5e32e2b90440b566bb3044041d36a"
 ));
 
+/// The CREATE2 salt used by Uniswap to deploy Permit2 at its canonical address
+/// (`0x000000000022D473030F116dDEE9F6B43aC78BA3`) via Nick's factory.
+///
+/// Source: <https://github.com/Uniswap/permit2/blob/main/script/DeployPermit2.s.sol>
+pub(crate) const PERMIT2_CANONICAL_SALT: B256 = B256::new(hex!(
+    "0000000000000000000000000000000000000000d3af2663da51c10215000000"
+));
+
 /// Build the expected runtime bytecode for a Permit2 deployed at `address` on `chain_id`.
 /// Used by the deploy pipeline to verify on-chain bytecode matches.
 pub(crate) fn expected_runtime_bytecode(chain_id: u64, address: Address) -> Vec<u8> {

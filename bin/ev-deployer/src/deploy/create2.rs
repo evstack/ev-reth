@@ -63,6 +63,16 @@ mod tests {
     }
 
     #[test]
+    fn permit2_canonical_salt_produces_canonical_address() {
+        use crate::contracts::permit2::{PERMIT2_CANONICAL_SALT, PERMIT2_INITCODE};
+        let addr = compute_address(PERMIT2_CANONICAL_SALT, PERMIT2_INITCODE);
+        let expected: Address = "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+            .parse()
+            .unwrap();
+        assert_eq!(addr, expected);
+    }
+
+    #[test]
     fn factory_calldata_format() {
         let salt = B256::with_last_byte(0x42);
         let initcode = hex!("aabbcc");

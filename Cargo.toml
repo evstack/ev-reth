@@ -86,7 +86,7 @@ reth-tasks = { git = "https://github.com/paradigmxyz/reth.git", tag = "v2.2.0", 
 revm = { version = "38.0.0", default-features = false }
 
 # Alloy dependencies (aligned to reth v2.2.0)
-alloy = { version = "2.0.4", features = [
+alloy = { version = "2.0.5", features = [
   "contract",
   "providers",
   "provider-http",
@@ -105,13 +105,13 @@ alloy-rpc-types-engine = { version = "2.0.4", default-features = false }
 alloy-signer = { version = "2.0.4", default-features = false }
 alloy-signer-local = { version = "2.0.4", features = ["mnemonic"] }
 alloy-serde = { version = "2.0.4", default-features = false }
-alloy-primitives = { version = "1.5.6", default-features = false }
+alloy-primitives = { version = "1.6.0", default-features = false }
 alloy-consensus = { version = "2.0.4", default-features = false }
 alloy-consensus-any = { version = "2.0.4", default-features = false }
 alloy-rlp = { version = "0.3.13", default-features = false }
 alloy-genesis = { version = "2.0.4", default-features = false }
 alloy-rpc-types-txpool = { version = "2.0.4", default-features = false }
-alloy-sol-types = { version = "1.5.6", default-features = false }
+alloy-sol-types = { version = "1.6.0", default-features = false }
 
 # Utility dependencies
 bytes = "1.10.1"
