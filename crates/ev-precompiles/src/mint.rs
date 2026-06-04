@@ -144,16 +144,16 @@ impl MintPrecompile {
         caller: Address,
     ) -> MintPrecompileResult<()> {
         if caller == self.admin {
-            tracing::debug!(target: "mint_precompile", ?caller, "authorization granted: admin");
+            tracing::debug!(target: "mint_precompile", %caller, "authorization granted: admin");
             return Ok(());
         }
 
         let allowlisted = Self::is_allowlisted(internals, caller)?;
         if allowlisted {
-            tracing::debug!(target: "mint_precompile", ?caller, "authorization granted: allowlist");
+            tracing::debug!(target: "mint_precompile", %caller, "authorization granted: allowlist");
             Ok(())
         } else {
-            tracing::warn!(target: "mint_precompile", ?caller, "authorization denied: not admin and not allowlisted");
+            tracing::warn!(target: "mint_precompile", %caller, "authorization denied: not admin and not allowlisted");
             Err(MintPrecompileError::halt_static("unauthorized caller"))
         }
     }
@@ -171,7 +171,7 @@ impl MintPrecompile {
         let allowlisted = !raw_value.is_zero();
         tracing::debug!(
             target: "mint_precompile",
-            ?addr,
+            %addr,
             slot = %key,
             value = %raw_value,
             allowlisted,
@@ -215,7 +215,7 @@ impl Precompile for MintPrecompile {
 
         tracing::info!(
             target: "mint_precompile",
-            ?caller,
+            %caller,
             gas = gas_limit,
             calldata_len = data_len,
             "mint precompile call invoked"
