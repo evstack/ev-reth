@@ -80,7 +80,7 @@ impl PayloadValidator<EvolveEngineTypes> for EvolveEngineValidator {
                     .map_err(|e| NewPayloadError::Other(e.into()))
             }
             Err(err) => {
-                debug!(error = ?err, "payload validation error");
+                debug!(error = %err, "payload validation error");
 
                 // Check if this is an error we can bypass for evolve:
                 // 1. BlockHash mismatch - ev-reth computes different hash due to custom tx types
@@ -96,7 +96,7 @@ impl PayloadValidator<EvolveEngineTypes> for EvolveEngineValidator {
                         || is_unknown_tx_type_error(&err);
 
                 if should_bypass {
-                    info!(error = ?err, "bypassing validation error for ev-reth");
+                    info!(error = %err, "bypassing validation error for ev-reth");
                     // For evolve, we trust the payload builder - parse the block with EvNode support.
                     let ev_block = parse_evolve_payload(payload)?;
                     Span::current().record("block_hash", tracing::field::display(ev_block.hash()));
