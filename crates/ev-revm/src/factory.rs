@@ -936,7 +936,7 @@ mod tests {
         let state: EvmState = result_before.state;
         if let Some(account) = state.get(&PROPOSER_CONTROL_PRECOMPILE_ADDR) {
             assert!(
-                account.storage.get(&U256::ZERO).is_none(),
+                !account.storage.contains_key(&U256::ZERO),
                 "precompile must not write storage before activation height"
             );
         }

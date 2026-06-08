@@ -218,25 +218,24 @@ mod tests {
 
     const GAS_LIMIT: u64 = 1_000_000;
 
-    fn setup_context() -> (TestJournal, BlockEnv, CfgEnv, TxEnv) {
+    fn setup_context() -> (TestJournal, BlockEnv, CfgEnv) {
         let mut journal = Journal::new_with_inner(CacheDB::default(), JournalInner::new());
         journal.inner.set_spec_id(SpecId::PRAGUE);
         let block_env = BlockEnv::default();
         let cfg_env = CfgEnv::default();
-        let tx_env = TxEnv::default();
-        (journal, block_env, cfg_env, tx_env)
+        (journal, block_env, cfg_env)
     }
 
     fn run_call<'a>(
         journal: &'a mut TestJournal,
         block_env: &'a BlockEnv,
         cfg_env: &'a CfgEnv,
-        tx_env: &'a TxEnv,
         precompile: &ProposerControlPrecompile,
         caller: Address,
         data: &'a [u8],
         is_static: bool,
     ) -> PrecompileResult {
+        let tx_env = TxEnv::default();
         let input = PrecompileInput {
             data,
             gas: GAS_LIMIT,
@@ -246,7 +245,7 @@ mod tests {
             target_address: PROPOSER_CONTROL_PRECOMPILE_ADDR,
             is_static,
             bytecode_address: PROPOSER_CONTROL_PRECOMPILE_ADDR,
-            internals: EvmInternals::new(journal, block_env, cfg_env, tx_env),
+            internals: EvmInternals::new(journal, block_env, cfg_env, &tx_env),
         };
 
         precompile.call(input)
@@ -280,14 +279,13 @@ mod tests {
         let admin = address!("0x0000000000000000000000000000000000000aaa");
         let initial = B256::from([0xbb; 32]);
         let precompile = ProposerControlPrecompile::new(admin, initial);
-        let (mut journal, block_env, cfg_env, tx_env) = setup_context();
+        let (mut journal, block_env, cfg_env) = setup_context();
 
         let data = IProposerControl::nextProposerCall {}.abi_encode();
         let bytes = output_bytes(run_call(
             &mut journal,
             &block_env,
             &cfg_env,
-            &tx_env,
             &precompile,
             admin,
             &data,
@@ -304,14 +302,13 @@ mod tests {
         let initial = B256::from([0xbb; 32]);
         let next = B256::from([0xcc; 32]);
         let precompile = ProposerControlPrecompile::new(admin, initial);
-        let (mut journal, block_env, cfg_env, tx_env) = setup_context();
+        let (mut journal, block_env, cfg_env) = setup_context();
 
         let set_data = IProposerControl::setNextProposerCall { proposer: next }.abi_encode();
         let result = run_call(
             &mut journal,
             &block_env,
             &cfg_env,
-            &tx_env,
             &precompile,
             admin,
             &set_data,
@@ -324,7 +321,6 @@ mod tests {
             &mut journal,
             &block_env,
             &cfg_env,
-            &tx_env,
             &precompile,
             admin,
             &get_data,
@@ -341,14 +337,13 @@ mod tests {
         let caller = address!("0x0000000000000000000000000000000000000bbb");
         let next = B256::from([0xcc; 32]);
         let precompile = ProposerControlPrecompile::new(admin, B256::ZERO);
-        let (mut journal, block_env, cfg_env, tx_env) = setup_context();
+        let (mut journal, block_env, cfg_env) = setup_context();
 
         let data = IProposerControl::setNextProposerCall { proposer: next }.abi_encode();
         let result = run_call(
             &mut journal,
             &block_env,
             &cfg_env,
-            &tx_env,
             &precompile,
             caller,
             &data,
@@ -362,7 +357,7 @@ mod tests {
     fn rejects_zero_next_proposer() {
         let admin = address!("0x0000000000000000000000000000000000000aaa");
         let precompile = ProposerControlPrecompile::new(admin, B256::ZERO);
-        let (mut journal, block_env, cfg_env, tx_env) = setup_context();
+        let (mut journal, block_env, cfg_env) = setup_context();
 
         let data = IProposerControl::setNextProposerCall {
             proposer: B256::ZERO,
@@ -372,7 +367,6 @@ mod tests {
             &mut journal,
             &block_env,
             &cfg_env,
-            &tx_env,
             &precompile,
             admin,
             &data,
@@ -387,14 +381,13 @@ mod tests {
         let admin = address!("0x0000000000000000000000000000000000000aaa");
         let next = B256::from([0xbb; 32]);
         let precompile = ProposerControlPrecompile::new(admin, B256::ZERO);
-        let (mut journal, block_env, cfg_env, tx_env) = setup_context();
+        let (mut journal, block_env, cfg_env) = setup_context();
 
         let data = IProposerControl::setNextProposerCall { proposer: next }.abi_encode();
         let result = run_call(
             &mut journal,
             &block_env,
             &cfg_env,
-            &tx_env,
             &precompile,
             admin,
             &data,
@@ -408,14 +401,13 @@ mod tests {
     fn admin_getter_returns_configured_admin() {
         let admin = address!("0x0000000000000000000000000000000000000aaa");
         let precompile = ProposerControlPrecompile::new(admin, B256::ZERO);
-        let (mut journal, block_env, cfg_env, tx_env) = setup_context();
+        let (mut journal, block_env, cfg_env) = setup_context();
 
         let data = IProposerControl::adminCall {}.abi_encode();
         let bytes = output_bytes(run_call(
             &mut journal,
             &block_env,
             &cfg_env,
-            &tx_env,
             &precompile,
             Address::ZERO,
             &data,
