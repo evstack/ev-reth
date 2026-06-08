@@ -93,7 +93,7 @@ alloy = { version = "2.0.5", features = [
   "signers",
   "reqwest-rustls-tls",
 ], default-features = false }
-alloy-evm = { version = "0.34.0", default-features = false }
+alloy-evm = { version = "0.36.0", default-features = false }
 alloy-eips = { version = "2.0.4", default-features = false }
 alloy-network = { version = "2.0.4", default-features = false }
 alloy-provider = { version = "2.0.4", default-features = false }
