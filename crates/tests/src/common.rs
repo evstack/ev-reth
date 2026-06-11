@@ -51,6 +51,25 @@ pub fn create_test_chain_spec() -> Arc<ChainSpec> {
     create_test_chain_spec_with_extras(None, None, None)
 }
 
+/// Creates a reusable chain specification with Osaka and Amsterdam timestamp forks.
+pub fn create_test_chain_spec_with_osaka_amsterdam(
+    osaka_timestamp: u64,
+    amsterdam_timestamp: u64,
+) -> Arc<ChainSpec> {
+    let genesis: Genesis =
+        serde_json::from_str(include_str!("../assets/genesis.json")).expect("valid genesis");
+
+    Arc::new(
+        ChainSpecBuilder::default()
+            .chain(reth_chainspec::Chain::from_id(TEST_CHAIN_ID))
+            .genesis(genesis)
+            .prague_activated()
+            .with_osaka_at(osaka_timestamp)
+            .with_amsterdam_at(amsterdam_timestamp)
+            .build(),
+    )
+}
+
 /// Creates a reusable chain specification with an optional base fee sink address.
 pub fn create_test_chain_spec_with_base_fee_sink(base_fee_sink: Option<Address>) -> Arc<ChainSpec> {
     create_test_chain_spec_with_extras(base_fee_sink, None, None)

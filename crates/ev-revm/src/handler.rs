@@ -244,14 +244,11 @@ where
 
         let base_tx = evm.ctx().tx().clone();
         let tx_gas_limit = base_tx.gas_limit();
-        let (mut remaining_gas, mut reservoir) = init_and_floor_gas.initial_gas_and_reservoir(
-            tx_gas_limit,
-            evm.ctx().cfg().tx_gas_limit_cap(),
-            evm.ctx().cfg().is_amsterdam_eip8037_enabled(),
-        );
+        let (mut remaining_gas, mut reservoir) = init_and_floor_gas
+            .initial_gas_and_reservoir(tx_gas_limit, evm.ctx().cfg().tx_gas_limit_cap());
         let checkpoint = evm.ctx_mut().journal_mut().checkpoint();
         let mut total_refunded: i64 = 0;
-        let mut total_state_gas_spent: u64 = 0;
+        let mut total_state_gas_spent: i64 = 0;
         let mut last_result: Option<FrameResult> = None;
 
         // Execute each call in the batch sequentially.
@@ -323,9 +320,11 @@ where
     fn last_frame_result(
         &mut self,
         evm: &mut Self::Evm,
+        original_reservoir: u64,
         frame_result: &mut <FRAME as FrameTr>::FrameResult,
     ) -> Result<(), Self::Error> {
-        self.inner.last_frame_result(evm, frame_result)
+        self.inner
+            .last_frame_result(evm, original_reservoir, frame_result)
     }
 
     fn run_exec_loop(
@@ -520,7 +519,7 @@ fn validate_batch_initial_tx_gas<Tx: Transaction>(
     for call in calls {
         let call_gas =
             calculate_initial_tx_gas(spec, call.input.as_ref(), call.to.is_create(), 0, 0, 0);
-        initial_total_gas = initial_total_gas.saturating_add(call_gas.initial_total_gas);
+        initial_total_gas = initial_total_gas.saturating_add(call_gas.initial_total_gas());
         initial_state_gas = initial_state_gas.saturating_add(call_gas.initial_state_gas);
         floor_gas = floor_gas.saturating_add(call_gas.floor_gas);
     }
@@ -586,10 +585,11 @@ fn validate_batch_initial_tx_gas<Tx: Transaction>(
         }
     }
 
-    let mut gas =
-        InitialAndFloorGas::new_with_state_gas(initial_total_gas, initial_state_gas, floor_gas);
-    gas.eip7702_reservoir_refund = 0;
-    Ok(gas)
+    Ok(InitialAndFloorGas::new_with_state_gas(
+        initial_total_gas,
+        initial_state_gas,
+        floor_gas,
+    ))
 }
 
 fn finalize_batch_gas(
@@ -597,11 +597,11 @@ fn finalize_batch_gas(
     tx_gas_limit: u64,
     remaining_gas: u64,
     reservoir: u64,
-    state_gas_spent: u64,
+    state_gas_spent: i64,
     refund: i64,
 ) {
     let instruction_result = frame_result.interpreter_result().result;
-    let mut gas = Gas::new_spent(tx_gas_limit);
+    let mut gas = Gas::new_spent_with_reservoir(tx_gas_limit, reservoir);
     if instruction_result.is_ok_or_revert() {
         gas.erase_cost(remaining_gas);
     }
@@ -611,7 +611,7 @@ fn finalize_batch_gas(
         gas.set_reservoir(reservoir);
     } else {
         gas.set_state_gas_spent(0);
-        gas.set_reservoir(reservoir.saturating_add(state_gas_spent));
+        gas.set_reservoir(reservoir.saturating_add_signed(state_gas_spent));
     }
     *frame_result.gas_mut() = gas;
 }
@@ -872,12 +872,12 @@ mod tests {
                 .expect("batch gas should validate");
 
         let expected_initial = gas_call_1
-            .initial_total_gas
-            .saturating_add(gas_call_2.initial_total_gas)
+            .initial_total_gas()
+            .saturating_add(gas_call_2.initial_total_gas())
             .saturating_add(access_list_cost);
         let expected_floor = gas_call_1.floor_gas.saturating_add(gas_call_2.floor_gas);
 
-        assert_eq!(result.initial_total_gas, expected_initial);
+        assert_eq!(result.initial_total_gas(), expected_initial);
         assert_eq!(result.floor_gas, expected_floor);
     }
 
@@ -1538,7 +1538,7 @@ mod tests {
     }
 
     fn make_call_frame(gas_used: u64) -> FrameResult {
-        let gas = Gas::new_spent(gas_used);
+        let gas = Gas::new_spent_with_reservoir(gas_used, 0);
         let interpreter_result =
             InterpreterResult::new(InstructionResult::Return, Bytes::new(), gas);
         FrameResult::Call(CallOutcome::new(interpreter_result, 0..0))

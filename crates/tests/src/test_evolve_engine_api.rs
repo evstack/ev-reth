@@ -5,12 +5,14 @@
 //! happen against a live ev-reth node instead of mock fixtures.
 
 use crate::{
-    common::{create_test_chain_spec, e2e_test_tree_config},
+    common::{
+        create_test_chain_spec, create_test_chain_spec_with_osaka_amsterdam, e2e_test_tree_config,
+    },
     e2e_tests::build_block_with_transactions,
 };
 
 use alloy_consensus::{TxEnvelope, TxReceipt};
-use alloy_eips::eip2718::Encodable2718;
+use alloy_eips::{eip2718::Encodable2718, eip7685::RequestsOrHash};
 use alloy_network::eip2718::Decodable2718;
 use alloy_primitives::{Address, Bytes, TxKind, B256, U256};
 use alloy_rpc_types::{
@@ -24,7 +26,7 @@ use eyre::Result;
 use reth_e2e_test_utils::{
     testsuite::{
         setup::{NetworkSetup, Setup},
-        Environment,
+        BlockInfo, Environment,
     },
     transaction::TransactionTestContext,
     wallet::Wallet,
@@ -53,6 +55,319 @@ async fn make_transfer_batch(
         batch.push(envelope.encoded_2718().into());
     }
     batch
+}
+
+#[derive(Clone, Copy, Debug)]
+enum ScheduledEngineFork {
+    Prague,
+    Osaka,
+}
+
+struct ScheduledBlockInfo {
+    hash: B256,
+    number: u64,
+    timestamp: u64,
+}
+
+async fn build_empty_block_for_scheduled_fork(
+    env: &mut Environment<EvolveEngineTypes>,
+    parent_hash: B256,
+    timestamp: u64,
+    gas_limit: u64,
+    suggested_fee_recipient: Address,
+    fork: ScheduledEngineFork,
+) -> Result<ScheduledBlockInfo> {
+    let payload_attributes = EvolveEnginePayloadAttributes {
+        inner: PayloadAttributes {
+            timestamp,
+            prev_randao: B256::random(),
+            suggested_fee_recipient,
+            withdrawals: Some(vec![]),
+            parent_beacon_block_root: Some(B256::ZERO),
+            slot_number: None,
+        },
+        transactions: Some(Vec::new()),
+        gas_limit: Some(gas_limit),
+    };
+
+    let fork_choice = ForkchoiceState {
+        head_block_hash: parent_hash,
+        safe_block_hash: parent_hash,
+        finalized_block_hash: parent_hash,
+    };
+    let engine_client = env.node_clients[0].engine.http_client();
+    let fcu_response = EngineApiClient::<EvolveEngineTypes>::fork_choice_updated_v3(
+        &engine_client,
+        fork_choice,
+        Some(payload_attributes),
+    )
+    .await?;
+    let payload_id = fcu_response.payload_id.expect("payload id returned");
+
+    let (new_payload_status, block_info) = match fork {
+        ScheduledEngineFork::Prague => {
+            let payload_envelope =
+                EngineApiClient::<EvolveEngineTypes>::get_payload_v4(&engine_client, payload_id)
+                    .await?;
+            let execution_payload = payload_envelope.envelope_inner.execution_payload.clone();
+            let new_payload_status = EngineApiClient::<EvolveEngineTypes>::new_payload_v4(
+                &engine_client,
+                execution_payload.clone(),
+                vec![],
+                B256::ZERO,
+                RequestsOrHash::default(),
+            )
+            .await?;
+            let payload_inner = execution_payload.payload_inner.payload_inner;
+            assert!(
+                payload_inner.transactions.is_empty(),
+                "Prague payload should be empty"
+            );
+
+            (
+                new_payload_status,
+                ScheduledBlockInfo {
+                    hash: payload_inner.block_hash,
+                    number: payload_inner.block_number,
+                    timestamp: payload_inner.timestamp,
+                },
+            )
+        }
+        ScheduledEngineFork::Osaka => {
+            let payload_envelope =
+                EngineApiClient::<EvolveEngineTypes>::get_payload_v5(&engine_client, payload_id)
+                    .await?;
+            let execution_payload = payload_envelope.execution_payload.clone();
+            let new_payload_status = EngineApiClient::<EvolveEngineTypes>::new_payload_v4(
+                &engine_client,
+                execution_payload.clone(),
+                vec![],
+                B256::ZERO,
+                RequestsOrHash::default(),
+            )
+            .await?;
+            let payload_inner = execution_payload.payload_inner.payload_inner;
+            assert!(
+                payload_inner.transactions.is_empty(),
+                "Osaka payload should be empty"
+            );
+
+            (
+                new_payload_status,
+                ScheduledBlockInfo {
+                    hash: payload_inner.block_hash,
+                    number: payload_inner.block_number,
+                    timestamp: payload_inner.timestamp,
+                },
+            )
+        }
+    };
+
+    assert!(
+        matches!(new_payload_status.status, PayloadStatusEnum::Valid),
+        "expected {fork:?} payload to be valid, got {:?}",
+        new_payload_status.status
+    );
+
+    let canonical_fork_choice = ForkchoiceState {
+        head_block_hash: block_info.hash,
+        safe_block_hash: block_info.hash,
+        finalized_block_hash: block_info.hash,
+    };
+    EngineApiClient::<EvolveEngineTypes>::fork_choice_updated_v3(
+        &engine_client,
+        canonical_fork_choice,
+        None,
+    )
+    .await?;
+
+    env.set_current_block_info(BlockInfo {
+        hash: block_info.hash,
+        number: block_info.number,
+        timestamp: block_info.timestamp,
+    })?;
+    env.active_node_state_mut()?.latest_header_time = block_info.timestamp;
+
+    Ok(block_info)
+}
+
+async fn build_empty_block_with_pre_amsterdam_ev_node_flow(
+    env: &mut Environment<EvolveEngineTypes>,
+    parent_hash: B256,
+    timestamp: u64,
+    gas_limit: u64,
+    suggested_fee_recipient: Address,
+) -> Result<ScheduledBlockInfo> {
+    let payload_attributes = EvolveEnginePayloadAttributes {
+        inner: PayloadAttributes {
+            timestamp,
+            prev_randao: B256::random(),
+            suggested_fee_recipient,
+            withdrawals: Some(vec![]),
+            parent_beacon_block_root: Some(B256::ZERO),
+            slot_number: None,
+        },
+        transactions: Some(Vec::new()),
+        gas_limit: Some(gas_limit),
+    };
+
+    let fork_choice = ForkchoiceState {
+        head_block_hash: parent_hash,
+        safe_block_hash: parent_hash,
+        finalized_block_hash: parent_hash,
+    };
+    let engine_client = env.node_clients[0].engine.http_client();
+    let fcu_response = EngineApiClient::<EvolveEngineTypes>::fork_choice_updated_v3(
+        &engine_client,
+        fork_choice,
+        Some(payload_attributes),
+    )
+    .await?;
+    let payload_id = fcu_response.payload_id.expect("payload id returned");
+
+    let payload_envelope =
+        EngineApiClient::<EvolveEngineTypes>::get_payload_v5(&engine_client, payload_id).await?;
+    let execution_payload = payload_envelope.execution_payload.clone();
+    let new_payload_status = EngineApiClient::<EvolveEngineTypes>::new_payload_v4(
+        &engine_client,
+        execution_payload.clone(),
+        vec![],
+        B256::ZERO,
+        RequestsOrHash::default(),
+    )
+    .await?;
+    assert!(
+        matches!(new_payload_status.status, PayloadStatusEnum::Valid),
+        "expected pre-Amsterdam ev-node payload to be valid, got {:?}",
+        new_payload_status.status
+    );
+
+    let payload_inner = execution_payload.payload_inner.payload_inner;
+    Ok(ScheduledBlockInfo {
+        hash: payload_inner.block_hash,
+        number: payload_inner.block_number,
+        timestamp: payload_inner.timestamp,
+    })
+}
+
+/// Verifies Engine API payload versioning up to Osaka, then rejects current ev-node behavior at
+/// Amsterdam.
+///
+/// This intentionally models ev-node before the Amsterdam update: it still sends V3 forkchoice
+/// payload attributes without `slotNumber` and continues the Osaka-era payload flow at the
+/// Amsterdam timestamp. ev-reth should reject that leg until ev-node switches to
+/// `forkchoiceUpdatedV4`, `getPayloadV6`, `newPayloadV5`, and supplies `slotNumber`.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_e2e_engine_api_cycles_before_osaka_to_amsterdam_rejects_pre_amsterdam_ev_node_flow(
+) -> Result<()> {
+    reth_tracing::init_test_tracing();
+
+    const SECONDS_PER_SLOT: u64 = 12;
+    const OSAKA_TIMESTAMP: u64 = 24;
+    const AMSTERDAM_TIMESTAMP: u64 = 36;
+
+    let chain_spec =
+        create_test_chain_spec_with_osaka_amsterdam(OSAKA_TIMESTAMP, AMSTERDAM_TIMESTAMP);
+
+    let mut setup = Setup::<EvolveEngineTypes>::default()
+        .with_chain_spec(chain_spec)
+        .with_network(NetworkSetup::single_node())
+        .with_dev_mode(false)
+        .with_tree_config(e2e_test_tree_config());
+
+    let mut env = Environment::<EvolveEngineTypes>::default();
+    setup.apply::<EvolveNode>(&mut env).await?;
+
+    let parent_block = env.node_clients[0]
+        .get_block_by_number(BlockNumberOrTag::Latest)
+        .await?
+        .expect("genesis block should exist");
+
+    let mut parent_hash = parent_block.header.hash;
+    let mut expected_number = parent_block.header.inner.number;
+    let gas_limit = parent_block.header.inner.gas_limit;
+    let fee_recipient = Address::repeat_byte(0xAB);
+
+    let fork_steps = [
+        (
+            ScheduledEngineFork::Prague,
+            OSAKA_TIMESTAMP - SECONDS_PER_SLOT,
+        ),
+        (ScheduledEngineFork::Osaka, OSAKA_TIMESTAMP),
+    ];
+
+    for (fork, timestamp) in fork_steps {
+        let built_block = build_empty_block_for_scheduled_fork(
+            &mut env,
+            parent_hash,
+            timestamp,
+            gas_limit,
+            fee_recipient,
+            fork,
+        )
+        .await?;
+
+        expected_number += 1;
+        assert_eq!(
+            built_block.number, expected_number,
+            "{fork:?} block number should advance by one"
+        );
+        assert_eq!(
+            built_block.timestamp, timestamp,
+            "{fork:?} block timestamp should match the scheduled fork step"
+        );
+
+        let rpc_block = env.node_clients[0]
+            .get_block_by_number(BlockNumberOrTag::Number(built_block.number))
+            .await?
+            .expect("new block should be retrievable via RPC");
+        assert_eq!(
+            rpc_block.header.hash, built_block.hash,
+            "{fork:?} RPC block hash should match the Engine API payload"
+        );
+        assert_eq!(
+            rpc_block.header.inner.timestamp, timestamp,
+            "{fork:?} RPC block timestamp should match the Engine API payload"
+        );
+
+        parent_hash = built_block.hash;
+    }
+
+    let amsterdam_result = build_empty_block_with_pre_amsterdam_ev_node_flow(
+        &mut env,
+        parent_hash,
+        AMSTERDAM_TIMESTAMP,
+        gas_limit,
+        fee_recipient,
+    )
+    .await;
+    let Err(error) = amsterdam_result else {
+        panic!("pre-Amsterdam ev-node Engine API flow should fail once Amsterdam activates");
+    };
+    let error_text = format!("{error:?}");
+    assert!(
+        error_text.contains("Invalid payload attributes")
+            || error_text.contains("slot")
+            || error_text.contains("Amsterdam")
+            || error_text.contains("Unsupported fork"),
+        "unexpected Amsterdam rejection error: {error_text}"
+    );
+
+    let current_block_info = env
+        .current_block_info()
+        .expect("environment should track latest block info");
+    assert_eq!(
+        current_block_info.number, expected_number,
+        "environment should remain at the last accepted Osaka block"
+    );
+    assert_eq!(
+        current_block_info.hash, parent_hash,
+        "environment hash should match the last accepted Osaka head"
+    );
+
+    drop(setup);
+
+    Ok(())
 }
 
 /// Verifies that a forkchoice update including custom transactions succeeds against a live node.

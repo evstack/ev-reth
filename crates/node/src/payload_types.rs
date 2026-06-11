@@ -1,11 +1,13 @@
 use std::sync::Arc;
 
-use alloy_eips::{eip7685::Requests, eip7928::EMPTY_BLOCK_ACCESS_LIST_HASH};
+use alloy_eips::eip7685::Requests;
 use alloy_primitives::{Bytes, U256};
 use alloy_rpc_types_engine::{
-    BlobsBundleV1, BlobsBundleV2, ExecutionPayloadEnvelopeV2, ExecutionPayloadEnvelopeV3,
-    ExecutionPayloadEnvelopeV4, ExecutionPayloadEnvelopeV5, ExecutionPayloadEnvelopeV6,
-    ExecutionPayloadFieldV2, ExecutionPayloadV1, ExecutionPayloadV3, ExecutionPayloadV4, PayloadId,
+    BlobsBundleV1, BlobsBundleV2, CancunPayloadFields, ExecutionData, ExecutionPayload,
+    ExecutionPayloadEnvelopeV2, ExecutionPayloadEnvelopeV3, ExecutionPayloadEnvelopeV4,
+    ExecutionPayloadEnvelopeV5, ExecutionPayloadEnvelopeV6, ExecutionPayloadFieldV2,
+    ExecutionPayloadSidecar, ExecutionPayloadV1, ExecutionPayloadV3, ExecutionPayloadV4, PayloadId,
+    PraguePayloadFields,
 };
 use ev_primitives::EvPrimitives;
 use reth_payload_builder::BlobSidecars;
@@ -20,6 +22,7 @@ pub struct EvBuiltPayload {
     fees: U256,
     sidecars: BlobSidecars,
     requests: Option<Requests>,
+    block_access_list: Option<Bytes>,
 }
 
 /// Errors encountered when converting an EV payload into an engine API envelope.
@@ -31,6 +34,9 @@ pub enum EvBuiltPayloadConversionError {
     /// EIP-4844 sidecars are not valid for this envelope version.
     #[error("unexpected EIP-4844 sidecars for this payload")]
     UnexpectedEip4844Sidecars,
+    /// EIP-7928 block access list is required for this envelope version.
+    #[error("missing EIP-7928 block access list for this payload")]
+    MissingBlockAccessList,
 }
 
 impl EvBuiltPayload {
@@ -47,6 +53,7 @@ impl EvBuiltPayload {
             fees,
             requests,
             sidecars: BlobSidecars::Empty,
+            block_access_list: None,
         }
     }
 
@@ -73,6 +80,12 @@ impl EvBuiltPayload {
     /// Attaches the provided sidecars and returns the updated payload.
     pub fn with_sidecars(mut self, sidecars: impl Into<BlobSidecars>) -> Self {
         self.sidecars = sidecars.into();
+        self
+    }
+
+    /// Attaches the encoded EIP-7928 block access list to the payload.
+    pub fn with_block_access_list(mut self, block_access_list: Option<Bytes>) -> Self {
+        self.block_access_list = block_access_list;
         self
     }
 
@@ -215,9 +228,12 @@ impl TryFrom<EvBuiltPayload> for ExecutionPayloadEnvelopeV6 {
             fees,
             sidecars,
             requests,
+            block_access_list,
             ..
         } = value;
 
+        let block_access_list =
+            block_access_list.ok_or(EvBuiltPayloadConversionError::MissingBlockAccessList)?;
         let blobs_bundle = match sidecars {
             BlobSidecars::Empty => BlobsBundleV2::empty(),
             BlobSidecars::Eip7594(sidecars) => BlobsBundleV2::from(sidecars),
@@ -226,19 +242,16 @@ impl TryFrom<EvBuiltPayload> for ExecutionPayloadEnvelopeV6 {
             }
         };
 
-        let block_hash = block.hash();
-        let block_access_list = block.header().block_access_list_hash.map_or_else(
-            || Bytes::copy_from_slice(EMPTY_BLOCK_ACCESS_LIST_HASH.as_slice()),
-            |hash| Bytes::copy_from_slice(hash.as_slice()),
-        );
         let slot_number = block.header().slot_number.unwrap_or_default();
+        let block_hash = block.hash();
         let block = Arc::unwrap_or_clone(block).into_block();
 
-        let execution_payload = ExecutionPayloadV4 {
-            payload_inner: ExecutionPayloadV3::from_block_unchecked(block_hash, &block),
+        let mut execution_payload = ExecutionPayloadV4::from_block_unchecked_with_bal(
+            block_hash,
+            &block,
             block_access_list,
-            slot_number,
-        };
+        );
+        execution_payload.slot_number = slot_number;
 
         Ok(Self {
             execution_payload,
@@ -247,5 +260,46 @@ impl TryFrom<EvBuiltPayload> for ExecutionPayloadEnvelopeV6 {
             blobs_bundle,
             execution_requests: requests.unwrap_or_default(),
         })
+    }
+}
+
+impl From<EvBuiltPayload> for ExecutionData {
+    fn from(value: EvBuiltPayload) -> Self {
+        let EvBuiltPayload {
+            block,
+            requests,
+            block_access_list,
+            ..
+        } = value;
+        let block_hash = block.hash();
+        let block = Arc::unwrap_or_clone(block).into_block();
+        let (payload, sidecar) = ExecutionPayload::from_block_unchecked_with_extras(
+            block_hash,
+            &block,
+            block_access_list,
+        );
+
+        let sidecar = if let Some(requests) = requests {
+            block
+                .header
+                .parent_beacon_block_root
+                .map_or(sidecar, |parent_beacon_block_root| {
+                    ExecutionPayloadSidecar::v4(
+                        CancunPayloadFields {
+                            parent_beacon_block_root,
+                            versioned_hashes: block
+                                .body
+                                .blob_versioned_hashes_iter()
+                                .copied()
+                                .collect(),
+                        },
+                        PraguePayloadFields::new(requests),
+                    )
+                })
+        } else {
+            sidecar
+        };
+
+        ExecutionData::new(payload, sidecar)
     }
 }
