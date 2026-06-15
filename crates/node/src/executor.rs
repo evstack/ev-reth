@@ -411,7 +411,7 @@ where
         .map(|(sink, activation)| {
             info!(
                 target = "ev-reth::executor",
-                fee_sink = ?sink,
+                fee_sink = %sink,
                 activation_height = activation,
                 "Base fee redirect enabled"
             );
