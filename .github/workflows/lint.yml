@@ -9,6 +9,9 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_DEV_DEBUG: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
 
 jobs:
   clippy-binaries:
@@ -21,8 +24,6 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
-        with:
-          cache-on-failure: true
       - run: cargo clippy --bin ev-reth --workspace --features "jemalloc"
         env:
           RUSTFLAGS: -D warnings
@@ -37,8 +38,6 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
-        with:
-          cache-on-failure: true
       - run: cargo clippy --workspace --examples --tests --benches --all-features
         env:
           RUSTFLAGS: -D warnings
@@ -51,8 +50,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@cargo-hack
       - uses: Swatinem/rust-cache@v2
-        with:
-          cache-on-failure: true
       - run: cargo hack check
 
   docs:
@@ -65,8 +62,6 @@ jobs:
         with:
           toolchain: nightly-2026-02-21
       - uses: Swatinem/rust-cache@v2
-        with:
-          cache-on-failure: true
       - run: cargo doc --document-private-items --no-deps
         env:
           # Keep in sync with ./book.yml:jobs.build
