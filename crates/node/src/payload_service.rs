@@ -176,8 +176,6 @@ where
         let BuildArguments {
             cached_reads: _,
             config,
-            cancel: _,
-            best_payload: _,
             ..
         } = args;
         let PayloadConfig {

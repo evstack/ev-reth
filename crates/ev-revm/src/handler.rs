@@ -592,7 +592,7 @@ fn validate_batch_initial_tx_gas<Tx: Transaction>(
     ))
 }
 
-fn finalize_batch_gas(
+const fn finalize_batch_gas(
     frame_result: &mut FrameResult,
     tx_gas_limit: u64,
     remaining_gas: u64,

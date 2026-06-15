@@ -192,7 +192,7 @@ async fn build_empty_block_for_scheduled_fork(
 }
 
 async fn build_empty_block_with_pre_amsterdam_ev_node_flow(
-    env: &mut Environment<EvolveEngineTypes>,
+    env: &Environment<EvolveEngineTypes>,
     parent_hash: B256,
     timestamp: u64,
     gas_limit: u64,
@@ -334,7 +334,7 @@ async fn test_e2e_engine_api_cycles_before_osaka_to_amsterdam_rejects_pre_amster
     }
 
     let amsterdam_result = build_empty_block_with_pre_amsterdam_ev_node_flow(
-        &mut env,
+        &env,
         parent_hash,
         AMSTERDAM_TIMESTAMP,
         gas_limit,

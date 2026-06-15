@@ -300,6 +300,6 @@ impl From<EvBuiltPayload> for ExecutionData {
             sidecar
         };
 
-        ExecutionData::new(payload, sidecar)
+        Self::new(payload, sidecar)
     }
 }
