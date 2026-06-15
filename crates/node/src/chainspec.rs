@@ -7,9 +7,11 @@ use reth_cli::chainspec::{parse_genesis, ChainSpecParser};
 use reth_primitives_traits::SealedHeader;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 use tracing::{debug, info, warn};
 
 /// Chains supported by ev-reth. First value should be used as the default.
