@@ -83,7 +83,7 @@ reth-testing-utils = { git = "https://github.com/paradigmxyz/reth.git", tag = "v
 reth-db = { git = "https://github.com/paradigmxyz/reth.git", tag = "v2.2.0", default-features = false }
 reth-tasks = { git = "https://github.com/paradigmxyz/reth.git", tag = "v2.2.0", default-features = false }
 
-revm = { version = "38.0.0", default-features = false }
+revm = { version = "41.0.0", default-features = false }
 
 # Alloy dependencies (aligned to reth v2.2.0)
 alloy = { version = "2.0.5", features = [
