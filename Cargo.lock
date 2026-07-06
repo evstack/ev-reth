@@ -1038,7 +1038,7 @@ version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40c48f72fd53cd289104fc64099abca73db4166ad86ea0b4341abe65af83dadc"
 dependencies = [
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1049,7 +1049,7 @@ checksum = "291e6a250ff86cd4a820112fb8898808a366d8f9f58ce16d1f538353ad55747d"
 dependencies = [
  "anstyle",
  "once_cell_polyfill",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2556,9 +2556,9 @@ dependencies = [
 
 [[package]]
 name = "dashmap"
-version = "6.1.0"
+version = "6.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5041cc499144891f3790297212f32a74fb938e5136a14943f338ef9e0ae276cf"
+checksum = "e6361d5c062261c78a176addb82d4c821ae42bed6089de0e12603cd25de2059c"
 dependencies = [
  "arbitrary",
  "cfg-if",
@@ -2593,7 +2593,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7ab67060fc6b8ef687992d439ca0fa36e7ed17e9a0b16b25b601e8757df720de"
 dependencies = [
  "data-encoding",
- "syn 1.0.109",
+ "syn 2.0.117",
 ]
 
 [[package]]
@@ -3009,7 +3009,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3192,7 +3192,7 @@ dependencies = [
  "reth-rpc-eth-api",
  "reth-rpc-eth-types",
  "reth-storage-api",
- "reth-tasks",
+ "reth-tasks 2.3.0",
  "reth-testing-utils",
  "reth-tracing",
  "reth-transaction-pool",
@@ -3345,7 +3345,7 @@ dependencies = [
  "reth-provider",
  "reth-revm",
  "reth-rpc-api",
- "reth-tasks",
+ "reth-tasks 2.3.0",
  "reth-testing-utils",
  "reth-tracing",
  "reth-transaction-pool",
@@ -3734,7 +3734,7 @@ dependencies = [
  "libc",
  "log",
  "rustversion",
- "windows-link 0.1.3",
+ "windows-link 0.2.1",
  "windows-result 0.4.1",
 ]
 
@@ -5555,7 +5555,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6988,14 +6988,14 @@ dependencies = [
  "metrics",
  "reth-chain-state",
  "reth-execution-cache",
- "reth-metrics",
+ "reth-metrics 2.2.0",
  "reth-payload-builder",
  "reth-payload-builder-primitives",
  "reth-payload-primitives",
  "reth-primitives-traits",
  "reth-revm",
  "reth-storage-api",
- "reth-tasks",
+ "reth-tasks 2.2.0",
  "reth-trie-parallel",
  "serde",
  "tokio",
@@ -7022,7 +7022,7 @@ dependencies = [
  "reth-errors",
  "reth-ethereum-primitives",
  "reth-execution-types",
- "reth-metrics",
+ "reth-metrics 2.2.0",
  "reth-primitives-traits",
  "reth-storage-api",
  "reth-trie",
@@ -7139,7 +7139,7 @@ dependencies = [
  "reth-static-file",
  "reth-static-file-types",
  "reth-storage-api",
- "reth-tasks",
+ "reth-tasks 2.2.0",
  "reth-trie",
  "reth-trie-common",
  "reth-trie-db",
@@ -7160,7 +7160,7 @@ name = "reth-cli-runner"
 version = "2.2.0"
 source = "git+https://github.com/paradigmxyz/reth.git?tag=v2.2.0#88505c7fcbfdebfd3b56d88c86b62e950043c6c4"
 dependencies = [
- "reth-tasks",
+ "reth-tasks 2.2.0",
  "tokio",
  "tracing",
 ]
@@ -7302,7 +7302,7 @@ dependencies = [
  "reth-db-api",
  "reth-fs-util",
  "reth-libmdbx",
- "reth-metrics",
+ "reth-metrics 2.2.0",
  "reth-nippy-jar",
  "reth-static-file-types",
  "reth-storage-errors",
@@ -7427,7 +7427,7 @@ dependencies = [
  "rand 0.9.3",
  "reth-chainspec",
  "reth-ethereum-forks",
- "reth-metrics",
+ "reth-metrics 2.2.0",
  "reth-network-peers",
  "secp256k1 0.30.0",
  "thiserror 2.0.18",
@@ -7478,13 +7478,13 @@ dependencies = [
  "reth-config",
  "reth-consensus",
  "reth-ethereum-primitives",
- "reth-metrics",
+ "reth-metrics 2.2.0",
  "reth-network-p2p",
  "reth-network-peers",
  "reth-primitives-traits",
  "reth-provider",
  "reth-storage-api",
- "reth-tasks",
+ "reth-tasks 2.2.0",
  "reth-testing-utils",
  "tempfile",
  "thiserror 2.0.18",
@@ -7539,7 +7539,7 @@ dependencies = [
  "reth-rpc-eth-api",
  "reth-rpc-server-types",
  "reth-stages-types",
- "reth-tasks",
+ "reth-tasks 2.2.0",
  "reth-tokio-util",
  "reth-tracing",
  "revm",
@@ -7657,7 +7657,7 @@ dependencies = [
  "reth-evm",
  "reth-execution-cache",
  "reth-execution-types",
- "reth-metrics",
+ "reth-metrics 2.2.0",
  "reth-network-p2p",
  "reth-payload-builder",
  "reth-payload-primitives",
@@ -7669,7 +7669,7 @@ dependencies = [
  "reth-stages",
  "reth-stages-api",
  "reth-static-file",
- "reth-tasks",
+ "reth-tasks 2.2.0",
  "reth-tracing",
  "reth-trie",
  "reth-trie-common",
@@ -7794,7 +7794,7 @@ dependencies = [
  "reth-ecies",
  "reth-eth-wire-types",
  "reth-ethereum-forks",
- "reth-metrics",
+ "reth-metrics 2.2.0",
  "reth-network-peers",
  "reth-primitives-traits",
  "serde",
@@ -7865,7 +7865,7 @@ dependencies = [
  "reth-rpc-builder",
  "reth-rpc-eth-types",
  "reth-storage-api",
- "reth-tasks",
+ "reth-tasks 2.2.0",
  "reth-transaction-pool",
  "reth-trie",
  "reth-trie-db",
@@ -7889,7 +7889,7 @@ dependencies = [
  "reth-node-ethereum",
  "reth-node-metrics",
  "reth-rpc-server-types",
- "reth-tasks",
+ "reth-tasks 2.2.0",
  "reth-tracing",
  "tracing",
 ]
@@ -8010,7 +8010,7 @@ dependencies = [
  "rayon",
  "reth-execution-errors",
  "reth-execution-types",
- "reth-metrics",
+ "reth-metrics 2.2.0",
  "reth-primitives-traits",
  "reth-storage-api",
  "reth-storage-errors",
@@ -8048,7 +8048,7 @@ dependencies = [
  "metrics",
  "parking_lot",
  "reth-errors",
- "reth-metrics",
+ "reth-metrics 2.2.0",
  "reth-primitives-traits",
  "reth-provider",
  "reth-revm",
@@ -8108,7 +8108,7 @@ dependencies = [
  "reth-evm",
  "reth-exex-types",
  "reth-fs-util",
- "reth-metrics",
+ "reth-metrics 2.2.0",
  "reth-node-api",
  "reth-node-core",
  "reth-payload-builder",
@@ -8117,7 +8117,7 @@ dependencies = [
  "reth-prune-types",
  "reth-revm",
  "reth-stages-api",
- "reth-tasks",
+ "reth-tasks 2.2.0",
  "reth-tracing",
  "rmp-serde",
  "thiserror 2.0.18",
@@ -8238,6 +8238,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "reth-metrics"
+version = "2.3.0"
+source = "git+https://github.com/paradigmxyz/reth.git?tag=v2.3.0#9384bc53d8c0c77e59cac83fdaaf3b372c6d2216"
+dependencies = [
+ "metrics",
+ "metrics-derive",
+]
+
+[[package]]
 name = "reth-net-banlist"
 version = "2.2.0"
 source = "git+https://github.com/paradigmxyz/reth.git?tag=v2.2.0#88505c7fcbfdebfd3b56d88c86b62e950043c6c4"
@@ -8294,7 +8303,7 @@ dependencies = [
  "reth-ethereum-primitives",
  "reth-evm-ethereum",
  "reth-fs-util",
- "reth-metrics",
+ "reth-metrics 2.2.0",
  "reth-net-banlist",
  "reth-network-api",
  "reth-network-p2p",
@@ -8302,7 +8311,7 @@ dependencies = [
  "reth-network-types",
  "reth-primitives-traits",
  "reth-storage-api",
- "reth-tasks",
+ "reth-tasks 2.2.0",
  "reth-tokio-util",
  "reth-transaction-pool",
  "rustc-hash",
@@ -8431,7 +8440,7 @@ dependencies = [
  "reth-payload-builder-primitives",
  "reth-payload-primitives",
  "reth-provider",
- "reth-tasks",
+ "reth-tasks 2.2.0",
  "reth-tokio-util",
  "reth-transaction-pool",
 ]
@@ -8492,7 +8501,7 @@ dependencies = [
  "reth-rpc-layer",
  "reth-stages",
  "reth-static-file",
- "reth-tasks",
+ "reth-tasks 2.2.0",
  "reth-tokio-util",
  "reth-tracing",
  "reth-transaction-pool",
@@ -8544,7 +8553,7 @@ dependencies = [
  "reth-stages-types",
  "reth-storage-api",
  "reth-storage-errors",
- "reth-tasks",
+ "reth-tasks 2.2.0",
  "reth-tracing",
  "reth-tracing-otlp",
  "reth-transaction-pool",
@@ -8661,8 +8670,8 @@ dependencies = [
  "metrics-util",
  "procfs",
  "reqwest 0.13.2",
- "reth-metrics",
- "reth-tasks",
+ "reth-metrics 2.2.0",
+ "reth-tasks 2.2.0",
  "tikv-jemalloc-ctl",
  "tokio",
  "tower",
@@ -8695,7 +8704,7 @@ dependencies = [
  "reth-chain-state",
  "reth-ethereum-engine-primitives",
  "reth-execution-cache",
- "reth-metrics",
+ "reth-metrics 2.2.0",
  "reth-payload-builder-primitives",
  "reth-payload-primitives",
  "reth-primitives-traits",
@@ -8810,7 +8819,7 @@ dependencies = [
  "reth-ethereum-primitives",
  "reth-execution-types",
  "reth-fs-util",
- "reth-metrics",
+ "reth-metrics 2.2.0",
  "reth-nippy-jar",
  "reth-node-types",
  "reth-primitives-traits",
@@ -8819,7 +8828,7 @@ dependencies = [
  "reth-static-file-types",
  "reth-storage-api",
  "reth-storage-errors",
- "reth-tasks",
+ "reth-tasks 2.2.0",
  "reth-trie",
  "reth-trie-db",
  "revm-database",
@@ -8845,7 +8854,7 @@ dependencies = [
  "reth-db-api",
  "reth-errors",
  "reth-exex-types",
- "reth-metrics",
+ "reth-metrics 2.2.0",
  "reth-primitives-traits",
  "reth-provider",
  "reth-prune-types",
@@ -8936,7 +8945,7 @@ dependencies = [
  "reth-evm",
  "reth-evm-ethereum",
  "reth-execution-types",
- "reth-metrics",
+ "reth-metrics 2.2.0",
  "reth-network-api",
  "reth-network-peers",
  "reth-network-types",
@@ -8950,7 +8959,7 @@ dependencies = [
  "reth-rpc-eth-types",
  "reth-rpc-server-types",
  "reth-storage-api",
- "reth-tasks",
+ "reth-tasks 2.2.0",
  "reth-tracing",
  "reth-transaction-pool",
  "reth-trie-common",
@@ -9015,7 +9024,7 @@ dependencies = [
  "reth-engine-primitives",
  "reth-evm",
  "reth-ipc",
- "reth-metrics",
+ "reth-metrics 2.2.0",
  "reth-network-api",
  "reth-node-core",
  "reth-payload-primitives",
@@ -9028,7 +9037,7 @@ dependencies = [
  "reth-rpc-layer",
  "reth-rpc-server-types",
  "reth-storage-api",
- "reth-tasks",
+ "reth-tasks 2.2.0",
  "reth-tokio-util",
  "reth-transaction-pool",
  "serde",
@@ -9075,7 +9084,7 @@ dependencies = [
  "metrics",
  "reth-chainspec",
  "reth-engine-primitives",
- "reth-metrics",
+ "reth-metrics 2.2.0",
  "reth-network-api",
  "reth-payload-builder",
  "reth-payload-builder-primitives",
@@ -9083,7 +9092,7 @@ dependencies = [
  "reth-primitives-traits",
  "reth-rpc-api",
  "reth-storage-api",
- "reth-tasks",
+ "reth-tasks 2.2.0",
  "reth-transaction-pool",
  "serde",
  "thiserror 2.0.18",
@@ -9127,7 +9136,7 @@ dependencies = [
  "reth-rpc-eth-types",
  "reth-rpc-server-types",
  "reth-storage-api",
- "reth-tasks",
+ "reth-tasks 2.2.0",
  "reth-transaction-pool",
  "reth-trie-common",
  "revm",
@@ -9165,13 +9174,13 @@ dependencies = [
  "reth-ethereum-primitives",
  "reth-evm",
  "reth-execution-types",
- "reth-metrics",
+ "reth-metrics 2.2.0",
  "reth-primitives-traits",
  "reth-revm",
  "reth-rpc-convert",
  "reth-rpc-server-types",
  "reth-storage-api",
- "reth-tasks",
+ "reth-tasks 2.2.0",
  "reth-transaction-pool",
  "reth-trie",
  "revm",
@@ -9272,7 +9281,7 @@ dependencies = [
  "reth-static-file-types",
  "reth-storage-api",
  "reth-storage-errors",
- "reth-tasks",
+ "reth-tasks 2.2.0",
  "reth-testing-utils",
  "reth-trie",
  "reth-trie-db",
@@ -9296,7 +9305,7 @@ dependencies = [
  "reth-codecs",
  "reth-consensus",
  "reth-errors",
- "reth-metrics",
+ "reth-metrics 2.2.0",
  "reth-network-p2p",
  "reth-primitives-traits",
  "reth-provider",
@@ -9414,7 +9423,25 @@ dependencies = [
  "parking_lot",
  "pin-project",
  "rayon",
- "reth-metrics",
+ "reth-metrics 2.2.0",
+ "thiserror 2.0.18",
+ "thread-priority",
+ "tokio",
+ "tracing",
+ "tracing-futures",
+]
+
+[[package]]
+name = "reth-tasks"
+version = "2.3.0"
+source = "git+https://github.com/paradigmxyz/reth.git?tag=v2.3.0#9384bc53d8c0c77e59cac83fdaaf3b372c6d2216"
+dependencies = [
+ "dashmap",
+ "futures-util",
+ "libc",
+ "metrics",
+ "parking_lot",
+ "reth-metrics 2.3.0",
  "thiserror 2.0.18",
  "thread-priority",
  "tokio",
@@ -9511,10 +9538,10 @@ dependencies = [
  "reth-evm-ethereum",
  "reth-execution-types",
  "reth-fs-util",
- "reth-metrics",
+ "reth-metrics 2.2.0",
  "reth-primitives-traits",
  "reth-storage-api",
- "reth-tasks",
+ "reth-tasks 2.2.0",
  "revm",
  "revm-interpreter",
  "revm-primitives",
@@ -9544,7 +9571,7 @@ dependencies = [
  "metrics",
  "parking_lot",
  "reth-execution-errors",
- "reth-metrics",
+ "reth-metrics 2.2.0",
  "reth-primitives-traits",
  "reth-stages-types",
  "reth-storage-errors",
@@ -9592,7 +9619,7 @@ dependencies = [
  "parking_lot",
  "reth-db-api",
  "reth-execution-errors",
- "reth-metrics",
+ "reth-metrics 2.2.0",
  "reth-primitives-traits",
  "reth-stages-types",
  "reth-storage-api",
@@ -9618,11 +9645,11 @@ dependencies = [
  "metrics",
  "rayon",
  "reth-execution-errors",
- "reth-metrics",
+ "reth-metrics 2.2.0",
  "reth-primitives-traits",
  "reth-provider",
  "reth-storage-errors",
- "reth-tasks",
+ "reth-tasks 2.2.0",
  "reth-trie",
  "reth-trie-sparse",
  "revm-state",
@@ -9641,7 +9668,7 @@ dependencies = [
  "metrics",
  "rayon",
  "reth-execution-errors",
- "reth-metrics",
+ "reth-metrics 2.2.0",
  "reth-primitives-traits",
  "reth-trie-common",
  "serde",
@@ -10067,7 +10094,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -10147,7 +10174,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs 1.0.6",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -10667,7 +10694,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3a766e1110788c36f4fa1c2b71b387a7815aa65f88ce0229841826633d93723e"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -10842,7 +10869,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -12162,7 +12189,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
