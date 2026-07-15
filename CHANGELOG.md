@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Lightweight custom chainspec mode (`--chain light:<path-or-json>`) for warm datadir restarts without reparsing large genesis allocs, including automatic `.light.json` sidecar generation from full file-based genesis specs ([#253](https://github.com/evstack/ev-reth/pull/253))
+
+### Changed
+
+- Upgraded Reth from v2.0.0 to v2.2.0, with matching Alloy 2.x, revm 38.0.0, alloy-evm 0.34.0, reth-codecs 0.3.1, Tokio 1.52, Clap 4.6, and related dependency updates ([#223](https://github.com/evstack/ev-reth/pull/223), [#236](https://github.com/evstack/ev-reth/pull/236), [#250](https://github.com/evstack/ev-reth/pull/250))
+- Updated Engine API payload handling for Amsterdam-era fields, including payload attribute slot numbers and V6 execution payload block access list / slot number propagation.
+- Updated EvNode batch transaction gas validation and block execution accounting for Amsterdam/EIP-8037 state gas and transaction gas-limit cap semantics.
+- Changed FeeVault from Hyperlane `HypNativeMinter` bridging to a simpler native-token splitter: `distribute()` now sends the bridge share to `bridgeRecipient` and the remainder to `otherRecipient`; storage layout, constructor args, events, scripts, and docs were updated accordingly.
+- Split `ev-deployer init` into explicit mode subcommands; use `ev-deployer init genesis` or `ev-deployer init deploy` instead of the old single `init` command.
+- `ev-deployer` config validation now rejects duplicate deployment addresses and requires addresses only for genesis mode, while deploy mode computes addresses from CREATE2 inputs.
+
+### Fixed
+
+- Tracing fields now use display formatting where appropriate, improving structured logs for addresses, hashes, gas limits, and errors ([#255](https://github.com/evstack/ev-reth/pull/255))
+- Native minting precompile authorization, ABI decode, balance overflow, and insufficient-balance failures now halt the precompile call instead of surfacing as fatal precompile errors
+- Preallocated block receipt storage from the transaction-count hint to reduce avoidable allocations during block execution
+- Preserved existing lightweight chainspec sidecars when a new full genesis produces a different genesis hash, writing a hash-specific sidecar instead of overwriting the old one ([#253](https://github.com/evstack/ev-reth/pull/253))
+
+## [0.4.0] - 2026-04-17
+
 > **Note:** v0.3.0 was never released (only `v0.3.0-beta` shipped). Changes originally staged under v0.3.0 are rolled into v0.4.0 below so the upgrade path is v0.2.x → v0.4.0.
 
 ### Added
