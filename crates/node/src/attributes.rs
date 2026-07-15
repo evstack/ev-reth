@@ -44,6 +44,10 @@ impl PayloadAttributes for EvolveEnginePayloadAttributes {
     fn slot_number(&self) -> Option<u64> {
         self.inner.slot_number()
     }
+
+    fn target_gas_limit(&self) -> Option<u64> {
+        self.inner.target_gas_limit()
+    }
 }
 
 impl From<RpcPayloadAttributes> for EvolveEnginePayloadAttributes {
@@ -85,6 +89,7 @@ impl PayloadAttributesBuilder<EvolveEnginePayloadAttributes>
                 .chain_spec
                 .is_amsterdam_active_at_timestamp(timestamp)
                 .then_some(0),
+            target_gas_limit: None,
         };
 
         EvolveEnginePayloadAttributes {

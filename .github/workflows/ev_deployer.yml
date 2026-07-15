@@ -40,6 +40,8 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
@@ -56,6 +58,8 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
 
       - name: Run unit tests
         run: cargo test -p ev-deployer
@@ -71,6 +75,8 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1

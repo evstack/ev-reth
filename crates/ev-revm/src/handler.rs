@@ -585,8 +585,10 @@ fn validate_batch_initial_tx_gas<Tx: Transaction>(
         }
     }
 
+    // `new_with_state_gas` takes the regular (state-exclusive) portion as its
+    // first argument; `initial_total_gas` accumulated above includes state gas.
     Ok(InitialAndFloorGas::new_with_state_gas(
-        initial_total_gas,
+        initial_total_gas.saturating_sub(initial_state_gas),
         initial_state_gas,
         floor_gas,
     ))
@@ -879,6 +881,63 @@ mod tests {
 
         assert_eq!(result.initial_total_gas(), expected_initial);
         assert_eq!(result.floor_gas, expected_floor);
+    }
+
+    #[test]
+    fn batch_initial_gas_does_not_double_count_state_gas() {
+        let tx_env = TxEnv {
+            gas_limit: 1_000_000,
+            tx_type: TransactionType::Eip1559.into(),
+            ..Default::default()
+        };
+
+        let calls = vec![
+            Call {
+                to: TxKind::Create,
+                value: U256::ZERO,
+                input: Bytes::from(vec![0x60, 0x00, 0x60, 0x00, 0xf3]),
+            },
+            Call {
+                to: TxKind::Call(address!("0x00000000000000000000000000000000000000bb")),
+                value: U256::ZERO,
+                input: Bytes::new(),
+            },
+        ];
+
+        let gas_create =
+            calculate_initial_tx_gas(SpecId::AMSTERDAM, calls[0].input.as_ref(), true, 0, 0, 0);
+        let gas_call =
+            calculate_initial_tx_gas(SpecId::AMSTERDAM, calls[1].input.as_ref(), false, 0, 0, 0);
+        assert!(
+            gas_create.initial_state_gas > 0,
+            "CREATE under EIP-8037 must carry state gas for this test to be meaningful"
+        );
+
+        let result = validate_batch_initial_tx_gas(
+            &tx_env,
+            &calls,
+            SpecId::AMSTERDAM,
+            false,
+            true,
+            u64::MAX,
+        )
+        .expect("batch gas should validate");
+
+        let expected_state = gas_create
+            .initial_state_gas
+            .saturating_add(gas_call.initial_state_gas);
+        let expected_total = gas_create
+            .initial_total_gas()
+            .saturating_add(gas_call.initial_total_gas());
+
+        assert_eq!(result.initial_state_gas, expected_state);
+        // Regression: state gas must not be counted in both the regular and
+        // state components (initial_total_gas() = regular + state).
+        assert_eq!(result.initial_total_gas(), expected_total);
+        assert_eq!(
+            result.initial_regular_gas(),
+            expected_total - expected_state
+        );
     }
 
     #[test]

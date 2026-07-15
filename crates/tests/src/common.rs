@@ -123,10 +123,11 @@ pub fn create_test_chain_spec_with_deploy_allowlist(
 
 /// Returns a deterministic engine tree config for e2e tests.
 ///
-/// This avoids a known debug-mode panic in upstream reth where deferred trie
-/// data can be synchronously awaited from a rayon proof worker thread.
+/// Forces the synchronous state-root fallback path to avoid a known
+/// debug-mode panic in upstream reth where deferred trie data can be
+/// synchronously awaited from a rayon proof worker thread.
 pub fn e2e_test_tree_config() -> TreeConfig {
-    TreeConfig::default().with_legacy_state_root(true)
+    TreeConfig::default().with_state_root_fallback(true)
 }
 
 /// Shared test fixture for evolve payload builder tests

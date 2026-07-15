@@ -34,6 +34,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@nextest
       - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
       - name: Run tests (unit/integration only)
         run: |
           cargo nextest run \
