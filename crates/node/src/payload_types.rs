@@ -279,6 +279,13 @@ impl From<EvBuiltPayload> for ExecutionData {
             block_access_list,
         );
 
+        // Requests imply a post-Prague payload, which always carries a parent
+        // beacon block root; without one the requests cannot be attached to
+        // the sidecar and would be silently dropped.
+        debug_assert!(
+            requests.is_none() || block.header.parent_beacon_block_root.is_some(),
+            "payload has EIP-7685 requests but no parent beacon block root"
+        );
         let sidecar = if let Some(requests) = requests {
             block
                 .header
