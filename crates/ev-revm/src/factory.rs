@@ -6,6 +6,7 @@ use crate::{
 use alloy_evm::{
     eth::{EthBlockExecutorFactory, EthEvmContext, EthEvmFactory},
     precompiles::{DynPrecompile, Precompile, PrecompilesMap},
+    revm::context::DBErrorMarker,
     Database, EvmEnv, EvmFactory,
 };
 use alloy_primitives::{Address, U256};
@@ -177,8 +178,7 @@ impl EvmFactory for EvEvmFactory<EthEvmFactory> {
         EvEvm<EthEvmContext<DB>, I, PrecompilesMap>;
     type Context<DB: Database> = EthEvmContext<DB>;
     type Tx = TxEnv;
-    type Error<DBError: std::error::Error + Send + Sync + 'static> =
-        EVMError<DBError, InvalidTransaction>;
+    type Error<DBError: DBErrorMarker> = EVMError<DBError, InvalidTransaction>;
     type HaltReason = HaltReason;
     type Spec = SpecId;
     type BlockEnv = BlockEnv;
@@ -351,8 +351,7 @@ impl EvmFactory for EvTxEvmFactory {
         EvEvm<EvEvmContext<DB>, I, PrecompilesMap>;
     type Context<DB: Database> = EvEvmContext<DB>;
     type Tx = EvTxEnv;
-    type Error<DBError: std::error::Error + Send + Sync + 'static> =
-        EVMError<DBError, InvalidTransaction>;
+    type Error<DBError: DBErrorMarker> = EVMError<DBError, InvalidTransaction>;
     type HaltReason = HaltReason;
     type Spec = SpecId;
     type BlockEnv = BlockEnv;

@@ -1,14 +1,13 @@
 use core::cmp::min;
-use std::{borrow::Cow, boxed::Box, vec::Vec};
+use std::vec::Vec;
 
 use alloy_consensus::{Transaction, TransactionEnvelope, TxReceipt};
 use alloy_eips::{eip7685::Requests, Encodable2718};
 use alloy_evm::{
     block::{
-        state_changes::{balance_increment_state, post_block_balance_increments},
-        BlockExecutionError, BlockExecutionResult, BlockExecutor, BlockExecutorFactory,
-        BlockValidationError, ExecutableTx, GasOutput, OnStateHook, StateChangePostBlockSource,
-        StateChangeSource, SystemCaller,
+        state_changes::post_block_balance_increments, BlockExecutionError, BlockExecutionResult,
+        BlockExecutor, BlockExecutorFactory, BlockValidationError, ExecutableTx, GasOutput,
+        SystemCaller,
     },
     eth::{
         dao_fork, eip6110,
@@ -210,9 +209,6 @@ where
             tx_type,
         } = output;
 
-        self.system_caller
-            .on_state(StateChangeSource::Transaction(self.receipts.len()), &state);
-
         let tx_gas_used = result.gas().tx_gas_used();
         let regular_gas_used = result.gas().block_regular_gas_used();
         let state_gas_used = result.gas().block_state_gas_used();
@@ -299,15 +295,6 @@ where
             .increment_balances(balance_increments.clone())
             .map_err(|_| BlockValidationError::IncrementBalanceFailed)?;
 
-        self.system_caller.try_on_state_with(|| {
-            balance_increment_state(&balance_increments, self.evm.db_mut()).map(|state| {
-                (
-                    StateChangeSource::PostBlock(StateChangePostBlockSource::BalanceIncrements),
-                    Cow::Owned(state),
-                )
-            })
-        })?;
-
         let gas_used = if self.evm.cfg_env().enable_amsterdam_eip8037 {
             self.max_block_gas_used()
         } else {
@@ -323,10 +310,6 @@ where
                 blob_gas_used: self.blob_gas_used,
             },
         ))
-    }
-
-    fn set_state_hook(&mut self, hook: Option<Box<dyn OnStateHook>>) {
-        self.system_caller.with_state_hook(hook);
     }
 
     fn evm_mut(&mut self) -> &mut Self::Evm {

@@ -244,14 +244,25 @@ where
 
         let base_tx = evm.ctx().tx().clone();
         let tx_gas_limit = base_tx.gas_limit();
-        let (mut remaining_gas, mut reservoir) = init_and_floor_gas.initial_gas_and_reservoir(
-            tx_gas_limit,
-            evm.ctx().cfg().tx_gas_limit_cap(),
-            evm.ctx().cfg().is_amsterdam_eip8037_enabled(),
-        );
+        let (mut remaining_gas, mut reservoir) = init_and_floor_gas
+            .initial_gas_and_reservoir(tx_gas_limit, evm.ctx().cfg().tx_gas_limit_cap());
+        // EIP-8037: a leading CREATE's intrinsic state gas was deducted from the
+        // reservoir in `initial_gas_and_reservoir`. If the batch fails, the
+        // deployment is rolled back, so that charge must be returned — mirroring
+        // the failed top-level CREATE handling in revm's `last_frame_result`.
+        let create_state_gas_refill = if calls
+            .first()
+            .map(|call| call.to.is_create())
+            .unwrap_or(false)
+            && evm.ctx().cfg().is_amsterdam_eip8037_enabled()
+        {
+            evm.ctx().cfg().gas_params().create_state_gas()
+        } else {
+            0
+        };
         let checkpoint = evm.ctx_mut().journal_mut().checkpoint();
         let mut total_refunded: i64 = 0;
-        let mut total_state_gas_spent: u64 = 0;
+        let mut total_state_gas_spent: i64 = 0;
         let mut last_result: Option<FrameResult> = None;
 
         // Execute each call in the batch sequentially.
@@ -298,6 +309,7 @@ where
                     reservoir,
                     total_state_gas_spent,
                     0,
+                    create_state_gas_refill,
                 );
                 return Ok(frame_result);
             }
@@ -315,6 +327,7 @@ where
             reservoir,
             total_state_gas_spent,
             total_refunded,
+            create_state_gas_refill,
         );
 
         Ok(frame_result)
@@ -323,9 +336,11 @@ where
     fn last_frame_result(
         &mut self,
         evm: &mut Self::Evm,
+        original_reservoir: u64,
         frame_result: &mut <FRAME as FrameTr>::FrameResult,
     ) -> Result<(), Self::Error> {
-        self.inner.last_frame_result(evm, frame_result)
+        self.inner
+            .last_frame_result(evm, original_reservoir, frame_result)
     }
 
     fn run_exec_loop(
@@ -520,7 +535,7 @@ fn validate_batch_initial_tx_gas<Tx: Transaction>(
     for call in calls {
         let call_gas =
             calculate_initial_tx_gas(spec, call.input.as_ref(), call.to.is_create(), 0, 0, 0);
-        initial_total_gas = initial_total_gas.saturating_add(call_gas.initial_total_gas);
+        initial_total_gas = initial_total_gas.saturating_add(call_gas.initial_total_gas());
         initial_state_gas = initial_state_gas.saturating_add(call_gas.initial_state_gas);
         floor_gas = floor_gas.saturating_add(call_gas.floor_gas);
     }
@@ -586,22 +601,26 @@ fn validate_batch_initial_tx_gas<Tx: Transaction>(
         }
     }
 
-    let mut gas =
-        InitialAndFloorGas::new_with_state_gas(initial_total_gas, initial_state_gas, floor_gas);
-    gas.eip7702_reservoir_refund = 0;
-    Ok(gas)
+    // `new_with_state_gas` takes the regular (state-exclusive) portion as its
+    // first argument; `initial_total_gas` accumulated above includes state gas.
+    Ok(InitialAndFloorGas::new_with_state_gas(
+        initial_total_gas.saturating_sub(initial_state_gas),
+        initial_state_gas,
+        floor_gas,
+    ))
 }
 
-fn finalize_batch_gas(
+const fn finalize_batch_gas(
     frame_result: &mut FrameResult,
     tx_gas_limit: u64,
     remaining_gas: u64,
     reservoir: u64,
-    state_gas_spent: u64,
+    state_gas_spent: i64,
     refund: i64,
+    create_state_gas_refill: u64,
 ) {
     let instruction_result = frame_result.interpreter_result().result;
-    let mut gas = Gas::new_spent(tx_gas_limit);
+    let mut gas = Gas::new_spent_with_reservoir(tx_gas_limit, reservoir);
     if instruction_result.is_ok_or_revert() {
         gas.erase_cost(remaining_gas);
     }
@@ -611,7 +630,11 @@ fn finalize_batch_gas(
         gas.set_reservoir(reservoir);
     } else {
         gas.set_state_gas_spent(0);
-        gas.set_reservoir(reservoir.saturating_add(state_gas_spent));
+        gas.set_reservoir(reservoir.saturating_add_signed(state_gas_spent));
+        // The batch rolled back, so the intrinsic CREATE state gas charged at
+        // tx entry is returned to the reservoir (leaves state_gas_spent
+        // negative, matching revm's failed top-level CREATE handling).
+        gas.refill_reservoir(create_state_gas_refill);
     }
     *frame_result.gas_mut() = gas;
 }
@@ -872,13 +895,70 @@ mod tests {
                 .expect("batch gas should validate");
 
         let expected_initial = gas_call_1
-            .initial_total_gas
-            .saturating_add(gas_call_2.initial_total_gas)
+            .initial_total_gas()
+            .saturating_add(gas_call_2.initial_total_gas())
             .saturating_add(access_list_cost);
         let expected_floor = gas_call_1.floor_gas.saturating_add(gas_call_2.floor_gas);
 
-        assert_eq!(result.initial_total_gas, expected_initial);
+        assert_eq!(result.initial_total_gas(), expected_initial);
         assert_eq!(result.floor_gas, expected_floor);
+    }
+
+    #[test]
+    fn batch_initial_gas_does_not_double_count_state_gas() {
+        let tx_env = TxEnv {
+            gas_limit: 1_000_000,
+            tx_type: TransactionType::Eip1559.into(),
+            ..Default::default()
+        };
+
+        let calls = vec![
+            Call {
+                to: TxKind::Create,
+                value: U256::ZERO,
+                input: Bytes::from(vec![0x60, 0x00, 0x60, 0x00, 0xf3]),
+            },
+            Call {
+                to: TxKind::Call(address!("0x00000000000000000000000000000000000000bb")),
+                value: U256::ZERO,
+                input: Bytes::new(),
+            },
+        ];
+
+        let gas_create =
+            calculate_initial_tx_gas(SpecId::AMSTERDAM, calls[0].input.as_ref(), true, 0, 0, 0);
+        let gas_call =
+            calculate_initial_tx_gas(SpecId::AMSTERDAM, calls[1].input.as_ref(), false, 0, 0, 0);
+        assert!(
+            gas_create.initial_state_gas > 0,
+            "CREATE under EIP-8037 must carry state gas for this test to be meaningful"
+        );
+
+        let result = validate_batch_initial_tx_gas(
+            &tx_env,
+            &calls,
+            SpecId::AMSTERDAM,
+            false,
+            true,
+            u64::MAX,
+        )
+        .expect("batch gas should validate");
+
+        let expected_state = gas_create
+            .initial_state_gas
+            .saturating_add(gas_call.initial_state_gas);
+        let expected_total = gas_create
+            .initial_total_gas()
+            .saturating_add(gas_call.initial_total_gas());
+
+        assert_eq!(result.initial_state_gas, expected_state);
+        // Regression: state gas must not be counted in both the regular and
+        // state components (initial_total_gas() = regular + state).
+        assert_eq!(result.initial_total_gas(), expected_total);
+        assert_eq!(
+            result.initial_regular_gas(),
+            expected_total - expected_state
+        );
     }
 
     #[test]
@@ -1538,9 +1618,73 @@ mod tests {
     }
 
     fn make_call_frame(gas_used: u64) -> FrameResult {
-        let gas = Gas::new_spent(gas_used);
+        let gas = Gas::new_spent_with_reservoir(gas_used, 0);
         let interpreter_result =
             InterpreterResult::new(InstructionResult::Return, Bytes::new(), gas);
         FrameResult::Call(CallOutcome::new(interpreter_result, 0..0))
+    }
+
+    fn make_frame_with_result(result: InstructionResult) -> FrameResult {
+        let gas = Gas::new_spent_with_reservoir(0, 0);
+        let interpreter_result = InterpreterResult::new(result, Bytes::new(), gas);
+        FrameResult::Call(CallOutcome::new(interpreter_result, 0..0))
+    }
+
+    #[test]
+    fn finalize_batch_gas_refills_create_state_gas_on_failure() {
+        const TX_GAS_LIMIT: u64 = 100_000;
+        const REMAINING: u64 = 40_000;
+        const RESERVOIR: u64 = 500;
+        const STATE_GAS_SPENT: i64 = 300;
+        const CREATE_REFILL: u64 = 1_000;
+
+        let mut frame_result = make_frame_with_result(InstructionResult::Revert);
+        finalize_batch_gas(
+            &mut frame_result,
+            TX_GAS_LIMIT,
+            REMAINING,
+            RESERVOIR,
+            STATE_GAS_SPENT,
+            0,
+            CREATE_REFILL,
+        );
+
+        let gas = frame_result.gas();
+        assert_eq!(gas.remaining(), REMAINING, "revert returns regular gas");
+        // Reservoir is restored to its pre-execution value and additionally
+        // refunded the intrinsic CREATE state gas charged at tx entry.
+        assert_eq!(
+            gas.reservoir(),
+            RESERVOIR + STATE_GAS_SPENT as u64 + CREATE_REFILL
+        );
+        assert_eq!(
+            gas.state_gas_spent(),
+            -(CREATE_REFILL as i64),
+            "refill leaves state gas spent negative, matching upstream"
+        );
+    }
+
+    #[test]
+    fn finalize_batch_gas_keeps_create_state_gas_on_success() {
+        const TX_GAS_LIMIT: u64 = 100_000;
+        const REMAINING: u64 = 40_000;
+        const RESERVOIR: u64 = 500;
+        const STATE_GAS_SPENT: i64 = 300;
+        const CREATE_REFILL: u64 = 1_000;
+
+        let mut frame_result = make_frame_with_result(InstructionResult::Return);
+        finalize_batch_gas(
+            &mut frame_result,
+            TX_GAS_LIMIT,
+            REMAINING,
+            RESERVOIR,
+            STATE_GAS_SPENT,
+            0,
+            CREATE_REFILL,
+        );
+
+        let gas = frame_result.gas();
+        assert_eq!(gas.reservoir(), RESERVOIR, "no refill on success");
+        assert_eq!(gas.state_gas_spent(), STATE_GAS_SPENT);
     }
 }

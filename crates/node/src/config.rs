@@ -88,10 +88,7 @@ impl EvolvePayloadBuilderConfig {
             let extras = extra.map_err(ConfigError::InvalidExtras)?;
             config.base_fee_sink = extras.base_fee_sink;
             config.base_fee_redirect_activation_height = extras.base_fee_redirect_activation_height;
-            config.mint_admin =
-                extras
-                    .mint_admin
-                    .and_then(|addr| if addr.is_zero() { None } else { Some(addr) });
+            config.mint_admin = extras.mint_admin.filter(|addr| !addr.is_zero());
             config.mint_precompile_activation_height = extras.mint_precompile_activation_height;
 
             if config.base_fee_sink.is_some()

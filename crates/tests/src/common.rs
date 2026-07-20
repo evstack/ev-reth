@@ -51,6 +51,25 @@ pub fn create_test_chain_spec() -> Arc<ChainSpec> {
     create_test_chain_spec_with_extras(None, None, None)
 }
 
+/// Creates a reusable chain specification with Osaka and Amsterdam timestamp forks.
+pub fn create_test_chain_spec_with_osaka_amsterdam(
+    osaka_timestamp: u64,
+    amsterdam_timestamp: u64,
+) -> Arc<ChainSpec> {
+    let genesis: Genesis =
+        serde_json::from_str(include_str!("../assets/genesis.json")).expect("valid genesis");
+
+    Arc::new(
+        ChainSpecBuilder::default()
+            .chain(reth_chainspec::Chain::from_id(TEST_CHAIN_ID))
+            .genesis(genesis)
+            .prague_activated()
+            .with_osaka_at(osaka_timestamp)
+            .with_amsterdam_at(amsterdam_timestamp)
+            .build(),
+    )
+}
+
 /// Creates a reusable chain specification with an optional base fee sink address.
 pub fn create_test_chain_spec_with_base_fee_sink(base_fee_sink: Option<Address>) -> Arc<ChainSpec> {
     create_test_chain_spec_with_extras(base_fee_sink, None, None)
@@ -104,10 +123,11 @@ pub fn create_test_chain_spec_with_deploy_allowlist(
 
 /// Returns a deterministic engine tree config for e2e tests.
 ///
-/// This avoids a known debug-mode panic in upstream reth where deferred trie
-/// data can be synchronously awaited from a rayon proof worker thread.
+/// Forces the synchronous state-root fallback path to avoid a known
+/// debug-mode panic in upstream reth where deferred trie data can be
+/// synchronously awaited from a rayon proof worker thread.
 pub fn e2e_test_tree_config() -> TreeConfig {
-    TreeConfig::default().with_legacy_state_root(true)
+    TreeConfig::default().with_state_root_fallback(true)
 }
 
 /// Shared test fixture for evolve payload builder tests
