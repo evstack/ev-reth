@@ -20,7 +20,6 @@ use reth_ethereum::{
 use reth_payload_builder::PayloadBuilderError;
 use reth_provider::HeaderProvider;
 use reth_revm::cached::CachedReads;
-use tokio::runtime::Handle;
 use tracing::{info, instrument};
 
 use alloy_eips::Decodable2718;
@@ -187,14 +186,13 @@ where
         let BuildArguments {
             cached_reads: _,
             config,
-            cancel: _,
-            best_payload: _,
             ..
         } = args;
         let PayloadConfig {
             parent_header,
             mut attributes,
             payload_id,
+            ..
         } = config;
 
         info!("building payload");
@@ -260,12 +258,12 @@ where
         )
         .with_slot_number(attributes.slot_number());
 
-        // Build the payload using the evolve payload builder - use spawn_blocking for async work.
+        // Build the payload using the evolve payload builder.
         let evolve_builder = self.evolve_builder.clone();
-        let sealed_block = tokio::task::block_in_place(|| {
-            Handle::current().block_on(evolve_builder.build_payload(evolve_attrs))
-        })
-        .map_err(PayloadBuilderError::other)?;
+        let built_block = evolve_builder
+            .build_payload(evolve_attrs)
+            .map_err(PayloadBuilderError::other)?;
+        let sealed_block = built_block.sealed_block;
 
         info!(
             tx_count = sealed_block.transaction_count(),
@@ -280,7 +278,8 @@ where
             Arc::new(sealed_block),
             U256::from(gas_used), // Block gas used.
             None,                 // No blob sidecar for evolve.
-        );
+        )
+        .with_block_access_list(built_block.block_access_list);
 
         Ok(BuildOutcome::Better {
             payload: built_payload,
@@ -301,6 +300,7 @@ where
             parent_header,
             attributes,
             payload_id,
+            ..
         } = config;
 
         info!("building empty payload");
@@ -326,12 +326,12 @@ where
         )
         .with_slot_number(attributes.slot_number());
 
-        // Build empty payload - use spawn_blocking for async work.
+        // Build empty payload.
         let evolve_builder = self.evolve_builder.clone();
-        let sealed_block = tokio::task::block_in_place(|| {
-            Handle::current().block_on(evolve_builder.build_payload(evolve_attrs))
-        })
-        .map_err(PayloadBuilderError::other)?;
+        let built_block = evolve_builder
+            .build_payload(evolve_attrs)
+            .map_err(PayloadBuilderError::other)?;
+        let sealed_block = built_block.sealed_block;
 
         let gas_used = sealed_block.gas_used;
         Ok(EvBuiltPayload::new(
@@ -339,7 +339,8 @@ where
             Arc::new(sealed_block),
             U256::from(gas_used),
             None,
-        ))
+        )
+        .with_block_access_list(built_block.block_access_list))
     }
 
     /// Determines how to handle a request for a payload that is currently being built.
@@ -433,6 +434,7 @@ mod tests {
                 withdrawals: Some(vec![]),
                 parent_beacon_block_root: Some(B256::ZERO),
                 slot_number: None,
+                target_gas_limit: None,
             },
             transactions: None,
             gas_limit: Some(30_000_000),
@@ -530,6 +532,7 @@ mod tests {
                 withdrawals: Some(vec![]),
                 parent_beacon_block_root: Some(B256::ZERO),
                 slot_number: None,
+                target_gas_limit: None,
             },
             transactions: None,
             gas_limit: Some(30_000_000),
@@ -617,6 +620,7 @@ mod tests {
                 withdrawals: Some(vec![]),
                 parent_beacon_block_root: Some(B256::ZERO),
                 slot_number: None,
+                target_gas_limit: None,
             },
             transactions: Some(vec![invalid_tx]),
             gas_limit: Some(30_000_000),

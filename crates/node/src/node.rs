@@ -1,7 +1,8 @@
 //! Node wiring for ev-reth, including payload types and component assembly.
 
+use alloy_primitives::Bytes;
 use alloy_rpc_types::engine::{
-    ExecutionData, ExecutionPayloadEnvelopeV2, ExecutionPayloadEnvelopeV3,
+    ExecutionData, ExecutionPayload, ExecutionPayloadEnvelopeV2, ExecutionPayloadEnvelopeV3,
     ExecutionPayloadEnvelopeV4, ExecutionPayloadEnvelopeV5, ExecutionPayloadEnvelopeV6,
     ExecutionPayloadV1,
 };
@@ -45,12 +46,13 @@ impl PayloadTypes for EvolveEngineTypes {
         block: SealedBlock<
             <<Self::BuiltPayload as reth_ethereum::node::api::BuiltPayload>::Primitives as reth_ethereum::node::api::NodePrimitives>::Block,
         >,
+        bal: Option<Bytes>,
     ) -> ExecutionData {
-        let (payload, sidecar) =
-            reth_ethereum::rpc::types::engine::ExecutionPayload::from_block_unchecked(
-                block.hash(),
-                &block.into_block(),
-            );
+        let (payload, sidecar) = ExecutionPayload::from_block_unchecked_with_extras(
+            block.hash(),
+            &block.into_block(),
+            bal,
+        );
         ExecutionData { payload, sidecar }
     }
 }

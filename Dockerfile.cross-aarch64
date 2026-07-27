@@ -1,4 +1,4 @@
-FROM ghcr.io/cross-rs/cross:main
+FROM ghcr.io/cross-rs/cross:main@sha256:3615293cfc8add55fa76158ae278adb6ad99f5a0d931682f2cedd3b4768e2cfd
 
 # Install ARM64 cross-compilation toolchain
 # gcc-10/g++-10 required as host compiler to avoid GCC 9 memcmp bug (https://gcc.gnu.org/bugzilla/show_bug.cgi?id=95189)
@@ -11,7 +11,7 @@ RUN apt-get update && \
         gcc-aarch64-linux-gnu \
         g++-aarch64-linux-gnu \
         libc6-dev-arm64-cross \
-        pkg-config-aarch64-linux-gnu \
+        pkg-config \
         build-essential \
         clang \
         libclang-dev && \
@@ -25,7 +25,7 @@ ENV CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc
 ENV CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++
 ENV AR_aarch64_unknown_linux_gnu=aarch64-linux-gnu-ar
 ENV STRIP_aarch64_unknown_linux_gnu=aarch64-linux-gnu-strip
-ENV PKG_CONFIG_aarch64_unknown_linux_gnu=aarch64-linux-gnu-pkg-config
+ENV PKG_CONFIG_aarch64_unknown_linux_gnu=pkg-config
 ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
 ENV BINDGEN_EXTRA_CLANG_ARGS="-I/usr/aarch64-linux-gnu/include -I/usr/include"
 ENV CFLAGS_aarch64_unknown_linux_gnu="-I/usr/aarch64-linux-gnu/include -I/usr/include"

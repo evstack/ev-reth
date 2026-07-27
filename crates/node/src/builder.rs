@@ -5,10 +5,10 @@ use alloy_consensus::{
     transaction::{Transaction, TxHashRef},
     Header,
 };
-use alloy_primitives::Address;
+use alloy_primitives::{Address, Bytes};
 use ev_revm::EvTxEvmFactory;
 use evolve_ev_reth::EvolvePayloadAttributes;
-use reth_chainspec::{ChainSpec, ChainSpecProvider};
+use reth_chainspec::{ChainSpec, ChainSpecProvider, EthereumHardforks};
 use reth_errors::RethError;
 use reth_evm::{
     execute::{BlockBuilder, BlockBuilderOutcome},
@@ -22,6 +22,15 @@ use std::sync::Arc;
 use tracing::{debug, debug_span, info, instrument};
 
 type EvolveEthEvmConfig = EvEvmConfig<ChainSpec, EvTxEvmFactory>;
+
+/// Result of building an Evolve payload block.
+#[derive(Debug, Clone)]
+pub struct EvolveBuiltBlock {
+    /// The sealed block built for the payload.
+    pub sealed_block: SealedBlock<ev_primitives::Block>,
+    /// Encoded EIP-7928 block access list, when built for Amsterdam payloads.
+    pub block_access_list: Option<Bytes>,
+}
 
 /// Payload builder for Evolve Reth node
 #[derive(Debug)]
@@ -72,10 +81,10 @@ where
         gas_limit = attributes.gas_limit.unwrap_or(0),
         duration_ms = tracing::field::Empty,
     ))]
-    pub async fn build_payload(
+    pub fn build_payload(
         &self,
         attributes: EvolvePayloadAttributes,
-    ) -> Result<SealedBlock<ev_primitives::Block>, PayloadBuilderError> {
+    ) -> Result<EvolveBuiltBlock, PayloadBuilderError> {
         let _duration = RecordDurationOnDrop::new();
 
         // Validate attributes
@@ -88,9 +97,14 @@ where
 
         // Create a database from the state provider
         let db = StateProviderDatabase::new(&state_provider);
+        let is_amsterdam = self
+            .client
+            .chain_spec()
+            .is_amsterdam_active_at_timestamp(attributes.timestamp);
         let mut state_db = State::builder()
             .with_database(db)
             .with_bundle_update()
+            .with_bal_builder_if(is_amsterdam)
             .build();
 
         // Get parent header using the client's HeaderProvider trait
@@ -184,11 +198,14 @@ where
             hashed_state: _,
             trie_updates: _,
             block,
+            block_access_list,
         } = builder
             .finish(&state_provider, None)
             .map_err(PayloadBuilderError::other)?;
 
         let sealed_block = block.sealed_block().clone();
+        let block_access_list =
+            block_access_list.map(|block_access_list| alloy_rlp::encode(&block_access_list).into());
 
         info!(
             block_number = sealed_block.number,
@@ -198,8 +215,10 @@ where
             "built block"
         );
 
-        // Return the sealed block
-        Ok(sealed_block)
+        Ok(EvolveBuiltBlock {
+            sealed_block,
+            block_access_list,
+        })
     }
 }
 
@@ -301,7 +320,7 @@ mod tests {
 
         // we only care that the span was created with the right fields,
         // not whether the payload build itself succeeds.
-        let _ = builder.build_payload(attributes).await;
+        let _ = builder.build_payload(attributes);
 
         let span = collector
             .find_span("build_payload")
@@ -391,7 +410,7 @@ mod tests {
             1,
         );
 
-        let _ = builder.build_payload(attributes).await;
+        let _ = builder.build_payload(attributes);
 
         let span = collector
             .find_span("execute_tx")

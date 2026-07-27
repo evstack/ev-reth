@@ -1,5 +1,6 @@
 //! Evolve custom consensus implementation that allows same timestamps across blocks.
 
+use alloy_primitives::B256;
 use ev_primitives::{Block, BlockBody, EvPrimitives, Receipt};
 use reth_chainspec::ChainSpec;
 use reth_consensus::{Consensus, ConsensusError, FullConsensus, HeaderValidator, ReceiptRootBloom};
@@ -120,7 +121,14 @@ impl FullConsensus<EvPrimitives> for EvolveConsensus {
         block: &RecoveredBlock<Block>,
         result: &BlockExecutionResult<Receipt>,
         receipt_root_bloom: Option<ReceiptRootBloom>,
+        block_access_list_hash: Option<B256>,
     ) -> Result<(), ConsensusError> {
-        <EthBeaconConsensus<ChainSpec> as FullConsensus<EvPrimitives>>::validate_block_post_execution(&self.inner, block, result, receipt_root_bloom)
+        <EthBeaconConsensus<ChainSpec> as FullConsensus<EvPrimitives>>::validate_block_post_execution(
+            &self.inner,
+            block,
+            result,
+            receipt_root_bloom,
+            block_access_list_hash,
+        )
     }
 }

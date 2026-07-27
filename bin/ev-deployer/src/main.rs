@@ -250,7 +250,9 @@ fn main() -> eyre::Result<()> {
                     .ok_or_else(|| {
                         eyre::eyre!("deterministic_deployer not configured or address not set")
                     })?,
-                other => eyre::bail!("unknown contract: {other}"),
+                other => {
+                    eyre::bail!("unknown contract: {other}");
+                }
             };
 
             println!("{address}");
