@@ -77,7 +77,7 @@ thiserror.workspace = true
 async-trait.workspace = true
 futures.workspace = true
 clap.workspace = true
-jsonrpsee = { workspace = true, features = ["server", "macros"] }
+jsonrpsee = { workspace = true, features = ["server", "macros", "client-core"] }
 jsonrpsee-core.workspace = true
 jsonrpsee-proc-macros.workspace = true
 jsonrpsee-types.workspace = true

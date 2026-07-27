@@ -11,7 +11,7 @@ use alloy_rpc_types::{
 };
 use alloy_rpc_types_engine::{ForkchoiceState, PayloadAttributes, PayloadStatusEnum};
 use alloy_signer::SignerSync;
-use alloy_sol_types::{sol, SolCall};
+use alloy_sol_types::{sol, SolCall, SolValue};
 use eyre::Result;
 use futures::future;
 use reth_e2e_test_utils::{
@@ -28,10 +28,10 @@ use reth_rpc_api::clients::{EngineApiClient, EthApiClient};
 use crate::common::{
     create_test_chain_spec, create_test_chain_spec_with_base_fee_sink,
     create_test_chain_spec_with_deploy_allowlist, create_test_chain_spec_with_mint_admin,
-    e2e_test_tree_config, TEST_CHAIN_ID,
+    create_test_chain_spec_with_proposer_control, e2e_test_tree_config, TEST_CHAIN_ID,
 };
 use ev_node::rpc::{EvRpcReceipt, EvRpcTransaction, EvTransactionRequest};
-use ev_precompiles::mint::MINT_PRECOMPILE_ADDR;
+use ev_precompiles::{mint::MINT_PRECOMPILE_ADDR, proposer::PROPOSER_CONTROL_PRECOMPILE_ADDR};
 use ev_primitives::{Call, EvNodeTransaction, EvTxEnvelope};
 
 sol! {
@@ -51,6 +51,13 @@ sol! {
     contract MintAdminProxy {
         function mint(address to, uint256 amount);
         function burn(address from, uint256 amount);
+    }
+
+    /// Interface for the proposer control precompile used in e2e tests.
+    interface ProposerControl {
+        function nextProposer() external view returns (bytes32);
+        function setNextProposer(bytes32 proposer) external;
+        function admin() external view returns (address);
     }
 }
 
@@ -192,6 +199,7 @@ pub(crate) async fn build_block_with_transactions(
 }
 use ev_node::{
     EvolveEnginePayloadAttributes, EvolveEngineTypes, EvolveNode, EvolvePayloadBuilderConfig,
+    EvolveProposerApiClient,
 };
 
 /// Tests that a single ev-reth node can successfully produce blocks.
@@ -2089,6 +2097,291 @@ async fn test_e2e_dev_mode_txpool_fallback() -> Result<()> {
         !block_txs.is_empty(),
         "dev mode should pull transaction from txpool when attributes are empty"
     );
+
+    Ok(())
+}
+
+/// Fetches the next proposer from the proposer control precompile via `eth_call` and via the
+/// `evolve_getNextProposer` RPC method, asserting both views agree.
+async fn query_next_proposer(env: &Environment<EvolveEngineTypes>) -> Result<B256> {
+    let request = TransactionRequest {
+        to: Some(TxKind::Call(PROPOSER_CONTROL_PRECOMPILE_ADDR)),
+        input: TransactionInput {
+            input: None,
+            data: Some(Bytes::from(
+                ProposerControl::nextProposerCall {}.abi_encode(),
+            )),
+        },
+        ..Default::default()
+    };
+    let bytes =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header, Bytes>::call(
+            &env.node_clients[0].rpc,
+            request,
+            Some(BlockId::latest()),
+            None,
+            None,
+        )
+        .await?;
+    let from_precompile = B256::abi_decode(&bytes)?;
+
+    let from_rpc = env.node_clients[0].rpc.get_next_proposer(None).await?;
+    assert_eq!(
+        from_rpc, from_precompile,
+        "evolve_getNextProposer should agree with the precompile view"
+    );
+
+    Ok(from_precompile)
+}
+
+/// Signs and submits a `setNextProposer` transaction in a fresh block, returning its receipt.
+#[allow(clippy::too_many_arguments)]
+async fn submit_set_next_proposer(
+    env: &mut Environment<EvolveEngineTypes>,
+    parent_hash: &mut B256,
+    parent_number: &mut u64,
+    parent_timestamp: &mut u64,
+    gas_limit: u64,
+    signer: alloy_signer_local::PrivateKeySigner,
+    nonce: u64,
+    proposer: B256,
+) -> Result<Receipt> {
+    let call = ProposerControl::setNextProposerCall { proposer }.abi_encode();
+    let tx = TransactionRequest {
+        nonce: Some(nonce),
+        gas: Some(150_000),
+        max_fee_per_gas: Some(20_000_000_000),
+        max_priority_fee_per_gas: Some(2_000_000_000),
+        chain_id: Some(TEST_CHAIN_ID),
+        value: Some(U256::ZERO),
+        to: Some(TxKind::Call(PROPOSER_CONTROL_PRECOMPILE_ADDR)),
+        input: TransactionInput {
+            input: None,
+            data: Some(Bytes::from(call)),
+        },
+        ..Default::default()
+    };
+
+    let envelope = TransactionTestContext::sign_tx(signer, tx).await;
+    let raw: Bytes = envelope.encoded_2718().into();
+
+    build_block_with_transactions(
+        env,
+        parent_hash,
+        parent_number,
+        parent_timestamp,
+        Some(gas_limit),
+        vec![raw],
+        Address::ZERO,
+    )
+    .await?;
+
+    let receipt = EthApiClient::<
+        TransactionRequest,
+        Transaction,
+        Block,
+        Receipt,
+        Header,
+        Bytes,
+    >::transaction_receipt(&env.node_clients[0].rpc, *envelope.tx_hash())
+    .await?
+    .expect("setNextProposer receipt available");
+    Ok(receipt)
+}
+
+/// Tests the proposer rotation process end to end via the proposer control precompile.
+///
+/// # Test Flow
+/// 1. Configures a chain spec with a proposer control admin and an initial next proposer
+/// 2. Verifies `nextProposer()` returns the configured initial proposer before any rotation
+/// 3. Verifies `admin()` returns the configured admin address
+/// 4. Admin rotates the proposer via `setNextProposer` and the new value is visible via
+///    `eth_call` and raw precompile storage
+/// 5. A non-admin rotation attempt reverts and leaves the proposer unchanged
+/// 6. Admin rotates a second time, overwriting the previously stored proposer
+///
+/// # What It Tests
+/// - Chain spec propagation of proposer control settings (admin, initial next proposer)
+/// - Initial proposer fallback when precompile storage is unset
+/// - Admin-gated rotation through real transactions and Engine API block production
+/// - Persistence of the rotated proposer in precompile storage across blocks
+/// - Overwriting an already-rotated proposer (non-zero to non-zero storage update)
+/// - The `evolve_getNextProposer` RPC method (the interface ev-node consumes) agreeing with
+///   the precompile at every stage, including historical block queries
+///
+/// # Success Criteria
+/// - `nextProposer()` returns the initial proposer before rotation
+/// - Admin rotations succeed and update both `eth_call` results and storage slot 0
+/// - Non-admin rotation reverts (`status = false`) without changing state
+#[tokio::test(flavor = "multi_thread")]
+async fn test_e2e_proposer_rotation() -> Result<()> {
+    reth_tracing::init_test_tracing();
+
+    let chain_id = TEST_CHAIN_ID;
+
+    let mut wallets = Wallet::new(2).with_chain_id(chain_id).wallet_gen();
+    let admin = wallets.remove(0);
+    let non_admin = wallets.remove(0);
+    let admin_address = admin.address();
+
+    let initial_proposer = B256::from([0x11; 32]);
+    let rotated_proposer = B256::from([0x22; 32]);
+    let unauthorized_proposer = B256::from([0x33; 32]);
+    let second_rotated_proposer = B256::from([0x44; 32]);
+
+    let chain_spec =
+        create_test_chain_spec_with_proposer_control(admin_address, None, initial_proposer);
+    let evolve_config =
+        EvolvePayloadBuilderConfig::from_chain_spec(chain_spec.as_ref()).expect("valid config");
+    assert_eq!(
+        evolve_config.proposer_control_precompile_settings(),
+        Some((admin_address, 0, initial_proposer)),
+        "chainspec should propagate proposer control settings"
+    );
+
+    let mut setup = Setup::<EvolveEngineTypes>::default()
+        .with_chain_spec(chain_spec)
+        .with_network(NetworkSetup::single_node())
+        .with_dev_mode(false)
+        .with_tree_config(e2e_test_tree_config());
+
+    let mut env = Environment::<EvolveEngineTypes>::default();
+    setup.apply::<EvolveNode>(&mut env).await?;
+
+    // Before any rotation the precompile must fall back to the configured initial proposer.
+    let next = query_next_proposer(&env).await?;
+    assert_eq!(
+        next, initial_proposer,
+        "precompile should expose the initial next proposer before rotation"
+    );
+
+    let admin_request = TransactionRequest {
+        to: Some(TxKind::Call(PROPOSER_CONTROL_PRECOMPILE_ADDR)),
+        input: TransactionInput {
+            input: None,
+            data: Some(Bytes::from(ProposerControl::adminCall {}.abi_encode())),
+        },
+        ..Default::default()
+    };
+    let admin_bytes =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header, Bytes>::call(
+            &env.node_clients[0].rpc,
+            admin_request,
+            Some(BlockId::latest()),
+            None,
+            None,
+        )
+        .await?;
+    let configured_admin = Address::abi_decode(&admin_bytes)?;
+    assert_eq!(
+        configured_admin, admin_address,
+        "precompile should expose the configured admin"
+    );
+
+    let parent_block = env.node_clients[0]
+        .get_block_by_number(BlockNumberOrTag::Latest)
+        .await?
+        .expect("parent block should exist");
+    let mut parent_hash = parent_block.header.hash;
+    let mut parent_timestamp = parent_block.header.inner.timestamp;
+    let mut parent_number = parent_block.header.inner.number;
+    let gas_limit = parent_block.header.inner.gas_limit;
+    let pre_rotation_block = parent_number;
+
+    // Admin rotates the proposer.
+    let rotate_receipt = submit_set_next_proposer(
+        &mut env,
+        &mut parent_hash,
+        &mut parent_number,
+        &mut parent_timestamp,
+        gas_limit,
+        admin.clone(),
+        0,
+        rotated_proposer,
+    )
+    .await?;
+    assert!(
+        rotate_receipt.status(),
+        "admin rotation transaction should succeed"
+    );
+
+    let next = query_next_proposer(&env).await?;
+    assert_eq!(
+        next, rotated_proposer,
+        "rotation should update the next proposer"
+    );
+
+    // The rotated proposer must be persisted in precompile storage (slot 0).
+    let stored =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header, Bytes>::storage_at(
+            &env.node_clients[0].rpc,
+            PROPOSER_CONTROL_PRECOMPILE_ADDR,
+            B256::ZERO.into(),
+            Some(BlockId::latest()),
+        )
+        .await?;
+    assert_eq!(
+        stored, rotated_proposer,
+        "rotated proposer should be persisted in precompile storage"
+    );
+
+    // Historical queries via the RPC must still see the pre-rotation fallback.
+    let historical = env.node_clients[0]
+        .rpc
+        .get_next_proposer(Some(BlockNumberOrTag::Number(pre_rotation_block)))
+        .await?;
+    assert_eq!(
+        historical, initial_proposer,
+        "historical RPC query should return the pre-rotation proposer"
+    );
+
+    // A non-admin rotation attempt must revert and leave the proposer untouched.
+    let unauthorized_receipt = submit_set_next_proposer(
+        &mut env,
+        &mut parent_hash,
+        &mut parent_number,
+        &mut parent_timestamp,
+        gas_limit,
+        non_admin.clone(),
+        0,
+        unauthorized_proposer,
+    )
+    .await?;
+    assert!(
+        !unauthorized_receipt.status(),
+        "non-admin rotation transaction should revert"
+    );
+
+    let next = query_next_proposer(&env).await?;
+    assert_eq!(
+        next, rotated_proposer,
+        "failed rotation must not change the next proposer"
+    );
+
+    // Admin rotates again, overwriting the previously stored proposer.
+    let second_rotate_receipt = submit_set_next_proposer(
+        &mut env,
+        &mut parent_hash,
+        &mut parent_number,
+        &mut parent_timestamp,
+        gas_limit,
+        admin.clone(),
+        1,
+        second_rotated_proposer,
+    )
+    .await?;
+    assert!(
+        second_rotate_receipt.status(),
+        "second admin rotation transaction should succeed"
+    );
+
+    let next = query_next_proposer(&env).await?;
+    assert_eq!(
+        next, second_rotated_proposer,
+        "second rotation should overwrite the stored proposer"
+    );
+
+    drop(setup);
 
     Ok(())
 }

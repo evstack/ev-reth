@@ -12,7 +12,7 @@ const NEXT_PROPOSER_SLOT: B256 = B256::ZERO;
 const INTERNAL_ERROR: i32 = -32603;
 
 /// Evolve proposer-control RPC API.
-#[rpc(server, namespace = "evolve")]
+#[rpc(server, client, namespace = "evolve")]
 pub trait EvolveProposerApi {
     /// Returns the next proposer stored by the proposer-control precompile.
     #[method(name = "getNextProposer")]

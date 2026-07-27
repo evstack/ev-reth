@@ -52,5 +52,5 @@ pub use executor::{build_evm_config, EvolveEvmConfig, EvolveExecutorBuilder};
 pub use node::{log_startup, EvolveEngineTypes, EvolveNode, EvolveNodeAddOns};
 pub use payload_service::{EvolveEnginePayloadBuilder, EvolvePayloadBuilderBuilder};
 pub use payload_types::EvBuiltPayload;
-pub use proposer_rpc::{EvolveProposerApiImpl, EvolveProposerApiServer};
+pub use proposer_rpc::{EvolveProposerApiClient, EvolveProposerApiImpl, EvolveProposerApiServer};
 pub use validator::{EvolveEngineValidator, EvolveEngineValidatorBuilder};

@@ -108,21 +108,12 @@ impl EvolvePayloadBuilderConfig {
             config.base_fee_redirect_activation_height = extras.base_fee_redirect_activation_height;
             config.mint_admin = extras.mint_admin.filter(|addr| !addr.is_zero());
             config.mint_precompile_activation_height = extras.mint_precompile_activation_height;
-            config.proposer_control_admin = extras.proposer_control_admin.and_then(|addr| {
-                if addr.is_zero() {
-                    None
-                } else {
-                    Some(addr)
-                }
-            });
+            config.proposer_control_admin =
+                extras.proposer_control_admin.filter(|addr| !addr.is_zero());
             config.proposer_control_activation_height = extras.proposer_control_activation_height;
-            config.initial_next_proposer = extras.initial_next_proposer.and_then(|addr| {
-                if addr.is_zero() {
-                    None
-                } else {
-                    Some(addr)
-                }
-            });
+            config.initial_next_proposer = extras
+                .initial_next_proposer
+                .filter(|proposer| !proposer.is_zero());
 
             if config.base_fee_sink.is_some()
                 && config.base_fee_redirect_activation_height.is_none()
