@@ -34,18 +34,6 @@ build-maxperf:
 build-all:
     {{cargo}} build --workspace --release
 
-# Build the ev-deployer binary in release mode
-build-deployer:
-    {{cargo}} build --release --bin ev-deployer
-
-# Install ev-dev to ~/.cargo/bin
-install-ev-dev:
-    {{cargo}} install --path bin/ev-dev
-
-# Install ev-deployer to ~/.cargo/bin
-install-ev-deployer:
-    {{cargo}} install --path bin/ev-deployer
-
 # Testing ──────────────────────────────────────────────
 
 # Run all tests
@@ -76,10 +64,6 @@ test-evolve:
 test-common:
     {{cargo}} test -p ev-common
 
-# Test the deployer crate
-test-deployer:
-    {{cargo}} test -p ev-deployer
-
 # Development ──────────────────────────────────────────
 
 # Run the ev-reth node with default settings
@@ -89,14 +73,6 @@ run: build-dev
 # Run with debug logs enabled
 run-dev: build-dev
     RUST_LOG=debug ./{{target_dir}}/debug/{{binary}} node
-
-# Build the ev-dev binary in release mode
-build-ev-dev:
-    {{cargo}} build --release --bin ev-dev
-
-# Build and run the local dev chain
-dev-chain: build-ev-dev
-    ./{{target_dir}}/release/ev-dev
 
 # Format code using rustfmt (nightly)
 fmt:

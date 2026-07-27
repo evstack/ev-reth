@@ -1,8 +1,6 @@
 [workspace]
 resolver = "2"
 members = [
-  "bin/ev-deployer",
-  "bin/ev-dev",
   "bin/ev-reth",
     "crates/common",
     "crates/ev-primitives",
