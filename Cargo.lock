@@ -434,9 +434,9 @@ dependencies = [
 
 [[package]]
 name = "alloy-primitives"
-version = "1.6.0"
+version = "1.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4885c1409b6936c4898e646ef58baf6ec54edaf6d8179f79df805a7b85b7cf3e"
+checksum = "f007e257069855bdf21d27762fd3f3705a613f805c9a08309bf353503f081d71"
 dependencies = [
  "alloy-rlp",
  "arbitrary",
@@ -444,6 +444,7 @@ dependencies = [
  "cfg-if",
  "const-hex",
  "derive_more",
+ "fixed-cache",
  "foldhash 0.2.0",
  "getrandom 0.4.2",
  "hashbrown 0.17.1",
@@ -3071,7 +3072,7 @@ dependencies = [
  "reth-engine-primitives",
  "reth-errors",
  "reth-ethereum",
- "reth-ethereum-forks",
+ "reth-ethereum-forks 2.4.1",
  "reth-ethereum-payload-builder",
  "reth-ethereum-primitives",
  "reth-evm",
@@ -3164,7 +3165,7 @@ dependencies = [
  "reth-engine-local",
  "reth-ethereum",
  "reth-ethereum-cli",
- "reth-ethereum-forks",
+ "reth-ethereum-forks 2.4.1",
  "reth-ethereum-payload-builder",
  "reth-ethereum-primitives",
  "reth-node-api",
@@ -7090,7 +7091,7 @@ dependencies = [
  "alloy-trie",
  "auto_impl",
  "derive_more",
- "reth-ethereum-forks",
+ "reth-ethereum-forks 2.4.0",
  "reth-network-peers",
  "reth-primitives-traits",
  "serde_json",
@@ -7441,7 +7442,7 @@ dependencies = [
  "itertools 0.14.0",
  "parking_lot",
  "rand 0.8.6",
- "reth-ethereum-forks",
+ "reth-ethereum-forks 2.4.0",
  "reth-net-banlist",
  "reth-net-nat",
  "reth-network-peers",
@@ -7469,7 +7470,7 @@ dependencies = [
  "metrics",
  "rand 0.9.4",
  "reth-chainspec",
- "reth-ethereum-forks",
+ "reth-ethereum-forks 2.4.0",
  "reth-metrics",
  "reth-network-peers",
  "secp256k1 0.30.0",
@@ -7489,7 +7490,7 @@ dependencies = [
  "enr",
  "hickory-resolver",
  "linked_hash_set",
- "reth-ethereum-forks",
+ "reth-ethereum-forks 2.4.0",
  "reth-network-peers",
  "reth-tokio-util",
  "schnellru",
@@ -7840,7 +7841,7 @@ dependencies = [
  "reth-codecs",
  "reth-ecies",
  "reth-eth-wire-types",
- "reth-ethereum-forks",
+ "reth-ethereum-forks 2.4.0",
  "reth-metrics",
  "reth-network-peers",
  "reth-primitives-traits",
@@ -7988,6 +7989,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "reth-ethereum-forks"
+version = "2.4.1"
+source = "git+https://github.com/paradigmxyz/reth.git?tag=v2.4.1#8eb210175687c9f0c889a3b6795c16781d830e3a"
+dependencies = [
+ "alloy-eip2124",
+ "alloy-hardforks",
+ "alloy-primitives",
+ "auto_impl",
+ "once_cell",
+ "rustc-hash",
+]
+
+[[package]]
 name = "reth-ethereum-payload-builder"
 version = "2.4.0"
 source = "git+https://github.com/paradigmxyz/reth.git?tag=v2.4.0#943af245c4d69c6c1df241df016c278ffb5d15df"
@@ -8077,7 +8091,7 @@ dependencies = [
  "alloy-primitives",
  "alloy-rpc-types-engine",
  "reth-chainspec",
- "reth-ethereum-forks",
+ "reth-ethereum-forks 2.4.0",
  "reth-ethereum-primitives",
  "reth-evm",
  "reth-execution-types",
@@ -8336,7 +8350,7 @@ dependencies = [
  "reth-ecies",
  "reth-eth-wire",
  "reth-eth-wire-types",
- "reth-ethereum-forks",
+ "reth-ethereum-forks 2.4.0",
  "reth-ethereum-primitives",
  "reth-evm-ethereum",
  "reth-fs-util",
@@ -8378,7 +8392,7 @@ dependencies = [
  "enr",
  "futures",
  "reth-eth-wire-types",
- "reth-ethereum-forks",
+ "reth-ethereum-forks 2.4.0",
  "reth-network-p2p",
  "reth-network-peers",
  "reth-network-types",
@@ -8577,7 +8591,7 @@ dependencies = [
  "reth-discv5",
  "reth-engine-local",
  "reth-engine-primitives",
- "reth-ethereum-forks",
+ "reth-ethereum-forks 2.4.0",
  "reth-net-banlist",
  "reth-net-nat",
  "reth-network",
