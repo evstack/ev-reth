@@ -132,15 +132,18 @@ where
 
             let proposer_cfg =
                 EvolvePayloadBuilderConfig::from_chain_spec(ctx.config().chain.as_ref())?;
-            let initial_next_proposer = proposer_cfg
-                .proposer_control_precompile_settings()
-                .map(|(_, _, initial_next_proposer)| initial_next_proposer)
-                .unwrap_or_default();
-            let proposer_api =
-                EvolveProposerApiImpl::new(ctx.provider().clone(), initial_next_proposer);
 
             ctx.modules.merge_configured(evolve_txpool.into_rpc())?;
-            ctx.modules.merge_configured(proposer_api.into_rpc())?;
+
+            // Only expose the proposer RPC on chains that enable the precompile, so callers
+            // get method-not-found instead of a meaningless zero value elsewhere.
+            if let Some((_, _, initial_next_proposer)) =
+                proposer_cfg.proposer_control_precompile_settings()
+            {
+                let proposer_api =
+                    EvolveProposerApiImpl::new(ctx.provider().clone(), initial_next_proposer);
+                ctx.modules.merge_configured(proposer_api.into_rpc())?;
+            }
             Ok(())
         })
     }

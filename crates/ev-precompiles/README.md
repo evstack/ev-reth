@@ -207,11 +207,16 @@ state.
 
 ```solidity
 interface IProposerControl {
-    function nextProposer() external view returns (address);
-    function setNextProposer(address proposer) external;
+    function nextProposer() external view returns (bytes32);
+    function setNextProposer(bytes32 proposer) external;
     function admin() external view returns (address);
 }
 ```
+
+The proposer is an opaque 32-byte value rather than an `address` so it can hold proposer
+identities that are not 20-byte EVM addresses (ev-node signer keys). For an EVM address,
+left-pad it to 32 bytes. The precompile only rejects the zero value; it does not validate
+that the bytes encode a usable proposer identity, so the admin must submit a correct value.
 
 ### Configuration
 
@@ -221,12 +226,13 @@ interface IProposerControl {
     "evolve": {
       "proposerControlAdmin": "0x1234567890123456789012345678901234567890",
       "proposerControlActivationHeight": 0,
-      "initialNextProposer": "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"
+      "initialNextProposer": "0x000000000000000000000000abcdefabcdefabcdefabcdefabcdefabcdefabcd"
     }
   }
 }
 ```
 
+`initialNextProposer` is a 32-byte value (a 20-byte address must be left-padded, as above).
 For existing chains, set `proposerControlActivationHeight` to a future block and upgrade all nodes
 before that height. `initialNextProposer` should be the currently active proposer so reads are stable
 before the first rotation transaction.
@@ -238,15 +244,17 @@ The configured admin rotates the next proposer with:
 ```bash
 cast send --rpc-url $RPC_URL --private-key $ADMIN_KEY \
   0x000000000000000000000000000000000000f101 \
-  "setNextProposer(address)" 0xNEXT_PROPOSER
+  "setNextProposer(bytes32)" \
+  0x000000000000000000000000$(echo $NEXT_PROPOSER_ADDR | cut -c3-)
 ```
 
-The stored proposer can be read through either the precompile ABI or ev-reth's convenience RPC:
+The stored proposer can be read through either the precompile ABI or ev-reth's convenience RPC
+(only registered when `proposerControlAdmin` is configured):
 
 ```bash
 cast call --rpc-url $RPC_URL \
   0x000000000000000000000000000000000000f101 \
-  "nextProposer()(address)"
+  "nextProposer()(bytes32)"
 
 cast rpc --rpc-url $RPC_URL evolve_getNextProposer latest
 ```

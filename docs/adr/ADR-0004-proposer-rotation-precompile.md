@@ -3,10 +3,11 @@
 ## Changelog
 
 * 2026-04-27: Initial draft
+* 2026-07-31: Accepted and implemented; interface uses `bytes32` for the proposer value
 
 ## Status
 
-DRAFT - Not Implemented
+Accepted - Implemented
 
 ## Abstract
 
@@ -92,11 +93,17 @@ It will expose this Solidity-compatible interface:
 
 ```solidity
 interface IProposerControl {
-    function nextProposer() external view returns (address);
-    function setNextProposer(address proposer) external;
+    function nextProposer() external view returns (bytes32);
+    function setNextProposer(bytes32 proposer) external;
     function admin() external view returns (address);
 }
 ```
+
+The proposer value is `bytes32` rather than `address`: ev-node proposer identities are signer keys
+that are not necessarily 20-byte EVM addresses, and a 32-byte word keeps the precompile agnostic to
+the identity format. A 20-byte address is stored left-padded to 32 bytes. The precompile rejects
+only the zero value and does not otherwise validate the encoding; the admin is responsible for
+submitting a value the ev-node side can interpret.
 
 The precompile stores the configured next proposer in its own account storage. The admin is configured
 from the chainspec and may be an EOA, a genesis-deployed proxy, or a governance/multisig contract.
@@ -109,7 +116,7 @@ The proposed chainspec fields are:
     "evolve": {
       "proposerControlAdmin": "0x1234567890123456789012345678901234567890",
       "proposerControlActivationHeight": 0,
-      "initialNextProposer": "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"
+      "initialNextProposer": "0x000000000000000000000000abcdefabcdefabcdefabcdefabcdefabcdefabcd"
     }
   }
 }
@@ -121,8 +128,9 @@ Field semantics:
   disables the precompile.
 - `proposerControlActivationHeight`: block height where the precompile becomes callable. Defaults to
   `0` when `proposerControlAdmin` is set.
-- `initialNextProposer`: optional initial proposer value written or exposed from genesis. If omitted,
-  the precompile starts with no stored proposer and ev-node falls back to genesis proposer at startup.
+- `initialNextProposer`: optional initial proposer value (a 32-byte word; left-pad a 20-byte
+  address) exposed until the first rotation is stored. If omitted or zero, the precompile starts
+  with no stored proposer and ev-node falls back to the genesis proposer at startup.
 
 ### Storage Model
 
@@ -131,17 +139,17 @@ is not pruned between blocks.
 
 Suggested storage slots:
 
-- `slot 0`: `nextProposer` as a 20-byte address encoded in a 32-byte word.
+- `slot 0`: `nextProposer` as an opaque 32-byte word (a 20-byte address is left-padded).
 
 The admin does not need dynamic storage if it is fixed from chainspec. Returning `admin()` can use the
 configured value.
 
 ### Write Semantics
 
-`setNextProposer(address proposer)`:
+`setNextProposer(bytes32 proposer)`:
 
 - requires `msg.sender == proposerControlAdmin`;
-- rejects the zero address;
+- rejects the zero value;
 - stores `proposer` in `slot 0`;
 - emits no EVM log in the first version because revm precompile log emission needs explicit support
   and is not necessary for consensus correctness.
@@ -152,8 +160,8 @@ the precompile.
 
 ### Read Semantics
 
-`nextProposer()` returns the stored proposer. If no proposer has been stored, it returns the zero
-address.
+`nextProposer()` returns the stored proposer. If no proposer has been stored, it returns the
+configured `initialNextProposer`, or the zero value when that is unset.
 
 ev-node treats a zero or empty proposer as "unchanged" per ADR-023. For startup, if ev-reth reports
 zero, ev-node falls back to `genesis.proposer_address`.
@@ -163,8 +171,16 @@ zero, ev-node falls back to `genesis.proposer_address`.
 ev-reth should expose a small RPC method for the ev-node EVM execution adapter:
 
 ```text
-evolve_getNextProposer(blockTag) -> address
+evolve_getNextProposer(blockTag) -> bytes32
 ```
+
+The RPC method is only registered when `proposerControlAdmin` is configured; on other chains the
+method does not exist and callers receive a method-not-found error. It reads storage slot 0 at the
+requested block and applies the same `initialNextProposer` fallback as the precompile whenever the
+slot is zero — including for blocks before `proposerControlActivationHeight`. During a staged
+upgrade this means pre-activation blocks report `initialNextProposer` rather than zero, which is
+intentional: `initialNextProposer` is documented as the currently active proposer, so the answer is
+stable across the activation boundary.
 
 The adapter in `../ev-node/execution/evm` will:
 
@@ -207,7 +223,7 @@ Example chainspec addition:
     "evolve": {
       "proposerControlAdmin": "0x1234567890123456789012345678901234567890",
       "proposerControlActivationHeight": 20000000,
-      "initialNextProposer": "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"
+      "initialNextProposer": "0x000000000000000000000000abcdefabcdefabcdefabcdefabcdefabcdefabcd"
     }
   }
 }
@@ -285,7 +301,7 @@ Required test coverage:
 
 - Unit tests for `nextProposer`, `admin`, and `setNextProposer` ABI decoding.
 - Authorization tests for admin, non-admin EOA, and admin contract caller.
-- Zero-address rejection.
+- Zero-value rejection.
 - Storage persistence across blocks.
 - Activation-height behavior before and after activation.
 - Factory registration tests for both EVM factory paths.

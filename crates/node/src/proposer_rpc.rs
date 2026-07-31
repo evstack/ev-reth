@@ -61,6 +61,11 @@ where
             })?
             .unwrap_or_default();
 
+        // A zero slot means "never rotated", so fall back to the configured initial proposer.
+        // This is applied for every block, including blocks before the precompile's activation
+        // height: `initialNextProposer` is documented as the currently active proposer, so
+        // pre-activation queries stay stable across the activation boundary instead of
+        // reporting zero.
         if value.is_zero() {
             Ok(self.initial_next_proposer)
         } else {
