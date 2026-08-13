@@ -9,7 +9,8 @@ The `AdminProxy` is a smart contract that solves the bootstrap problem for admin
 Several components in ev-reth require admin addresses configured at genesis:
 
 1. **Mint Precompile**: Requires `mintAdmin` in chainspec to manage the allowlist
-2. **FeeVault**: Requires an `owner` address in its constructor
+2. **Proposer Control Precompile**: Requires `proposerControlAdmin` in chainspec to rotate the next ev-node proposer. That address is immutable without a hard fork, so production chains must point it at this proxy (or another governance contract), not an EOA.
+3. **FeeVault**: Requires an `owner` address in its constructor
 
 The challenge: these admin addresses often need to be multisigs (like Safe) for security, but multisigs cannot be deployed at genesis because they require transactions to be created.
 
@@ -41,13 +42,13 @@ The proxy then forwards admin calls to the underlying contracts/precompiles.
 │  - execute(target, data): forward calls                      │
 │  - executeBatch(targets, datas): batch operations           │
 └──────────────┬────────────────────────┬─────────────────────┘
-               │                        │
-               │ admin calls            │ owner calls
-               ▼                        ▼
-    ┌──────────────────┐      ┌──────────────────┐
-    │  Mint Precompile │      │    FeeVault      │
-    │    (0xF100)      │      │                  │
-    └──────────────────┘      └──────────────────┘
+          │                  │                  │
+          │ admin calls      │ admin calls      │ owner calls
+          ▼                  ▼                  ▼
+┌──────────────────┐ ┌──────────────────────┐ ┌────────────┐
+│  Mint Precompile │ │ Proposer Control     │ │  FeeVault  │
+│    (0xF100)      │ │    (0xF101)          │ │            │
+└──────────────────┘ └──────────────────────┘ └────────────┘
 ```
 
 ## Genesis Configuration
@@ -156,6 +157,9 @@ In this example, the owner EOA is `0xYourEOAAddressHere` (replace with your actu
       "baseFeeRedirectActivationHeight": 0,
       "mintAdmin": "0x000000000000000000000000000000000000Ad00",
       "mintPrecompileActivationHeight": 0,
+      "proposerControlAdmin": "0x000000000000000000000000000000000000Ad00",
+      "proposerControlActivationHeight": 0,
+      "initialNextProposer": "0x000000000000000000000000abcdefabcdefabcdefabcdefabcdefabcdefabcd",
       "deployAllowlist": [
         "0xYourEOAAddressHere"
       ],
@@ -316,6 +320,39 @@ datas[1] = abi.encodeWithSignature("addToAllowList(address)", user2);
 datas[2] = abi.encodeWithSignature("addToAllowList(address)", user3);
 proxy.executeBatch(targets, datas);
 ```
+
+### Rotating the Next Proposer
+
+`proposerControlAdmin` is the only caller `setNextProposer` accepts. Point it at this proxy, then forward the call. The proposer value is a `bytes32` (left-pad a 20-byte address). A zero value reverts. Calls before `proposerControlActivationHeight` hit an empty account and succeed without writing storage — do not rotate until the activation height.
+
+```solidity
+AdminProxy proxy = AdminProxy(ADMIN_PROXY_ADDRESS);
+address constant PROPOSER_CONTROL = 0x000000000000000000000000000000000000F101;
+
+proxy.execute(
+    PROPOSER_CONTROL,
+    abi.encodeWithSignature(
+        "setNextProposer(bytes32)",
+        bytes32(uint256(uint160(newProposer)))
+    )
+);
+```
+
+Using cast (owner key, or a multisig that owns the proxy):
+
+```bash
+cast send 0x000000000000000000000000000000000000Ad00 \
+  "execute(address,bytes)" \
+  0x000000000000000000000000000000000000F101 \
+  $(cast calldata "setNextProposer(bytes32)" \
+    0x000000000000000000000000$(echo $NEXT_PROPOSER | cut -c3-)) \
+  --private-key $OWNER_KEY \
+  --rpc-url $RPC_URL
+```
+
+The precompile does not emit logs. Confirm with `cast call 0x…F101 "nextProposer()(bytes32)"` or `cast rpc evolve_getNextProposer latest`. Then start the new sequencer with that signer before it is expected to produce the next block.
+
+See [ADR 0004](../adr/ADR-0004-proposer-rotation-precompile.md) and the [v0.5.0 upgrade guide](../UPGRADE-v0.5.0.md) for chainspec fields, existing-chain upgrades, and safety notes.
 
 ### Managing FeeVault
 

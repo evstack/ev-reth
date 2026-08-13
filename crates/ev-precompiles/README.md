@@ -199,7 +199,7 @@ state.
 
 ### Address
 
-```
+```text
 0x000000000000000000000000000000000000f101
 ```
 
@@ -237,9 +237,14 @@ For existing chains, set `proposerControlActivationHeight` to a future block and
 before that height. `initialNextProposer` should be the currently active proposer so reads are stable
 before the first rotation transaction.
 
+`proposerControlAdmin` is fixed in the chainspec. Production networks should set it to
+[AdminProxy](../../docs/contracts/admin_proxy.md) (or another governance contract) so the
+controlling key can be rotated later. An EOA admin cannot be changed without a hard fork.
+Existing-chain upgrades are in [ADR 0004](../../docs/adr/ADR-0004-proposer-rotation-precompile.md) and the [v0.5.0 upgrade guide](../../docs/UPGRADE-v0.5.0.md).
+
 ### Operations
 
-The configured admin rotates the next proposer with:
+If the admin is an EOA (development only):
 
 ```bash
 cast send --rpc-url $RPC_URL --private-key $ADMIN_KEY \
@@ -247,6 +252,20 @@ cast send --rpc-url $RPC_URL --private-key $ADMIN_KEY \
   "setNextProposer(bytes32)" \
   0x000000000000000000000000$(echo $NEXT_PROPOSER_ADDR | cut -c3-)
 ```
+
+If the admin is AdminProxy (production), the proxy owner calls `execute`:
+
+```bash
+cast send --rpc-url $RPC_URL --private-key $OWNER_KEY \
+  0x000000000000000000000000000000000000Ad00 \
+  "execute(address,bytes)" \
+  0x000000000000000000000000000000000000f101 \
+  $(cast calldata "setNextProposer(bytes32)" \
+    0x000000000000000000000000$(echo $NEXT_PROPOSER_ADDR | cut -c3-))
+```
+
+Before activation height, a call to `0xF101` is a normal empty-account call: it succeeds and
+writes nothing. Confirm the height has passed before treating a successful receipt as a rotation.
 
 The stored proposer can be read through either the precompile ABI or ev-reth's convenience RPC
 (only registered when `proposerControlAdmin` is configured):
@@ -258,3 +277,21 @@ cast call --rpc-url $RPC_URL \
 
 cast rpc --rpc-url $RPC_URL evolve_getNextProposer latest
 ```
+
+### Errors
+
+- `unauthorized caller`: `msg.sender` is not `proposerControlAdmin`
+- `proposer cannot be zero`: rejected so a rotation cannot clear the stored value
+- `state change during static call`: `setNextProposer` during `STATICCALL` / `eth_call`
+
+Invalid ABI data also halts the precompile. None of these emit logs.
+
+### Safety
+
+- Authorization is `msg.sender == proposerControlAdmin`. Contracts such as AdminProxy work because
+  they `CALL` the precompile; `DELEGATECALL` would present the original EOA and be rejected.
+- The admin can set any non-zero `bytes32`. A garbage value will stall ev-node until another
+  rotation. Confirm the new sequencer is online with that signer before the next block.
+- Compromise of the admin (or AdminProxy owner) is compromise of sequencer selection.
+- `evolve_getNextProposer` is a public read of execution state. It is not registered when the
+  precompile is disabled, so ev-node treats method-not-found as "feature off".
