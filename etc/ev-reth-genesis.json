@@ -24,6 +24,8 @@
       "initialBaseFeePerGas": 100000000000000000,
       "mintAdmin": "0x000000000000000000000000000000000000Ad00",
       "mintPrecompileActivationHeight": 0,
+      "proposerControlAdmin": "0x000000000000000000000000000000000000Ad00",
+      "proposerControlActivationHeight": 0,
       "contractSizeLimit": 131072,
       "contractSizeLimitActivationHeight": 0
     }

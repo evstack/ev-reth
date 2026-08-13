@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Optional proposer-control precompile at `0xF101` for execution-owned ev-node proposer rotation. Enable with `proposerControlAdmin` in `config.evolve`; optional `proposerControlActivationHeight` (defaults to `0`) and `initialNextProposer` (32-byte word). Exposes `evolve_getNextProposer` only when the admin is configured ([#228](https://github.com/evstack/ev-reth/pull/228))
 - Lightweight custom chainspec mode (`--chain light:<path-or-json>`) for warm datadir restarts without reparsing large genesis allocs, including automatic `.light.json` sidecar generation from full file-based genesis specs ([#253](https://github.com/evstack/ev-reth/pull/253))
 
 ### Changed
