@@ -90,7 +90,7 @@ impl PoolTransaction for EvPooledTransaction {
                     let tx = EvTxEnvelope::Ethereum(tx);
                     let tx = Recovered::new_unchecked(tx, signer);
                     let mut pooled = Self::new(tx, encoded_length);
-                    pooled.inner.blob_sidecar = EthBlobTransactionSidecar::Present(blob);
+                    pooled.inner.blob_sidecar = EthBlobTransactionSidecar::Present(blob.into());
                     pooled
                 }
                 tx => {

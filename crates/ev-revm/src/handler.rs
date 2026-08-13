@@ -11,7 +11,7 @@ use reth_revm::{
     revm::{
         context::{result::ExecutionResult, ContextSetters},
         context_interface::{
-            journaled_state::account::JournaledAccountTr,
+            journaled_state::{account::JournaledAccountTr, JournalCheckpoint},
             result::HaltReason,
             transaction::{AccessListItemTr, TransactionType},
             Block, Cfg, ContextTr, JournalTr, Transaction,
@@ -24,13 +24,16 @@ use reth_revm::{
             gas::{calculate_initial_tx_gas, ACCESS_LIST_ADDRESS, ACCESS_LIST_STORAGE_KEY},
             interpreter::EthInterpreter,
             interpreter_action::FrameInit,
-            Gas, InitialAndFloorGas,
+            GasTracker, InitialAndFloorGas,
         },
         primitives::{eip7702, hardfork::SpecId},
         state::{AccountInfo, Bytecode, EvmState},
     },
 };
 use std::cmp::Ordering;
+
+#[cfg(test)]
+use reth_revm::revm::interpreter::Gas;
 
 /// Handler wrapper that mirrors the mainnet handler but applies optional EV-specific policies.
 #[derive(Debug, Clone)]
@@ -160,9 +163,9 @@ where
     fn apply_eip7702_auth_list(
         &self,
         evm: &mut Self::Evm,
-        init_and_floor_gas: &mut InitialAndFloorGas,
-    ) -> Result<u64, Self::Error> {
-        self.inner.apply_eip7702_auth_list(evm, init_and_floor_gas)
+        gas: &mut GasTracker,
+    ) -> Result<Option<u64>, Self::Error> {
+        self.inner.apply_eip7702_auth_list(evm, gas)
     }
 
     fn validate_against_state_and_deduct_caller(
@@ -221,17 +224,17 @@ where
     fn first_frame_input(
         &mut self,
         evm: &mut Self::Evm,
-        gas_limit: u64,
-        reservoir: u64,
-    ) -> Result<FRAME::FrameInit, Self::Error> {
-        self.inner.first_frame_input(evm, gas_limit, reservoir)
+        gas: &mut GasTracker,
+    ) -> Result<Option<FRAME::FrameInit>, Self::Error> {
+        self.inner.first_frame_input(evm, gas)
     }
 
     fn execution(
         &mut self,
         evm: &mut Self::Evm,
-        init_and_floor_gas: &InitialAndFloorGas,
-    ) -> Result<FrameResult, Self::Error> {
+        checkpoint: JournalCheckpoint,
+        gas: &mut GasTracker,
+    ) -> Result<Option<FrameResult>, Self::Error> {
         let calls = match evm.ctx().tx().batch_calls() {
             Some([]) => {
                 return Err(Self::Error::from_string(
@@ -239,108 +242,78 @@ where
                 ));
             }
             Some(calls) if calls.len() > 1 => calls.to_vec(),
-            _ => return self.inner.execution(evm, init_and_floor_gas),
+            _ => return self.inner.execution(evm, checkpoint, gas),
         };
 
         let base_tx = evm.ctx().tx().clone();
-        let tx_gas_limit = base_tx.gas_limit();
-        let (mut remaining_gas, mut reservoir) = init_and_floor_gas
-            .initial_gas_and_reservoir(tx_gas_limit, evm.ctx().cfg().tx_gas_limit_cap());
-        // EIP-8037: a leading CREATE's intrinsic state gas was deducted from the
-        // reservoir in `initial_gas_and_reservoir`. If the batch fails, the
-        // deployment is rolled back, so that charge must be returned — mirroring
-        // the failed top-level CREATE handling in revm's `last_frame_result`.
-        let create_state_gas_refill = if calls
-            .first()
-            .map(|call| call.to.is_create())
-            .unwrap_or(false)
-            && evm.ctx().cfg().is_amsterdam_eip8037_enabled()
-        {
-            evm.ctx().cfg().gas_params().create_state_gas()
-        } else {
-            0
+        let mut calls = calls.iter();
+        let first_call = calls.next().expect("batch has at least two calls");
+        let mut first_tx = base_tx.clone();
+        first_tx.set_batch_call(first_call);
+        evm.ctx_mut().set_tx(first_tx);
+        let Some(first_frame_input) = self.inner.first_frame_input(evm, gas)? else {
+            evm.ctx_mut().journal_mut().checkpoint_revert(checkpoint);
+            return Ok(None);
         };
-        let checkpoint = evm.ctx_mut().journal_mut().checkpoint();
-        let mut total_refunded: i64 = 0;
-        let mut total_state_gas_spent: i64 = 0;
-        let mut last_result: Option<FrameResult> = None;
+        evm.ctx_mut().journal_mut().checkpoint_commit();
+        let batch_checkpoint = evm.ctx_mut().journal_mut().checkpoint();
+        let mut frame_result = self.inner.run_exec_loop(evm, first_frame_input)?;
+        self.inner.last_frame_result(evm, &mut frame_result, gas)?;
 
-        // Execute each call in the batch sequentially.
-        // set_batch_call only modifies (kind, value, data) - the nonce is intentionally
-        // shared since a batch is a single atomic transaction with one nonce.
-        // Note: only the first call may be CREATE (enforced in validate_initial_tx_gas).
-        for call in &calls {
+        // Execute each remaining call in the batch sequentially. `set_batch_call` only
+        // changes kind, value, and data, so the batch remains a single transaction.
+        for call in calls {
+            if !frame_result.interpreter_result().result.is_ok() {
+                evm.ctx_mut()
+                    .journal_mut()
+                    .checkpoint_revert(batch_checkpoint);
+                gas.rollback_state_gas();
+                gas.set_refunded(0);
+                return Ok(Some(frame_result));
+            }
             let mut call_tx = base_tx.clone();
             call_tx.set_batch_call(call);
             evm.ctx_mut().set_tx(call_tx);
-            let first_frame_input = self
-                .inner
-                .first_frame_input(evm, remaining_gas, reservoir)?;
-            let mut frame_result = self.inner.run_exec_loop(evm, first_frame_input)?;
-            let instruction_result = frame_result.interpreter_result().result;
-            total_refunded = total_refunded.saturating_add(frame_result.gas().refunded());
-            remaining_gas = frame_result.gas().remaining();
-            reservoir = frame_result.gas().reservoir();
-            total_state_gas_spent =
-                total_state_gas_spent.saturating_add(frame_result.gas().state_gas_spent());
+            let Some(first_frame_input) = self.inner.first_frame_input(evm, gas)? else {
+                evm.ctx_mut()
+                    .journal_mut()
+                    .checkpoint_revert(batch_checkpoint);
+                gas.rollback_state_gas();
+                gas.set_refunded(0);
+                return Ok(None);
+            };
+            frame_result = self.inner.run_exec_loop(evm, first_frame_input)?;
+            self.inner.last_frame_result(evm, &mut frame_result, gas)?;
+        }
 
-            if !instruction_result.is_ok() {
-                evm.ctx_mut().journal_mut().checkpoint_revert(checkpoint);
-                // For CREATE batches: the checkpoint revert undoes the nonce increment that
-                // happened during CREATE execution. We must manually re-increment it here
-                // to match Ethereum's behavior where nonce always increments even on failure.
-                // For CALL batches: nonce was incremented before checkpoint, so revert preserves it.
-                if calls
-                    .first()
-                    .map(|call| call.to.is_create())
-                    .unwrap_or(false)
-                {
-                    let caller = base_tx.caller();
-                    let journal = evm.ctx_mut().journal_mut();
-                    if let Ok(mut caller_account) = journal.load_account_with_code_mut(caller) {
-                        let nonce = caller_account.data.nonce();
-                        caller_account.data.set_nonce(nonce.saturating_add(1));
-                    }
+        if !frame_result.interpreter_result().result.is_ok() {
+            evm.ctx_mut()
+                .journal_mut()
+                .checkpoint_revert(batch_checkpoint);
+            gas.rollback_state_gas();
+            gas.set_refunded(0);
+            if base_tx.kind().is_create() {
+                let caller = base_tx.caller();
+                let journal = evm.ctx_mut().journal_mut();
+                if let Ok(mut caller_account) = journal.load_account_with_code_mut(caller) {
+                    let nonce = caller_account.data.nonce();
+                    caller_account.data.set_nonce(nonce.saturating_add(1));
                 }
-                finalize_batch_gas(
-                    &mut frame_result,
-                    tx_gas_limit,
-                    remaining_gas,
-                    reservoir,
-                    total_state_gas_spent,
-                    0,
-                    create_state_gas_refill,
-                );
-                return Ok(frame_result);
             }
-
-            last_result = Some(frame_result);
+            return Ok(Some(frame_result));
         }
 
         evm.ctx_mut().journal_mut().checkpoint_commit();
-
-        let mut frame_result = last_result.expect("batch execution requires at least one call");
-        finalize_batch_gas(
-            &mut frame_result,
-            tx_gas_limit,
-            remaining_gas,
-            reservoir,
-            total_state_gas_spent,
-            total_refunded,
-            create_state_gas_refill,
-        );
-
-        Ok(frame_result)
+        Ok(Some(frame_result))
     }
 
     fn last_frame_result(
         &mut self,
         evm: &mut Self::Evm,
-        original_reservoir: u64,
         frame_result: &mut <FRAME as FrameTr>::FrameResult,
+        gas: &mut GasTracker,
     ) -> Result<(), Self::Error> {
-        self.inner
-            .last_frame_result(evm, original_reservoir, frame_result)
+        self.inner.last_frame_result(evm, frame_result, gas)
     }
 
     fn run_exec_loop(
@@ -366,7 +339,7 @@ where
         evm: &mut Self::Evm,
         exec_result: &mut <FRAME as FrameTr>::FrameResult,
         eip7702_refund: i64,
-    ) {
+    ) -> Result<(), Self::Error> {
         self.inner.refund(evm, exec_result, eip7702_refund)
     }
 
@@ -533,8 +506,15 @@ fn validate_batch_initial_tx_gas<Tx: Transaction>(
     let mut floor_gas = 0u64;
 
     for call in calls {
-        let call_gas =
-            calculate_initial_tx_gas(spec, call.input.as_ref(), call.to.is_create(), 0, 0, 0);
+        let call_gas = calculate_initial_tx_gas(
+            spec,
+            call.input.as_ref(),
+            call.to.is_create(),
+            0,
+            0,
+            0,
+            None,
+        );
         initial_total_gas = initial_total_gas.saturating_add(call_gas.initial_total_gas());
         initial_state_gas = initial_state_gas.saturating_add(call_gas.initial_state_gas);
         floor_gas = floor_gas.saturating_add(call_gas.floor_gas);
@@ -610,6 +590,7 @@ fn validate_batch_initial_tx_gas<Tx: Transaction>(
     ))
 }
 
+#[cfg(test)]
 const fn finalize_batch_gas(
     frame_result: &mut FrameResult,
     tx_gas_limit: u64,
@@ -884,10 +865,24 @@ mod tests {
             },
         ];
 
-        let gas_call_1 =
-            calculate_initial_tx_gas(SpecId::PRAGUE, calls[0].input.as_ref(), false, 0, 0, 0);
-        let gas_call_2 =
-            calculate_initial_tx_gas(SpecId::PRAGUE, calls[1].input.as_ref(), false, 0, 0, 0);
+        let gas_call_1 = calculate_initial_tx_gas(
+            SpecId::PRAGUE,
+            calls[0].input.as_ref(),
+            false,
+            0,
+            0,
+            0,
+            None,
+        );
+        let gas_call_2 = calculate_initial_tx_gas(
+            SpecId::PRAGUE,
+            calls[1].input.as_ref(),
+            false,
+            0,
+            0,
+            0,
+            None,
+        );
         let access_list_cost = ACCESS_LIST_ADDRESS + 2 * ACCESS_LIST_STORAGE_KEY;
 
         let result =
@@ -925,15 +920,24 @@ mod tests {
             },
         ];
 
-        let gas_create =
-            calculate_initial_tx_gas(SpecId::AMSTERDAM, calls[0].input.as_ref(), true, 0, 0, 0);
-        let gas_call =
-            calculate_initial_tx_gas(SpecId::AMSTERDAM, calls[1].input.as_ref(), false, 0, 0, 0);
-        assert!(
-            gas_create.initial_state_gas > 0,
-            "CREATE under EIP-8037 must carry state gas for this test to be meaningful"
+        let gas_create = calculate_initial_tx_gas(
+            SpecId::AMSTERDAM,
+            calls[0].input.as_ref(),
+            true,
+            0,
+            0,
+            0,
+            None,
         );
-
+        let gas_call = calculate_initial_tx_gas(
+            SpecId::AMSTERDAM,
+            calls[1].input.as_ref(),
+            false,
+            0,
+            0,
+            0,
+            None,
+        );
         let result = validate_batch_initial_tx_gas(
             &tx_env,
             &calls,

@@ -9,8 +9,9 @@ use alloy_primitives::{keccak256, Address, Bytes, Signature, TxKind, B256, U256}
 use alloy_rlp::{bytes::Buf, BufMut, Decodable, Encodable, Header, RlpDecodable, RlpEncodable};
 use reth_codecs::{
     alloy::transaction::{CompactEnvelope, Envelope, FromTxCompact, ToTxCompact},
+    compress::DecompressError,
     txtype::COMPACT_EXTENDED_IDENTIFIER_FLAG,
-    Compact, DecompressError,
+    Compact,
 };
 use reth_db_api::table::{Compress, Decompress};
 use reth_primitives_traits::InMemorySize;
