@@ -65,7 +65,7 @@ reth-rpc-builder = { git = "https://github.com/paradigmxyz/reth.git", tag = "v2.
 reth-rpc-engine-api = { git = "https://github.com/paradigmxyz/reth.git", tag = "v2.4.1" }
 reth-rpc = { git = "https://github.com/paradigmxyz/reth.git", tag = "v2.4.1" }
 reth-rpc-convert = { git = "https://github.com/paradigmxyz/reth.git", tag = "v2.4.1" }
-reth-codecs = { version = "0.5.0", default-features = false }
+reth-codecs = { version = "0.6.0", default-features = false }
 
 ev-revm = { path = "crates/ev-revm" }
 ev-primitives = { path = "crates/ev-primitives" }
