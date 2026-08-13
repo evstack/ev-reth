@@ -6,10 +6,6 @@
 #![allow(missing_docs, rustdoc::missing_crate_level_docs)]
 
 use clap::Parser;
-use evolve_ev_reth::{
-    config::EvolveConfig,
-    rpc::txpool::{EvolveTxpoolApiImpl, EvolveTxpoolApiServer},
-};
 use reth_ethereum_cli::Cli;
 use reth_tracing_otlp::{OtlpConfig, OtlpProtocol};
 use tracing::info;
@@ -98,20 +94,9 @@ fn main() {
     if let Err(err) =
         Cli::<EvolveChainSpecParser, EvolveArgs>::parse().run(|builder, _evolve_args| async move {
             log_startup();
-            let handle = builder
-                .node(EvolveNode::new())
-                .extend_rpc_modules(move |ctx| {
-                    // Build custom txpool RPC with config + optional CLI/env override
-                    let evolve_cfg = EvolveConfig::default();
-                    let evolve_txpool =
-                        EvolveTxpoolApiImpl::new(ctx.pool().clone(), evolve_cfg.max_txpool_bytes);
-
-                    // Merge into all enabled transports (HTTP / WS)
-                    ctx.modules.merge_configured(evolve_txpool.into_rpc())?;
-                    Ok(())
-                })
-                .launch()
-                .await?;
+            // The evolve txpool and proposer RPC modules are registered by
+            // `EvolveNode::add_ons`.
+            let handle = builder.node(EvolveNode::new()).launch().await?;
 
             info!("=== EV-RETH: Node launched successfully with ev-reth payload builder ===");
             handle.node_exit_future.await

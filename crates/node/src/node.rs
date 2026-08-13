@@ -14,7 +14,7 @@ use reth_ethereum::{
         api::{EngineTypes, FullNodeComponents, FullNodeTypes, NodeTypes, PayloadTypes},
         builder::{
             components::{BasicPayloadServiceBuilder, ComponentsBuilder},
-            rpc::RpcAddOns,
+            rpc::{RpcAddOns, RpcContext},
             DebugNode, Node, NodeAdapter,
         },
         node::EthereumNetworkBuilder,
@@ -27,9 +27,19 @@ use std::sync::Arc;
 use tracing::info;
 
 use crate::{
-    attributes::EvolveEnginePayloadAttributes, executor::EvolveExecutorBuilder,
-    payload_service::EvolvePayloadBuilderBuilder, payload_types::EvBuiltPayload,
-    rpc::EvEthApiBuilder, txpool::EvolvePoolBuilder, validator::EvolveEngineValidatorBuilder,
+    attributes::EvolveEnginePayloadAttributes,
+    config::EvolvePayloadBuilderConfig,
+    executor::EvolveExecutorBuilder,
+    payload_service::EvolvePayloadBuilderBuilder,
+    payload_types::EvBuiltPayload,
+    proposer_rpc::{EvolveProposerApiImpl, EvolveProposerApiServer},
+    rpc::EvEthApiBuilder,
+    txpool::EvolvePoolBuilder,
+    validator::EvolveEngineValidatorBuilder,
+};
+use evolve_ev_reth::{
+    config::EvolveConfig,
+    rpc::txpool::{EvolveTxpoolApiImpl, EvolveTxpoolApiServer},
 };
 
 /// Evolve engine types - uses custom payload attributes that support transactions.
@@ -115,7 +125,27 @@ where
     }
 
     fn add_ons(&self) -> Self::AddOns {
-        EvolveNodeAddOns::default()
+        EvolveNodeAddOns::default().extend_rpc_modules(|ctx: RpcContext<'_, NodeAdapter<N>, _>| {
+            let evolve_cfg = EvolveConfig::default();
+            let evolve_txpool =
+                EvolveTxpoolApiImpl::new(ctx.pool().clone(), evolve_cfg.max_txpool_bytes);
+
+            let proposer_cfg =
+                EvolvePayloadBuilderConfig::from_chain_spec(ctx.config().chain.as_ref())?;
+
+            ctx.modules.merge_configured(evolve_txpool.into_rpc())?;
+
+            // Only expose the proposer RPC on chains that enable the precompile, so callers
+            // get method-not-found instead of a meaningless zero value elsewhere.
+            if let Some((_, _, initial_next_proposer)) =
+                proposer_cfg.proposer_control_precompile_settings()
+            {
+                let proposer_api =
+                    EvolveProposerApiImpl::new(ctx.provider().clone(), initial_next_proposer);
+                ctx.modules.merge_configured(proposer_api.into_rpc())?;
+            }
+            Ok(())
+        })
     }
 }
 

@@ -4,7 +4,7 @@ Custom EVM precompiles for Evolve, providing native token supply management func
 
 ## Overview
 
-This crate implements custom precompiled contracts that extend the EVM with Evolve-specific functionality. Currently, it provides a mint/burn precompile that allows controlled manipulation of native token supply.
+This crate implements custom precompiled contracts that extend the EVM with Evolve-specific functionality. It provides a mint/burn precompile for controlled native token supply management and a proposer-control precompile for execution-owned ev-node proposer rotation.
 
 ## Mint Precompile
 
@@ -189,4 +189,72 @@ Any address added to the allowlist can then call the precompile directly:
 cast send --rpc-url $RPC_URL --private-key $OPERATOR_KEY \
   0x000000000000000000000000000000000000f100 \
   "mint(address,uint256)" 0xRECIPIENT 1000000000000000000
+```
+
+## Proposer Control Precompile
+
+The proposer control precompile stores the ev-node proposer that should sign the next block. It is
+used by the ev-node EVM execution adapter to populate ADR-023's `NextProposerAddress` from execution
+state.
+
+### Address
+
+```
+0x000000000000000000000000000000000000f101
+```
+
+### Interface
+
+```solidity
+interface IProposerControl {
+    function nextProposer() external view returns (bytes32);
+    function setNextProposer(bytes32 proposer) external;
+    function admin() external view returns (address);
+}
+```
+
+The proposer is an opaque 32-byte value rather than an `address` so it can hold proposer
+identities that are not 20-byte EVM addresses (ev-node signer keys). For an EVM address,
+left-pad it to 32 bytes. The precompile only rejects the zero value; it does not validate
+that the bytes encode a usable proposer identity, so the admin must submit a correct value.
+
+### Configuration
+
+```json
+{
+  "config": {
+    "evolve": {
+      "proposerControlAdmin": "0x1234567890123456789012345678901234567890",
+      "proposerControlActivationHeight": 0,
+      "initialNextProposer": "0x000000000000000000000000abcdefabcdefabcdefabcdefabcdefabcdefabcd"
+    }
+  }
+}
+```
+
+`initialNextProposer` is a 32-byte value (a 20-byte address must be left-padded, as above).
+For existing chains, set `proposerControlActivationHeight` to a future block and upgrade all nodes
+before that height. `initialNextProposer` should be the currently active proposer so reads are stable
+before the first rotation transaction.
+
+### Operations
+
+The configured admin rotates the next proposer with:
+
+```bash
+cast send --rpc-url $RPC_URL --private-key $ADMIN_KEY \
+  0x000000000000000000000000000000000000f101 \
+  "setNextProposer(bytes32)" \
+  0x000000000000000000000000$(echo $NEXT_PROPOSER_ADDR | cut -c3-)
+```
+
+The stored proposer can be read through either the precompile ABI or ev-reth's convenience RPC
+(only registered when `proposerControlAdmin` is configured):
+
+```bash
+cast call --rpc-url $RPC_URL \
+  0x000000000000000000000000000000000000f101 \
+  "nextProposer()(bytes32)"
+
+cast rpc --rpc-url $RPC_URL evolve_getNextProposer latest
 ```

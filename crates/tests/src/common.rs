@@ -48,7 +48,7 @@ fn to_ev_envelope(transaction: Transaction, signature: Signature) -> Transaction
 
 /// Creates a reusable chain specification for tests.
 pub fn create_test_chain_spec() -> Arc<ChainSpec> {
-    create_test_chain_spec_with_extras(None, None, None)
+    create_test_chain_spec_with_extras(None, None, None, None)
 }
 
 /// Creates a reusable chain specification with Osaka and Amsterdam timestamp forks.
@@ -72,23 +72,45 @@ pub fn create_test_chain_spec_with_osaka_amsterdam(
 
 /// Creates a reusable chain specification with an optional base fee sink address.
 pub fn create_test_chain_spec_with_base_fee_sink(base_fee_sink: Option<Address>) -> Arc<ChainSpec> {
-    create_test_chain_spec_with_extras(base_fee_sink, None, None)
+    create_test_chain_spec_with_extras(base_fee_sink, None, None, None)
 }
 
 /// Creates a reusable chain specification with a configured mint admin address.
 pub fn create_test_chain_spec_with_mint_admin(mint_admin: Address) -> Arc<ChainSpec> {
-    create_test_chain_spec_with_extras(None, Some(mint_admin), None)
+    create_test_chain_spec_with_extras(None, Some(mint_admin), None, None)
+}
+
+/// Creates a reusable chain specification with the proposer control precompile configured.
+///
+/// `proposer_control` is `(admin, activation_height, initial_next_proposer)`; a `None`
+/// activation height defaults to genesis activation.
+pub fn create_test_chain_spec_with_proposer_control(
+    admin: Address,
+    activation_height: Option<u64>,
+    initial_next_proposer: B256,
+) -> Arc<ChainSpec> {
+    create_test_chain_spec_with_extras(
+        None,
+        None,
+        None,
+        Some((admin, activation_height, initial_next_proposer)),
+    )
 }
 
 fn create_test_chain_spec_with_extras(
     base_fee_sink: Option<Address>,
     mint_admin: Option<Address>,
     deploy_allowlist: Option<Vec<Address>>,
+    proposer_control: Option<(Address, Option<u64>, B256)>,
 ) -> Arc<ChainSpec> {
     let mut genesis: Genesis =
         serde_json::from_str(include_str!("../assets/genesis.json")).expect("valid genesis");
 
-    if base_fee_sink.is_some() || mint_admin.is_some() || deploy_allowlist.is_some() {
+    if base_fee_sink.is_some()
+        || mint_admin.is_some()
+        || deploy_allowlist.is_some()
+        || proposer_control.is_some()
+    {
         let mut extras = serde_json::Map::new();
         if let Some(sink) = base_fee_sink {
             extras.insert("baseFeeSink".to_string(), json!(sink));
@@ -98,6 +120,16 @@ fn create_test_chain_spec_with_extras(
         }
         if let Some(allowlist) = deploy_allowlist {
             extras.insert("deployAllowlist".to_string(), json!(allowlist));
+        }
+        if let Some((admin, activation_height, initial_next_proposer)) = proposer_control {
+            extras.insert("proposerControlAdmin".to_string(), json!(admin));
+            if let Some(height) = activation_height {
+                extras.insert("proposerControlActivationHeight".to_string(), json!(height));
+            }
+            extras.insert(
+                "initialNextProposer".to_string(),
+                json!(initial_next_proposer),
+            );
         }
         genesis
             .config
@@ -118,7 +150,7 @@ fn create_test_chain_spec_with_extras(
 pub fn create_test_chain_spec_with_deploy_allowlist(
     deploy_allowlist: Vec<Address>,
 ) -> Arc<ChainSpec> {
-    create_test_chain_spec_with_extras(None, None, Some(deploy_allowlist))
+    create_test_chain_spec_with_extras(None, None, Some(deploy_allowlist), None)
 }
 
 /// Returns a deterministic engine tree config for e2e tests.
@@ -183,6 +215,15 @@ impl EvolveTestFixture {
         let mint_precompile = config
             .mint_precompile_settings()
             .map(|(admin, activation)| MintPrecompileSettings::new(admin, activation));
+        let proposer_control_precompile = config.proposer_control_precompile_settings().map(
+            |(admin, activation, initial_next_proposer)| {
+                ev_revm::ProposerControlPrecompileSettings::new(
+                    admin,
+                    activation,
+                    initial_next_proposer,
+                )
+            },
+        );
         let contract_size_limit = config
             .contract_size_limit_settings()
             .map(|(limit, activation)| ContractSizeLimitSettings::new(limit, activation));
@@ -192,6 +233,7 @@ impl EvolveTestFixture {
         let evm_factory = EvTxEvmFactory::new(
             base_fee_redirect,
             mint_precompile,
+            proposer_control_precompile,
             deploy_allowlist,
             contract_size_limit,
         );

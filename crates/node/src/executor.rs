@@ -7,7 +7,7 @@ use alloy_primitives::U256;
 use alloy_rpc_types_engine::ExecutionData;
 use ev_revm::{
     BaseFeeRedirect, BaseFeeRedirectSettings, ContractSizeLimitSettings, DeployAllowlistSettings,
-    EvTxEvmFactory, MintPrecompileSettings,
+    EvTxEvmFactory, MintPrecompileSettings, ProposerControlPrecompileSettings,
 };
 use reth_chainspec::{ChainSpec, EthChainSpec};
 use reth_errors::RethError;
@@ -422,6 +422,19 @@ where
         .mint_precompile_settings()
         .map(|(admin, activation)| MintPrecompileSettings::new(admin, activation));
 
+    let proposer_control_precompile = evolve_config.proposer_control_precompile_settings().map(
+        |(admin, activation, initial_next_proposer)| {
+            info!(
+                target = "ev-reth::executor",
+                admin = ?admin,
+                activation_height = activation,
+                initial_next_proposer = ?initial_next_proposer,
+                "Proposer control precompile enabled"
+            );
+            ProposerControlPrecompileSettings::new(admin, activation, initial_next_proposer)
+        },
+    );
+
     let contract_size_limit =
         evolve_config
             .contract_size_limit_settings()
@@ -451,6 +464,7 @@ where
     let factory = EvTxEvmFactory::new(
         redirect,
         mint_precompile,
+        proposer_control_precompile,
         deploy_allowlist,
         contract_size_limit,
     );
