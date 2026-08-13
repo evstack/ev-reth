@@ -33,7 +33,7 @@ reth-errors = { git = "https://github.com/paradigmxyz/reth.git", tag = "v2.4.1" 
 reth-trie-db = { git = "https://github.com/paradigmxyz/reth.git", tag = "v2.4.1" }
 reth-trie-common = { git = "https://github.com/paradigmxyz/reth.git", tag = "v2.4.1" }
 reth-rpc-eth-types = { git = "https://github.com/paradigmxyz/reth.git", tag = "v2.4.1" }
-reth-primitives-traits = { version = "0.5.0", default-features = false }
+reth-primitives-traits = { version = "0.6.0", default-features = false }
 reth-provider = { git = "https://github.com/paradigmxyz/reth.git", tag = "v2.4.1" }
 reth-storage-api = { git = "https://github.com/paradigmxyz/reth.git", tag = "v2.4.1" }
 reth-tracing = { git = "https://github.com/paradigmxyz/reth.git", tag = "v2.4.1" }
