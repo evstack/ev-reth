@@ -4,7 +4,16 @@ This guide covers the configuration changes required to upgrade ev-reth to v0.5.
 
 ## Upgrading from v0.4.x
 
-No configuration changes are required. Rebuild and deploy the new binary. Existing chains keep current proposer behavior until `proposerControlAdmin` is set.
+No chainspec changes are required for existing networks. Rebuild and deploy the new binary. Existing chains keep current proposer behavior until `proposerControlAdmin` is set.
+
+Reth is now v2.5.0 (from v2.2.0 in v0.4.1). That is an internal engine bump: no new required `config` fields.
+
+### Removed tooling
+
+`ev-deployer` and `ev-dev` were removed. If you used them:
+
+- Generate genesis allocs with the Foundry scripts under `contracts/script/` (`GenerateFeeVaultAlloc`, `GenerateAdminProxyAlloc`)
+- Run a local stack with the `ev-reth` binary plus ev-node, not `ev-dev`
 
 ## New Features
 

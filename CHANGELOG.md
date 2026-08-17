@@ -7,9 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-17
+
 ### Added
 
 - Optional proposer-control precompile at `0xF101` for execution-owned ev-node proposer rotation. Enable with `proposerControlAdmin` in `config.evolve`; optional `proposerControlActivationHeight` (defaults to `0`) and `initialNextProposer` (32-byte word). Exposes `evolve_getNextProposer` only when the admin is configured ([#228](https://github.com/evstack/ev-reth/pull/228))
+
+### Changed
+
+- Upgraded Reth from v2.2.0 to v2.5.0, with matching Alloy 2.3, revm 42.0.1, alloy-evm 0.38.0, reth-codecs / reth-primitives-traits 0.6, and related dependency updates. Custom EVM batching, RPC, codec, and txpool integrations were migrated to the v2.5 APIs, including batch runtime-gas accounting ([#266](https://github.com/evstack/ev-reth/pull/266), [#338](https://github.com/evstack/ev-reth/pull/338), [#363](https://github.com/evstack/ev-reth/pull/363))
+
+### Removed
+
+- `ev-deployer` CLI and `ev-dev` local-development TUI. Genesis allocs and local nets should use the Foundry scripts under `contracts/` and a standard ev-reth / ev-node stack ([#349](https://github.com/evstack/ev-reth/pull/349))
+
+## [0.4.1] - 2026-06-16
+
+### Added
+
 - Lightweight custom chainspec mode (`--chain light:<path-or-json>`) for warm datadir restarts without reparsing large genesis allocs, including automatic `.light.json` sidecar generation from full file-based genesis specs ([#253](https://github.com/evstack/ev-reth/pull/253))
 
 ### Changed
