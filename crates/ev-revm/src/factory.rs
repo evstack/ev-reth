@@ -515,6 +515,7 @@ pub fn with_ev_handler<ChainSpec>(
     let EthEvmConfig {
         executor_factory,
         block_assembler,
+        sender_recovery_cache,
     } = config;
     let wrapped_factory = EvEvmFactory::new(
         *executor_factory.evm_factory(),
@@ -533,6 +534,7 @@ pub fn with_ev_handler<ChainSpec>(
     EthEvmConfig {
         executor_factory: new_executor_factory,
         block_assembler,
+        sender_recovery_cache,
     }
 }
 

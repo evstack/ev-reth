@@ -14,6 +14,7 @@ use reth_chainspec::{ChainSpecProvider, EthChainSpec, EthereumHardforks, Hardfor
 use reth_evm::{ConfigureEvm, EvmEnvFor, TxEnvFor};
 use reth_node_api::{FullNodeComponents, FullNodeTypes, NodeTypes};
 use reth_node_builder::rpc::{EthApiBuilder, EthApiCtx};
+use reth_primitives_traits::SealedHeaderFor;
 use reth_rpc::EthApi;
 use reth_rpc_convert::{
     transaction::{
@@ -39,6 +40,7 @@ pub struct EvRpcTypes;
 impl RpcTypes for EvRpcTypes {
     type Header = <Ethereum as RpcTypes>::Header;
     type Receipt = EvRpcReceipt;
+    type Log = Log;
     type TransactionResponse = EvRpcTransaction;
     type TransactionRequest = EvTransactionRequest;
 }
@@ -330,7 +332,17 @@ where
     ChainSpec: EthChainSpec + 'static,
 {
     type RpcReceipt = EvRpcReceipt;
+    type RpcLog = Log;
     type Error = EthApiError;
+
+    fn convert_log(
+        &self,
+        log: Log,
+        _receipt: &<EvPrimitives as reth_primitives_traits::NodePrimitives>::Receipt,
+        _header: &SealedHeaderFor<EvPrimitives>,
+    ) -> Result<Self::RpcLog, Self::Error> {
+        Ok(log)
+    }
 
     fn convert_receipts(
         &self,
