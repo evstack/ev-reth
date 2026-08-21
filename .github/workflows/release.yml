@@ -41,10 +41,7 @@ jobs:
           sudo apt-get install -y gcc-aarch64-linux-gnu
 
       - name: Build release binary
-        # Release artifacts must run on the baseline CPU for each target. In
-        # particular, `target-cpu=native` exposes host-only ARM features on
-        # GitHub's macOS runners and causes Ring's compile-time checks to fail.
-        run: cargo build --target ${{ matrix.target }} --profile release --features jemalloc,asm-keccak --bin ev-reth
+        run: RUSTFLAGS="-C target-cpu=native" cargo build --target ${{ matrix.target }} --profile release --features jemalloc,asm-keccak --bin ev-reth
 
       - name: Create tarball
         if: matrix.os != 'windows-latest'
