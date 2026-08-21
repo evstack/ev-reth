@@ -1,7 +1,6 @@
 name: Release
 
 on:
-  workflow_dispatch: {}
   push:
     tags:
       - 'v*'
@@ -39,7 +38,7 @@ jobs:
         if: matrix.target == 'aarch64-unknown-linux-gnu'
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          sudo apt-get install -y gcc-aarch64-linux-gnu
 
       - name: Build release binary
         # Release artifacts must run on the baseline CPU for each target. In
@@ -72,7 +71,6 @@ jobs:
   create-release:
     name: create-release
     needs: build-release
-    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: write
