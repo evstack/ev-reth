@@ -164,6 +164,31 @@ With custom configuration:
     --ws.api all
 ```
 
+### Peer Head Subscription
+
+The sequencer continues to run its EV node and ev-reth. Other full nodes can run ev-reth without an
+EV node by subscribing to any authoritative ev-reth peer. The WebSocket pushes only chain identity
+and forkchoice references; native Reth P2P fetches and validates the referenced blocks.
+
+Enable WebSocket RPC on the publishing peer with `--ws`, then start a subscribing full node with
+`--subscribe-peer` and at least one P2P peer that has the chain:
+
+```bash
+./target/release/ev-reth node \
+  --chain /path/to/genesis.json \
+  --datadir /var/lib/ev-reth-subscriber \
+  --subscribe-peer wss://peer.example/rpc \
+  --trusted-peers enode://<public-key>@<block-peer>:30303 \
+  --http --http.api eth,net,web3
+```
+
+The WebSocket publisher and P2P block-data peer may be different nodes. A synchronized subscriber
+can also enable `--ws` and relay validated forkchoice updates downstream.
+
+See the [Peer Head Subscription Guide](docs/guide/peer-head-subscription.md) for architecture,
+publishing-peer setup, private P2P configuration, relay topology, verification, security, and
+troubleshooting.
+
 ### Lightweight Chainspec Startup
 
 Large custom genesis files can be expensive to parse on every restart because the `alloc` map is
@@ -564,6 +589,7 @@ ev-reth/
 │   │       ├── builder.rs        # Payload builder implementation
 │   │       ├── executor.rs       # Block executor for EvTxEnvelope
 │   │       ├── evm_executor.rs   # EVM executor and receipt builder
+│   │       ├── head.rs           # Push-based peer forkchoice subscription
 │   │       ├── payload_types.rs  # EvBuiltPayload and conversions
 │   │       ├── rpc.rs            # RPC types with feePayer support
 │   │       ├── txpool.rs         # EvNode txpool validator
