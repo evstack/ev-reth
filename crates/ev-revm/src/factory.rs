@@ -235,7 +235,7 @@ impl<F> EvEvmFactory<F> {
         let Some(settings) = self.deploy_allowlist.as_ref() else {
             return;
         };
-        let Some(admin) = settings.dynamic_admin() else {
+        let Some(admin) = settings.admin() else {
             return;
         };
         if block_number < U256::from(settings.activation_height()) {
@@ -439,7 +439,7 @@ impl EvTxEvmFactory {
         let Some(settings) = self.deploy_allowlist.as_ref() else {
             return;
         };
-        let Some(admin) = settings.dynamic_admin() else {
+        let Some(admin) = settings.admin() else {
             return;
         };
         if block_number < U256::from(settings.activation_height()) {

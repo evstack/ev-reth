@@ -193,7 +193,7 @@ impl EvolvePayloadBuilderConfig {
             .unwrap_or(DEFAULT_CONTRACT_SIZE_LIMIT)
     }
 
-    /// Returns the genesis baseline, activation height, and optional dynamic admin.
+    /// Returns the genesis baseline, activation height, and optional admin.
     pub fn deploy_allowlist_settings(&self) -> Option<DeployAllowlistConfig> {
         if self.deploy_allowlist.is_empty() && self.deploy_allowlist_admin.is_none() {
             None
@@ -576,7 +576,7 @@ mod tests {
     }
 
     #[test]
-    fn test_zero_dynamic_admin_preserves_legacy_mode() {
+    fn test_zero_admin_preserves_legacy_mode() {
         let allowed = address!("00000000000000000000000000000000000000aa");
         let extras = json!({
             "deployAllowlist": [allowed],

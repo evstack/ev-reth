@@ -8,7 +8,7 @@ use std::sync::Arc;
 pub struct DeployAllowlistSettings {
     allowlist: Arc<[Address]>,
     activation_height: u64,
-    dynamic_admin: Option<Address>,
+    admin: Option<Address>,
 }
 
 impl DeployAllowlistSettings {
@@ -21,14 +21,14 @@ impl DeployAllowlistSettings {
         Self {
             allowlist: Arc::from(allowlist),
             activation_height,
-            dynamic_admin: None,
+            admin: None,
         }
     }
 
     /// Creates state-backed deployment settings with a fixed admin.
     pub fn new_dynamic(allowlist: Vec<Address>, activation_height: u64, admin: Address) -> Self {
         let mut settings = Self::new(allowlist, activation_height);
-        settings.dynamic_admin = Some(admin);
+        settings.admin = Some(admin);
         settings
     }
 
@@ -60,14 +60,14 @@ impl DeployAllowlistSettings {
         self.allowlist.binary_search(&caller).is_ok()
     }
 
-    /// Returns the configured dynamic-permissions admin, if dynamic mode is enabled.
-    pub const fn dynamic_admin(&self) -> Option<Address> {
-        self.dynamic_admin
+    /// Returns the configured permissions admin, if state-backed mode is enabled.
+    pub const fn admin(&self) -> Option<Address> {
+        self.admin
     }
 
     /// Returns whether this chain uses state-backed deployment permissions.
     pub const fn is_dynamic(&self) -> bool {
-        self.dynamic_admin.is_some()
+        self.admin.is_some()
     }
 
     /// Returns whether dynamic deployment permissions are active in this block.
