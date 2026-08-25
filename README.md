@@ -456,7 +456,8 @@ This design ensures safe upgrades for existing networks: contracts that were pre
 
 ### Restricting Contract Deployment
 
-If you want a permissioned chain where only specific EOAs can deploy contracts, configure a deploy allowlist in the chainspec:
+If you want a permissioned chain where only specific accounts can submit top-level deployments,
+configure a deploy allowlist in the chainspec. Without an admin, the list remains static:
 
 ```json
 "config": {
@@ -483,6 +484,31 @@ Operational notes:
 
 - The allowlist is static and must be changed via a chainspec update.
 - Duplicate entries or the zero address are rejected at startup.
+
+To manage permissions on-chain, configure the deployment-permissions admin and its independent
+activation height:
+
+```json
+"config": {
+  ...,
+  "evolve": {
+    "deployAllowlist": [
+      "0xInitialDeployerAddress"
+    ],
+    "deployAllowlistActivationHeight": 0,
+    "deployAllowlistAdmin": "0xAdminProxyOrGovernanceAddress",
+    "deployAllowlistPrecompileActivationHeight": 20000000
+  }
+}
+```
+
+At the dynamic activation height, `deployAllowlist` becomes the baseline for the state-backed
+precompile at `0x000000000000000000000000000000000000F102`. Enforcement is enabled by default.
+The fixed admin can add or remove deployers and can temporarily disable enforcement; disabling is
+fail-open for top-level deployments and preserves the policy for later re-enablement. An empty
+baseline therefore means deny-all while enabled, not “feature disabled.” Use standard `eth_call`
+for inspection. See the [permissioned EVM guide](docs/guide/permissioned-evm.md) for the interface,
+activation constraints, and rollout procedure.
 
 ### Payload Builder Configuration
 

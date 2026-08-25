@@ -27,7 +27,13 @@
       "proposerControlAdmin": "0x000000000000000000000000000000000000Ad00",
       "proposerControlActivationHeight": 0,
       "contractSizeLimit": 131072,
-      "contractSizeLimitActivationHeight": 0
+      "contractSizeLimitActivationHeight": 0,
+      "deployAllowlist": [
+        "0x000000000000000000000000000000000000Ad00"
+      ],
+      "deployAllowlistActivationHeight": 0,
+      "deployAllowlistAdmin": "0x000000000000000000000000000000000000Ad00",
+      "deployAllowlistPrecompileActivationHeight": 0
     }
   },
   "difficulty": "0x1",

@@ -8,6 +8,8 @@ use std::sync::Arc;
 pub struct DeployAllowlistSettings {
     allowlist: Arc<[Address]>,
     activation_height: u64,
+    dynamic_admin: Option<Address>,
+    dynamic_activation_height: u64,
 }
 
 impl DeployAllowlistSettings {
@@ -16,10 +18,26 @@ impl DeployAllowlistSettings {
     pub fn new(allowlist: Vec<Address>, activation_height: u64) -> Self {
         let mut allowlist = allowlist;
         allowlist.sort_unstable();
+        allowlist.dedup();
         Self {
             allowlist: Arc::from(allowlist),
             activation_height,
+            dynamic_admin: None,
+            dynamic_activation_height: 0,
         }
+    }
+
+    /// Creates deployment settings that transition from static to dynamic enforcement.
+    pub fn new_dynamic(
+        allowlist: Vec<Address>,
+        activation_height: u64,
+        admin: Address,
+        dynamic_activation_height: u64,
+    ) -> Self {
+        let mut settings = Self::new(allowlist, activation_height);
+        settings.dynamic_admin = Some(admin);
+        settings.dynamic_activation_height = dynamic_activation_height;
+        settings
     }
 
     /// Returns the activation height for deploy allowlist enforcement.
@@ -43,6 +61,31 @@ impl DeployAllowlistSettings {
             return true;
         }
         self.allowlist.binary_search(&caller).is_ok()
+    }
+
+    /// Returns whether the caller belongs to the genesis baseline.
+    pub fn is_baseline_member(&self, caller: Address) -> bool {
+        self.allowlist.binary_search(&caller).is_ok()
+    }
+
+    /// Returns the configured dynamic-permissions admin, if dynamic mode is enabled.
+    pub const fn dynamic_admin(&self) -> Option<Address> {
+        self.dynamic_admin
+    }
+
+    /// Returns the dynamic-permissions activation height.
+    pub const fn dynamic_activation_height(&self) -> u64 {
+        self.dynamic_activation_height
+    }
+
+    /// Returns whether this chain uses state-backed deployment permissions.
+    pub const fn is_dynamic(&self) -> bool {
+        self.dynamic_admin.is_some()
+    }
+
+    /// Returns whether dynamic deployment permissions are active in this block.
+    pub const fn is_dynamic_active(&self, block_number: u64) -> bool {
+        self.is_dynamic() && block_number >= self.dynamic_activation_height
     }
 }
 

@@ -11,6 +11,7 @@ use alloy_evm::{
 };
 use alloy_primitives::{Address, B256, U256};
 use ev_precompiles::{
+    deploy_permissions::{DeployPermissionsPrecompile, DEPLOY_PERMISSIONS_PRECOMPILE_ADDR},
     mint::{MintPrecompile, MINT_PRECOMPILE_ADDR},
     proposer::{ProposerControlPrecompile, PROPOSER_CONTROL_PRECOMPILE_ADDR},
 };
@@ -226,6 +227,35 @@ impl<F> EvEvmFactory<F> {
         });
     }
 
+    fn install_deploy_permissions_precompile(
+        &self,
+        precompiles: &mut PrecompilesMap,
+        block_number: U256,
+    ) {
+        let Some(settings) = self.deploy_allowlist.as_ref() else {
+            return;
+        };
+        let Some(admin) = settings.dynamic_admin() else {
+            return;
+        };
+        if block_number < U256::from(settings.dynamic_activation_height()) {
+            return;
+        }
+
+        let deploy_permissions = Arc::new(DeployPermissionsPrecompile::new(
+            admin,
+            settings.allowlist().to_vec(),
+        ));
+        let id = DeployPermissionsPrecompile::id().clone();
+        precompiles.apply_precompile(&DEPLOY_PERMISSIONS_PRECOMPILE_ADDR, move |_| {
+            let deploy_permissions_for_call = Arc::clone(&deploy_permissions);
+            let id_for_call = id;
+            Some(DynPrecompile::new_stateful(id_for_call, move |input| {
+                deploy_permissions_for_call.call(input)
+            }))
+        });
+    }
+
     fn redirect_for_block(&self, block_number: U256) -> Option<BaseFeeRedirect> {
         self.redirect.and_then(|settings| {
             if block_number >= U256::from(settings.activation_height()) {
@@ -269,6 +299,7 @@ impl EvmFactory for EvEvmFactory<EthEvmFactory> {
             let inner = evm.inner_mut();
             self.install_mint_precompile(&mut inner.precompiles, block_number);
             self.install_proposer_control_precompile(&mut inner.precompiles, block_number);
+            self.install_deploy_permissions_precompile(&mut inner.precompiles, block_number);
         }
         evm
     }
@@ -295,6 +326,7 @@ impl EvmFactory for EvEvmFactory<EthEvmFactory> {
             let inner = evm.inner_mut();
             self.install_mint_precompile(&mut inner.precompiles, block_number);
             self.install_proposer_control_precompile(&mut inner.precompiles, block_number);
+            self.install_deploy_permissions_precompile(&mut inner.precompiles, block_number);
         }
         evm
     }
@@ -399,6 +431,35 @@ impl EvTxEvmFactory {
         });
     }
 
+    fn install_deploy_permissions_precompile(
+        &self,
+        precompiles: &mut PrecompilesMap,
+        block_number: U256,
+    ) {
+        let Some(settings) = self.deploy_allowlist.as_ref() else {
+            return;
+        };
+        let Some(admin) = settings.dynamic_admin() else {
+            return;
+        };
+        if block_number < U256::from(settings.dynamic_activation_height()) {
+            return;
+        }
+
+        let deploy_permissions = Arc::new(DeployPermissionsPrecompile::new(
+            admin,
+            settings.allowlist().to_vec(),
+        ));
+        let id = DeployPermissionsPrecompile::id().clone();
+        precompiles.apply_precompile(&DEPLOY_PERMISSIONS_PRECOMPILE_ADDR, move |_| {
+            let deploy_permissions_for_call = Arc::clone(&deploy_permissions);
+            let id_for_call = id;
+            Some(DynPrecompile::new_stateful(id_for_call, move |input| {
+                deploy_permissions_for_call.call(input)
+            }))
+        });
+    }
+
     fn redirect_for_block(&self, block_number: U256) -> Option<BaseFeeRedirect> {
         self.redirect.and_then(|settings| {
             if block_number >= U256::from(settings.activation_height()) {
@@ -473,6 +534,7 @@ impl EvmFactory for EvTxEvmFactory {
             let inner = evm.inner_mut();
             self.install_mint_precompile(&mut inner.precompiles, block_number);
             self.install_proposer_control_precompile(&mut inner.precompiles, block_number);
+            self.install_deploy_permissions_precompile(&mut inner.precompiles, block_number);
         }
         evm
     }
@@ -498,6 +560,7 @@ impl EvmFactory for EvTxEvmFactory {
             let inner = evm.inner_mut();
             self.install_mint_precompile(&mut inner.precompiles, block_number);
             self.install_proposer_control_precompile(&mut inner.precompiles, block_number);
+            self.install_deploy_permissions_precompile(&mut inner.precompiles, block_number);
         }
         evm
     }
@@ -545,7 +608,12 @@ mod tests {
     use alloy_evm::{Evm, EvmEnv};
     use alloy_primitives::{address, keccak256, Address, Bytes, TxKind, U256};
     use alloy_sol_types::{sol, SolCall};
-    use ev_precompiles::proposer::PROPOSER_CONTROL_PRECOMPILE_ADDR;
+    use ev_precompiles::{
+        deploy_permissions::{
+            disabled_slot, IDeployPermissions, DEPLOY_PERMISSIONS_PRECOMPILE_ADDR,
+        },
+        proposer::PROPOSER_CONTROL_PRECOMPILE_ADDR,
+    };
     use reth_revm::{
         revm::{
             bytecode::Bytecode as RevmBytecode,
@@ -962,5 +1030,231 @@ mod tests {
             .get(&U256::ZERO)
             .expect("next proposer slot should be written");
         assert_eq!(slot.present_value, U256::from_be_bytes(next.0));
+    }
+
+    fn permission_test_state(accounts: &[Address]) -> State<CacheDB<EmptyDB>> {
+        let mut state = State::builder()
+            .with_database(CacheDB::<EmptyDB>::default())
+            .with_bundle_update()
+            .build();
+        for account in accounts {
+            state.insert_account(
+                *account,
+                AccountInfo {
+                    balance: U256::from(10_000_000_000u64),
+                    nonce: 0,
+                    code_hash: KECCAK_EMPTY,
+                    code: None,
+                    account_id: None,
+                },
+            );
+        }
+        state
+    }
+
+    fn permission_test_env(block_number: u64) -> EvmEnv<SpecId> {
+        let mut env: EvmEnv<SpecId, BlockEnv> = EvmEnv::default();
+        env.cfg_env.chain_id = 1;
+        env.cfg_env.spec = SpecId::CANCUN;
+        env.block_env.number = U256::from(block_number);
+        env.block_env.basefee = 1;
+        env.block_env.gas_limit = 30_000_000;
+        env
+    }
+
+    fn permission_call(caller: Address, nonce: u64, data: Vec<u8>) -> TxEnv {
+        TxEnv {
+            caller,
+            kind: TxKind::Call(DEPLOY_PERMISSIONS_PRECOMPILE_ADDR),
+            nonce,
+            gas_limit: 500_000,
+            gas_price: 1,
+            data: data.into(),
+            ..Default::default()
+        }
+    }
+
+    fn deploy_tx(caller: Address, nonce: u64) -> TxEnv {
+        TxEnv {
+            caller,
+            kind: TxKind::Create,
+            nonce,
+            gas_limit: 500_000,
+            gas_price: 1,
+            data: Bytes::from_static(&[0x00]),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn permission_changes_affect_later_transactions_in_order() {
+        let admin = address!("0x00000000000000000000000000000000000000aa");
+        let deployer = address!("0x00000000000000000000000000000000000000bb");
+        let settings = DeployAllowlistSettings::new_dynamic(Vec::new(), 0, admin, 0);
+        let factory = EvEvmFactory::new(
+            alloy_evm::eth::EthEvmFactory::default(),
+            None,
+            None,
+            None,
+            Some(settings),
+            None,
+        );
+        let mut evm = factory.create_evm(
+            permission_test_state(&[admin, deployer]),
+            permission_test_env(1),
+        );
+
+        assert!(evm.transact_raw(deploy_tx(deployer, 0)).is_err());
+        let disable = IDeployPermissions::setEnabledCall { enabled: false }.abi_encode();
+        assert!(evm
+            .transact_commit(permission_call(admin, 0, disable))
+            .expect("disable transaction is valid")
+            .is_success());
+        assert!(evm
+            .transact_commit(deploy_tx(deployer, 0))
+            .expect("disabled policy allows deployment")
+            .is_success());
+
+        let enable = IDeployPermissions::setEnabledCall { enabled: true }.abi_encode();
+        assert!(evm
+            .transact_commit(permission_call(admin, 1, enable))
+            .expect("enable transaction is valid")
+            .is_success());
+        assert!(
+            evm.transact_raw(deploy_tx(deployer, 1)).is_err(),
+            "re-enabling must restore the preserved empty policy"
+        );
+    }
+
+    #[test]
+    fn add_and_remove_affect_later_deployments_in_order() {
+        let admin = address!("0x00000000000000000000000000000000000000aa");
+        let deployer = address!("0x00000000000000000000000000000000000000bb");
+
+        let add_settings = DeployAllowlistSettings::new_dynamic(Vec::new(), 0, admin, 0);
+        let add_factory = EvEvmFactory::new(
+            alloy_evm::eth::EthEvmFactory::default(),
+            None,
+            None,
+            None,
+            Some(add_settings),
+            None,
+        );
+        let mut add_evm = add_factory.create_evm(
+            permission_test_state(&[admin, deployer]),
+            permission_test_env(1),
+        );
+        let add = IDeployPermissions::addDeployerCall { account: deployer }.abi_encode();
+        assert!(add_evm
+            .transact_commit(permission_call(admin, 0, add))
+            .expect("add transaction is valid")
+            .is_success());
+        assert!(add_evm
+            .transact_commit(deploy_tx(deployer, 0))
+            .expect("new member can deploy later in the block")
+            .is_success());
+
+        let remove_settings = DeployAllowlistSettings::new_dynamic(vec![deployer], 0, admin, 0);
+        let remove_factory = EvEvmFactory::new(
+            alloy_evm::eth::EthEvmFactory::default(),
+            None,
+            None,
+            None,
+            Some(remove_settings),
+            None,
+        );
+        let mut remove_evm = remove_factory.create_evm(
+            permission_test_state(&[admin, deployer]),
+            permission_test_env(1),
+        );
+        let remove = IDeployPermissions::removeDeployerCall { account: deployer }.abi_encode();
+        assert!(remove_evm
+            .transact_commit(permission_call(admin, 0, remove))
+            .expect("remove transaction is valid")
+            .is_success());
+        assert!(
+            remove_evm.transact_raw(deploy_tx(deployer, 0)).is_err(),
+            "removed member cannot deploy later in the block"
+        );
+    }
+
+    #[test]
+    fn deploy_permissions_precompile_respects_activation_height() {
+        let admin = address!("0x00000000000000000000000000000000000000aa");
+        let settings = DeployAllowlistSettings::new_dynamic(Vec::new(), 0, admin, 3);
+        let factory = EvEvmFactory::new(
+            alloy_evm::eth::EthEvmFactory::default(),
+            None,
+            None,
+            None,
+            Some(settings),
+            None,
+        );
+        let disable = || IDeployPermissions::setEnabledCall { enabled: false }.abi_encode();
+
+        let mut before =
+            factory.create_evm(permission_test_state(&[admin]), permission_test_env(2));
+        let before_result = before
+            .transact_raw(permission_call(admin, 0, disable()))
+            .expect("pre-activation call executes as an ordinary account call");
+        assert!(before_result
+            .state
+            .get(&DEPLOY_PERMISSIONS_PRECOMPILE_ADDR)
+            .and_then(|account| account.storage.get(&disabled_slot()))
+            .is_none());
+
+        let mut active =
+            factory.create_evm(permission_test_state(&[admin]), permission_test_env(3));
+        let active_result = active
+            .transact_raw(permission_call(admin, 0, disable()))
+            .expect("activation-height precompile call executes");
+        let disabled = active_result
+            .state
+            .get(&DEPLOY_PERMISSIONS_PRECOMPILE_ADDR)
+            .and_then(|account| account.storage.get(&disabled_slot()))
+            .expect("active precompile writes disabled state");
+        assert_eq!(disabled.present_value, U256::from(1));
+    }
+
+    #[test]
+    fn permission_reads_do_not_change_deployment_gas_accounting() {
+        let admin = address!("0x00000000000000000000000000000000000000aa");
+        let deployer = address!("0x00000000000000000000000000000000000000bb");
+        let unrestricted = EvEvmFactory::new(
+            alloy_evm::eth::EthEvmFactory::default(),
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+        let dynamic = EvEvmFactory::new(
+            alloy_evm::eth::EthEvmFactory::default(),
+            None,
+            None,
+            None,
+            Some(DeployAllowlistSettings::new_dynamic(
+                vec![deployer],
+                0,
+                admin,
+                0,
+            )),
+            None,
+        );
+
+        let unrestricted_result = unrestricted
+            .create_evm(permission_test_state(&[deployer]), permission_test_env(1))
+            .transact_raw(deploy_tx(deployer, 0))
+            .expect("unrestricted deployment executes");
+        let dynamic_result = dynamic
+            .create_evm(permission_test_state(&[deployer]), permission_test_env(1))
+            .transact_raw(deploy_tx(deployer, 0))
+            .expect("dynamically authorized deployment executes");
+
+        assert_eq!(
+            dynamic_result.result.tx_gas_used(),
+            unrestricted_result.result.tx_gas_used(),
+            "consensus permission reads must not charge EVM gas"
+        );
     }
 }

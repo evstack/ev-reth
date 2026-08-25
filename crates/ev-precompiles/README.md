@@ -1,6 +1,7 @@
 # ev-precompiles
 
-Custom EVM precompiles for Evolve, providing native token supply management functionality.
+Custom EVM precompiles for Evolve, providing native token supply management, proposer control, and
+state-backed deployment permissions.
 
 ## Overview
 
@@ -295,3 +296,30 @@ Invalid ABI data also halts the precompile. None of these emit logs.
 - Compromise of the admin (or AdminProxy owner) is compromise of sequencer selection.
 - `evolve_getNextProposer` is a public read of execution state. It is not registered when the
   precompile is disabled, so ev-node treats method-not-found as "feature off".
+
+## Deployment Permissions Precompile
+
+The optional deployment-permissions precompile is installed at
+`0x000000000000000000000000000000000000f102` when `deployAllowlistAdmin` is configured and
+`deployAllowlistPrecompileActivationHeight` is reached.
+
+```solidity
+interface IDeployPermissions {
+    function addDeployer(address account) external;
+    function removeDeployer(address account) external;
+    function setEnabled(bool enabled) external;
+    function isDeployerAllowed(address account) external view returns (bool);
+    function isEnabled() external view returns (bool);
+    function deployerCount() external view returns (uint256);
+    function admin() external view returns (address);
+}
+```
+
+The genesis `deployAllowlist` is the baseline. Enforcement is enabled when its state flag is unset,
+so no bootstrap call is required. `setEnabled(false)` allows all top-level deployments without
+discarding membership. Member changes are permitted while disabled and apply when enforcement is
+re-enabled. The active set is capped at 1024 and excludes the zero address.
+
+The admin is fixed by chainspec and should normally be an AdminProxy, multisig, or governance
+contract. Read the interface through standard `eth_call`; no custom RPC is required. See the
+[permissioned EVM guide](../../docs/guide/permissioned-evm.md) for rollout and security details.

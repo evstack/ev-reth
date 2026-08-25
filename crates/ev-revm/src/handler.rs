@@ -6,6 +6,10 @@ use crate::{
     tx_env::{BatchCallsTx, SponsorPayerTx},
 };
 use alloy_primitives::{TxKind, U256};
+use ev_precompiles::deploy_permissions::{
+    deployer_override_slot, disabled_slot, resolve_deployer_override,
+    DEPLOY_PERMISSIONS_PRECOMPILE_ADDR,
+};
 use reth_revm::{
     inspector::{Inspector, InspectorEvmTr, InspectorHandler},
     revm::{
@@ -15,7 +19,7 @@ use reth_revm::{
             journaled_state::{account::JournaledAccountTr, JournalCheckpoint},
             result::HaltReason,
             transaction::{AccessListItemTr, TransactionType},
-            Block, Cfg, ContextTr, JournalTr, Transaction,
+            Block, Cfg, ContextTr, Database, JournalTr, Transaction,
         },
         handler::{
             post_execution, EthFrame, EvmTr, EvmTrError, FrameResult, FrameTr, Handler,
@@ -72,7 +76,7 @@ impl<EVM, ERROR, FRAME> EvHandler<EVM, ERROR, FRAME> {
         }
     }
 
-    fn ensure_deploy_allowed(&self, evm: &EVM) -> Result<(), ERROR>
+    fn ensure_deploy_allowed(&self, evm: &mut EVM) -> Result<(), ERROR>
     where
         EVM: EvmTr<Context: ContextTr<Journal: JournalTr<State = EvmState>>>,
         ERROR: EvmTrError<EVM>,
@@ -83,13 +87,48 @@ impl<EVM, ERROR, FRAME> EvHandler<EVM, ERROR, FRAME> {
             .number()
             .try_into()
             .unwrap_or(u64::MAX);
-        let tx = evm.ctx_ref().tx();
-        let caller = tx.caller();
-        let is_create = matches!(tx.kind(), TxKind::Create);
+        let (caller, is_create) = {
+            let tx = evm.ctx_ref().tx();
+            (tx.caller(), matches!(tx.kind(), TxKind::Create))
+        };
 
-        let settings = self.deploy_allowlist_for_block(block_number);
+        if !is_create {
+            return Ok(());
+        }
+
+        let configured_settings = self.deploy_allowlist.as_ref();
+        if let Some(settings) =
+            configured_settings.filter(|settings| settings.is_dynamic_active(block_number))
+        {
+            // Read through the execution database so state committed by earlier transactions in
+            // this block is visible. This intentionally bypasses the journal's SLOAD path and
+            // therefore does not warm the precompile account or its storage slots.
+            let db = evm.ctx_mut().db_mut();
+            let disabled = db
+                .storage(DEPLOY_PERMISSIONS_PRECOMPILE_ADDR, disabled_slot())
+                .map_err(ERROR::from)?;
+            if !disabled.is_zero() {
+                return Ok(());
+            }
+            let entry = db
+                .storage(
+                    DEPLOY_PERMISSIONS_PRECOMPILE_ADDR,
+                    deployer_override_slot(caller),
+                )
+                .map_err(ERROR::from)?;
+            if resolve_deployer_override(entry, settings.is_baseline_member(caller)) {
+                return Ok(());
+            }
+            return Err(
+                <ERROR as reth_revm::revm::context::result::FromStringError>::from_string(
+                    "contract deployment not allowed".to_string(),
+                ),
+            );
+        }
+
+        let static_settings = self.deploy_allowlist_for_block(block_number);
         if let Err(_e) =
-            crate::deploy::check_deploy_allowed(settings, caller, is_create, block_number)
+            crate::deploy::check_deploy_allowed(static_settings, caller, is_create, block_number)
         {
             return Err(
                 <ERROR as reth_revm::revm::context::result::FromStringError>::from_string(
@@ -796,6 +835,9 @@ mod tests {
     type TestEvm = EvEvm<TestContext, NoOpInspector, EthPrecompiles>;
     type TestError = EVMError<Infallible, InvalidTransaction>;
     type TestHandler = EvHandler<TestEvm, TestError, EthFrame<EthInterpreter>>;
+    type CacheTestContext = Context<BlockEnv, TxEnv, CfgEnv<SpecId>, CacheDB<EmptyDB>>;
+    type CacheTestEvm = EvEvm<CacheTestContext, NoOpInspector, EthPrecompiles>;
+    type CacheTestHandler = EvHandler<CacheTestEvm, TestError, EthFrame<EthInterpreter>>;
 
     use alloy_evm::{Evm, EvmEnv, EvmFactory};
     use reth_revm::revm::{
@@ -1718,6 +1760,118 @@ mod tests {
             result.is_ok(),
             "allowlisted caller should be allowed to deploy, got: {result:?}"
         );
+    }
+
+    fn dynamic_deploy_evm(
+        caller: Address,
+        block_number: u64,
+        db: CacheDB<EmptyDB>,
+    ) -> CacheTestEvm {
+        let mut ctx = Context::mainnet().with_db(db);
+        ctx.block.number = U256::from(block_number);
+        ctx.cfg.spec = SpecId::CANCUN;
+        ctx.cfg.disable_nonce_check = true;
+        ctx.tx.caller = caller;
+        ctx.tx.kind = TxKind::Create;
+        ctx.tx.gas_limit = 1_000_000;
+        ctx.tx.gas_price = 0;
+        let inner = ctx.build_mainnet_with_inspector(NoOpInspector);
+        EvEvm::from_inner(inner, None, None, false)
+    }
+
+    fn validate_dynamic_deploy(
+        evm: &mut CacheTestEvm,
+        settings: DeployAllowlistSettings,
+    ) -> Result<(), TestError> {
+        let handler: CacheTestHandler = EvHandler::new(None, Some(settings));
+        handler.validate_against_state_and_deduct_caller(evm, &mut InitialAndFloorGas::default())
+    }
+
+    #[test]
+    fn dynamic_empty_baseline_denies_by_default_without_warming_permission_state() {
+        let caller = address!("0x00000000000000000000000000000000000000aa");
+        let admin = address!("0x00000000000000000000000000000000000000bb");
+        let settings = DeployAllowlistSettings::new_dynamic(Vec::new(), 0, admin, 0);
+        let mut evm = dynamic_deploy_evm(caller, 1, CacheDB::default());
+
+        let result = validate_dynamic_deploy(&mut evm, settings);
+
+        assert!(matches!(result, Err(EVMError::Custom(_))));
+        assert!(
+            !evm.ctx()
+                .journal()
+                .evm_state()
+                .contains_key(&DEPLOY_PERMISSIONS_PRECOMPILE_ADDR),
+            "consensus permission reads must not warm or journal the precompile account"
+        );
+    }
+
+    #[test]
+    fn disabled_dynamic_enforcement_allows_any_deployer() {
+        let caller = address!("0x00000000000000000000000000000000000000aa");
+        let admin = address!("0x00000000000000000000000000000000000000bb");
+        let settings = DeployAllowlistSettings::new_dynamic(Vec::new(), 0, admin, 0);
+        let mut db = CacheDB::default();
+        db.insert_account_storage(
+            DEPLOY_PERMISSIONS_PRECOMPILE_ADDR,
+            disabled_slot(),
+            U256::from(1),
+        )
+        .expect("in-memory storage write succeeds");
+        let mut evm = dynamic_deploy_evm(caller, 1, db);
+
+        let result = validate_dynamic_deploy(&mut evm, settings);
+
+        assert!(
+            result.is_ok(),
+            "disabled enforcement must fail open: {result:?}"
+        );
+    }
+
+    #[test]
+    fn dynamic_overrides_add_and_remove_genesis_members() {
+        let baseline = address!("0x00000000000000000000000000000000000000aa");
+        let added = address!("0x00000000000000000000000000000000000000bb");
+        let admin = address!("0x00000000000000000000000000000000000000cc");
+        let settings = DeployAllowlistSettings::new_dynamic(vec![baseline], 0, admin, 0);
+
+        let mut baseline_evm = dynamic_deploy_evm(baseline, 1, CacheDB::default());
+        assert!(validate_dynamic_deploy(&mut baseline_evm, settings.clone()).is_ok());
+
+        let mut removed_db = CacheDB::default();
+        removed_db
+            .insert_account_storage(
+                DEPLOY_PERMISSIONS_PRECOMPILE_ADDR,
+                deployer_override_slot(baseline),
+                U256::from(2),
+            )
+            .expect("in-memory storage write succeeds");
+        let mut removed_evm = dynamic_deploy_evm(baseline, 1, removed_db);
+        assert!(validate_dynamic_deploy(&mut removed_evm, settings.clone()).is_err());
+
+        let mut added_db = CacheDB::default();
+        added_db
+            .insert_account_storage(
+                DEPLOY_PERMISSIONS_PRECOMPILE_ADDR,
+                deployer_override_slot(added),
+                U256::from(1),
+            )
+            .expect("in-memory storage write succeeds");
+        let mut added_evm = dynamic_deploy_evm(added, 1, added_db);
+        assert!(validate_dynamic_deploy(&mut added_evm, settings).is_ok());
+    }
+
+    #[test]
+    fn dynamic_activation_preserves_pre_activation_static_behavior() {
+        let caller = address!("0x00000000000000000000000000000000000000aa");
+        let admin = address!("0x00000000000000000000000000000000000000bb");
+        let settings = DeployAllowlistSettings::new_dynamic(Vec::new(), 0, admin, 2);
+
+        let mut before = dynamic_deploy_evm(caller, 1, CacheDB::default());
+        assert!(validate_dynamic_deploy(&mut before, settings.clone()).is_ok());
+
+        let mut at_activation = dynamic_deploy_evm(caller, 2, CacheDB::default());
+        assert!(validate_dynamic_deploy(&mut at_activation, settings).is_err());
     }
 
     #[test]
