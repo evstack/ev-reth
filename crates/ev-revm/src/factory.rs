@@ -238,7 +238,7 @@ impl<F> EvEvmFactory<F> {
         let Some(admin) = settings.dynamic_admin() else {
             return;
         };
-        if block_number < U256::from(settings.dynamic_activation_height()) {
+        if block_number < U256::from(settings.activation_height()) {
             return;
         }
 
@@ -442,7 +442,7 @@ impl EvTxEvmFactory {
         let Some(admin) = settings.dynamic_admin() else {
             return;
         };
-        if block_number < U256::from(settings.dynamic_activation_height()) {
+        if block_number < U256::from(settings.activation_height()) {
             return;
         }
 
@@ -1090,7 +1090,7 @@ mod tests {
     fn permission_changes_affect_later_transactions_in_order() {
         let admin = address!("0x00000000000000000000000000000000000000aa");
         let deployer = address!("0x00000000000000000000000000000000000000bb");
-        let settings = DeployAllowlistSettings::new_dynamic(Vec::new(), 0, admin, 0);
+        let settings = DeployAllowlistSettings::new_dynamic(Vec::new(), 0, admin);
         let factory = EvEvmFactory::new(
             alloy_evm::eth::EthEvmFactory::default(),
             None,
@@ -1131,7 +1131,7 @@ mod tests {
         let admin = address!("0x00000000000000000000000000000000000000aa");
         let deployer = address!("0x00000000000000000000000000000000000000bb");
 
-        let add_settings = DeployAllowlistSettings::new_dynamic(Vec::new(), 0, admin, 0);
+        let add_settings = DeployAllowlistSettings::new_dynamic(Vec::new(), 0, admin);
         let add_factory = EvEvmFactory::new(
             alloy_evm::eth::EthEvmFactory::default(),
             None,
@@ -1154,7 +1154,7 @@ mod tests {
             .expect("new member can deploy later in the block")
             .is_success());
 
-        let remove_settings = DeployAllowlistSettings::new_dynamic(vec![deployer], 0, admin, 0);
+        let remove_settings = DeployAllowlistSettings::new_dynamic(vec![deployer], 0, admin);
         let remove_factory = EvEvmFactory::new(
             alloy_evm::eth::EthEvmFactory::default(),
             None,
@@ -1181,7 +1181,7 @@ mod tests {
     #[test]
     fn deploy_permissions_precompile_respects_activation_height() {
         let admin = address!("0x00000000000000000000000000000000000000aa");
-        let settings = DeployAllowlistSettings::new_dynamic(Vec::new(), 0, admin, 3);
+        let settings = DeployAllowlistSettings::new_dynamic(Vec::new(), 3, admin);
         let factory = EvEvmFactory::new(
             alloy_evm::eth::EthEvmFactory::default(),
             None,
@@ -1237,7 +1237,6 @@ mod tests {
                 vec![deployer],
                 0,
                 admin,
-                0,
             )),
             None,
         );

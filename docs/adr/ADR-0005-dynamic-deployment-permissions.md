@@ -49,13 +49,13 @@ become valid. Execution must remain authoritative.
 ## Decision
 
 We install `IDeployPermissions` at `0x000000000000000000000000000000000000F102`
-when a non-zero `deployAllowlistAdmin` is configured and the independent
-`deployAllowlistPrecompileActivationHeight` is reached. The activation defaults to block zero.
+when a non-zero `deployAllowlistAdmin` is configured and `deployAllowlistActivationHeight` is
+reached. The activation defaults to block zero.
 
-Before dynamic activation, the existing static policy applies. At activation, the genesis list is
-the baseline. An unset enabled flag means enabled, avoiding a bootstrap transaction. A stored
-disabled flag makes top-level deployment fail open while leaving the precompile callable. Re-enabling
-clears that flag and restores the preserved policy.
+Before activation, existing pre-activation behavior applies. At activation, the genesis list is the
+baseline. An unset enabled flag means enabled, avoiding a bootstrap transaction. A stored disabled
+flag makes top-level deployment fail open while leaving the precompile callable. Re-enabling clears
+that flag and restores the preserved policy.
 
 Membership uses domain-separated hashed storage keys and tri-state address entries: unset falls back
 to the genesis baseline, allowed adds a non-baseline member, and denied removes a baseline member.
@@ -79,8 +79,9 @@ custom RPC is added.
 ### Backwards Compatibility
 
 Chains without a non-zero admin use the exact legacy static behavior. Existing chains enabling the
-feature must coordinate a future activation height after all validating nodes upgrade. When the
-baseline is non-empty, dynamic activation must not precede static-list activation.
+feature can do so only while their configured `deployAllowlistActivationHeight` is still in the
+future. A chain whose static activation already passed needs a separate coordinated consensus
+upgrade mechanism; v1 intentionally has no second activation field.
 
 ### Positive
 

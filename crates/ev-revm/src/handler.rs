@@ -1791,7 +1791,7 @@ mod tests {
     fn dynamic_empty_baseline_denies_by_default_without_warming_permission_state() {
         let caller = address!("0x00000000000000000000000000000000000000aa");
         let admin = address!("0x00000000000000000000000000000000000000bb");
-        let settings = DeployAllowlistSettings::new_dynamic(Vec::new(), 0, admin, 0);
+        let settings = DeployAllowlistSettings::new_dynamic(Vec::new(), 0, admin);
         let mut evm = dynamic_deploy_evm(caller, 1, CacheDB::default());
 
         let result = validate_dynamic_deploy(&mut evm, settings);
@@ -1810,7 +1810,7 @@ mod tests {
     fn disabled_dynamic_enforcement_allows_any_deployer() {
         let caller = address!("0x00000000000000000000000000000000000000aa");
         let admin = address!("0x00000000000000000000000000000000000000bb");
-        let settings = DeployAllowlistSettings::new_dynamic(Vec::new(), 0, admin, 0);
+        let settings = DeployAllowlistSettings::new_dynamic(Vec::new(), 0, admin);
         let mut db = CacheDB::default();
         db.insert_account_storage(
             DEPLOY_PERMISSIONS_PRECOMPILE_ADDR,
@@ -1833,7 +1833,7 @@ mod tests {
         let baseline = address!("0x00000000000000000000000000000000000000aa");
         let added = address!("0x00000000000000000000000000000000000000bb");
         let admin = address!("0x00000000000000000000000000000000000000cc");
-        let settings = DeployAllowlistSettings::new_dynamic(vec![baseline], 0, admin, 0);
+        let settings = DeployAllowlistSettings::new_dynamic(vec![baseline], 0, admin);
 
         let mut baseline_evm = dynamic_deploy_evm(baseline, 1, CacheDB::default());
         assert!(validate_dynamic_deploy(&mut baseline_evm, settings.clone()).is_ok());
@@ -1862,10 +1862,10 @@ mod tests {
     }
 
     #[test]
-    fn dynamic_activation_preserves_pre_activation_static_behavior() {
+    fn dynamic_permissions_activate_at_allowlist_height() {
         let caller = address!("0x00000000000000000000000000000000000000aa");
         let admin = address!("0x00000000000000000000000000000000000000bb");
-        let settings = DeployAllowlistSettings::new_dynamic(Vec::new(), 0, admin, 2);
+        let settings = DeployAllowlistSettings::new_dynamic(Vec::new(), 2, admin);
 
         let mut before = dynamic_deploy_evm(caller, 1, CacheDB::default());
         assert!(validate_dynamic_deploy(&mut before, settings.clone()).is_ok());

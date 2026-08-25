@@ -485,8 +485,7 @@ Operational notes:
 - The allowlist is static and must be changed via a chainspec update.
 - Duplicate entries or the zero address are rejected at startup.
 
-To manage permissions on-chain, configure the deployment-permissions admin and its independent
-activation height:
+To manage permissions on-chain, configure the deployment-permissions admin:
 
 ```json
 "config": {
@@ -495,20 +494,20 @@ activation height:
     "deployAllowlist": [
       "0xInitialDeployerAddress"
     ],
-    "deployAllowlistActivationHeight": 0,
-    "deployAllowlistAdmin": "0xAdminProxyOrGovernanceAddress",
-    "deployAllowlistPrecompileActivationHeight": 20000000
+    "deployAllowlistActivationHeight": 20000000,
+    "deployAllowlistAdmin": "0xAdminProxyOrGovernanceAddress"
   }
 }
 ```
 
-At the dynamic activation height, `deployAllowlist` becomes the baseline for the state-backed
+At `deployAllowlistActivationHeight`, `deployAllowlist` becomes the baseline for the state-backed
 precompile at `0x000000000000000000000000000000000000F102`. Enforcement is enabled by default.
 The fixed admin can add or remove deployers and can temporarily disable enforcement; disabling is
 fail-open for top-level deployments and preserves the policy for later re-enablement. An empty
 baseline therefore means deny-all while enabled, not “feature disabled.” Use standard `eth_call`
-for inspection. See the [permissioned EVM guide](docs/guide/permissioned-evm.md) for the interface,
-activation constraints, and rollout procedure.
+for inspection. See the [permissioned EVM guide](docs/guide/permissioned-evm.md) for the interface
+and rollout procedure. Existing networks can opt in only while their configured activation height
+is still in the future; v1 intentionally has no second activation field.
 
 ### Payload Builder Configuration
 

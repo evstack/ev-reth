@@ -301,7 +301,7 @@ Invalid ABI data also halts the precompile. None of these emit logs.
 
 The optional deployment-permissions precompile is installed at
 `0x000000000000000000000000000000000000f102` when `deployAllowlistAdmin` is configured and
-`deployAllowlistPrecompileActivationHeight` is reached.
+`deployAllowlistActivationHeight` is reached.
 
 ```solidity
 interface IDeployPermissions {

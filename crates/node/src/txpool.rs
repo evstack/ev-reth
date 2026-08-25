@@ -626,16 +626,15 @@ where
                     Default::default()
                 });
                 let deploy_allowlist = evolve_config.deploy_allowlist_settings().map(|settings| {
-                    match settings.dynamic {
-                        Some(dynamic) => ev_revm::deploy::DeployAllowlistSettings::new_dynamic(
+                    match settings.admin {
+                        Some(admin) => ev_revm::deploy::DeployAllowlistSettings::new_dynamic(
                             settings.baseline,
-                            settings.static_activation_height,
-                            dynamic.admin,
-                            dynamic.activation_height,
+                            settings.activation_height,
+                            admin,
                         ),
                         None => ev_revm::deploy::DeployAllowlistSettings::new(
                             settings.baseline,
-                            settings.static_activation_height,
+                            settings.activation_height,
                         ),
                     }
                 });
@@ -934,7 +933,7 @@ mod tests {
         let allowed = Address::from([0x11u8; 20]);
         let admin = Address::from([0xaau8; 20]);
         let settings =
-            ev_revm::deploy::DeployAllowlistSettings::new_dynamic(vec![allowed], 0, admin, 0);
+            ev_revm::deploy::DeployAllowlistSettings::new_dynamic(vec![allowed], 0, admin);
         let validator = create_test_validator(Some(settings));
 
         let signed_tx = create_non_sponsored_evnode_create_tx(200_000, 1_000_000_000);

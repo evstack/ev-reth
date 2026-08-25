@@ -10,8 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Optional state-backed deployment-permissions precompile at `0xF102`, enabled by
-  `deployAllowlistAdmin` with independent `deployAllowlistPrecompileActivationHeight`. The fixed
-  admin can add or remove deployers and reversibly pause enforcement while preserving policy.
+  `deployAllowlistAdmin` at `deployAllowlistActivationHeight`. The fixed admin can add or remove
+  deployers and reversibly pause enforcement while preserving policy.
 
 ### Changed
 

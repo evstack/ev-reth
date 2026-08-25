@@ -9,7 +9,6 @@ pub struct DeployAllowlistSettings {
     allowlist: Arc<[Address]>,
     activation_height: u64,
     dynamic_admin: Option<Address>,
-    dynamic_activation_height: u64,
 }
 
 impl DeployAllowlistSettings {
@@ -23,20 +22,13 @@ impl DeployAllowlistSettings {
             allowlist: Arc::from(allowlist),
             activation_height,
             dynamic_admin: None,
-            dynamic_activation_height: 0,
         }
     }
 
-    /// Creates deployment settings that transition from static to dynamic enforcement.
-    pub fn new_dynamic(
-        allowlist: Vec<Address>,
-        activation_height: u64,
-        admin: Address,
-        dynamic_activation_height: u64,
-    ) -> Self {
+    /// Creates state-backed deployment settings with a fixed admin.
+    pub fn new_dynamic(allowlist: Vec<Address>, activation_height: u64, admin: Address) -> Self {
         let mut settings = Self::new(allowlist, activation_height);
         settings.dynamic_admin = Some(admin);
-        settings.dynamic_activation_height = dynamic_activation_height;
         settings
     }
 
@@ -73,11 +65,6 @@ impl DeployAllowlistSettings {
         self.dynamic_admin
     }
 
-    /// Returns the dynamic-permissions activation height.
-    pub const fn dynamic_activation_height(&self) -> u64 {
-        self.dynamic_activation_height
-    }
-
     /// Returns whether this chain uses state-backed deployment permissions.
     pub const fn is_dynamic(&self) -> bool {
         self.dynamic_admin.is_some()
@@ -85,7 +72,7 @@ impl DeployAllowlistSettings {
 
     /// Returns whether dynamic deployment permissions are active in this block.
     pub const fn is_dynamic_active(&self, block_number: u64) -> bool {
-        self.is_dynamic() && block_number >= self.dynamic_activation_height
+        self.is_dynamic() && self.is_active(block_number)
     }
 }
 

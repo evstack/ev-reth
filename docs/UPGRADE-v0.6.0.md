@@ -2,7 +2,10 @@
 
 This guide covers rollout of the optional dynamic deployment-permissions precompile. Existing
 networks that do not configure `deployAllowlistAdmin` require no chainspec changes and retain their
-static deployment behavior.
+static deployment behavior. A network can opt into dynamic permissions only while its configured
+`deployAllowlistActivationHeight` is still in the future. Networks whose static activation has
+already passed need a separate coordinated consensus upgrade mechanism; this version does not
+expose a second activation height.
 
 ## Dynamic Deployment Permissions
 
@@ -13,25 +16,23 @@ activation block. Add these fields inside `config.evolve`:
 "deployAllowlist": [
   "0xInitialDeployerAddress"
 ],
-"deployAllowlistActivationHeight": 0,
-"deployAllowlistAdmin": "0xAdminProxyOrGovernanceAddress",
-"deployAllowlistPrecompileActivationHeight": 20000000
+"deployAllowlistActivationHeight": 20000000,
+"deployAllowlistAdmin": "0xAdminProxyOrGovernanceAddress"
 ```
 
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `deployAllowlist` | `address[]` | empty | Genesis baseline for dynamic membership. Empty means deny-all while enabled. |
-| `deployAllowlistActivationHeight` | `u64` | `0` for a non-empty list | Activation for legacy static enforcement before dynamic activation. |
+| `deployAllowlistActivationHeight` | `u64` | `0` | Block where deployment restrictions and `F102` activate. |
 | `deployAllowlistAdmin` | `address` | -- | Enables dynamic mode and authorizes mutations. Zero or omitted preserves legacy behavior. |
-| `deployAllowlistPrecompileActivationHeight` | `u64` | `0` | Block where `F102` and dynamic enforcement activate. |
 
-When the baseline is non-empty, the precompile activation height must be at or after the static
-activation height. The feature is enabled by default at activation. Calling `setEnabled(false)`
-allows all top-level deployments until the admin re-enables the preserved policy.
+The feature is enabled by default at activation. Calling `setEnabled(false)` allows all top-level
+deployments until the admin re-enables the preserved policy.
 
-## Existing-Network Rollout
+## Rollout Before Activation
 
-1. Choose a future activation height with enough time for every validator and sequencer to upgrade.
+1. Confirm the existing `deployAllowlistActivationHeight` is still in the future and leaves enough
+   time for every validator and sequencer to upgrade.
 2. Set `deployAllowlistAdmin` to an existing `AdminProxy`, multisig, or governance contract. Do not
    use a disposable EOA for production authority.
 3. Keep `deployAllowlist` equal to the policy that should be active at the transition.
@@ -54,8 +55,9 @@ to fail open deployment while preserving membership for later recovery.
 
 ## Checklist
 
-- [ ] All validators use the same admin, baseline, and activation heights
-- [ ] Dynamic activation does not precede non-empty static-list activation
+- [ ] All validators use the same admin, baseline, and activation height
+- [ ] The configured activation height is still in the future
+- [ ] The activation height leaves enough time for every validator to upgrade
 - [ ] The admin contract and its recovery process are tested
 - [ ] Every validating node upgrades before the activation block
 - [ ] Read calls at `F102` are verified at activation

@@ -230,17 +230,15 @@ impl EvolveTestFixture {
         let deploy_allowlist =
             config
                 .deploy_allowlist_settings()
-                .map(|settings| match settings.dynamic {
-                    Some(dynamic) => DeployAllowlistSettings::new_dynamic(
+                .map(|settings| match settings.admin {
+                    Some(admin) => DeployAllowlistSettings::new_dynamic(
                         settings.baseline,
-                        settings.static_activation_height,
-                        dynamic.admin,
-                        dynamic.activation_height,
+                        settings.activation_height,
+                        admin,
                     ),
-                    None => DeployAllowlistSettings::new(
-                        settings.baseline,
-                        settings.static_activation_height,
-                    ),
+                    None => {
+                        DeployAllowlistSettings::new(settings.baseline, settings.activation_height)
+                    }
                 });
         let evm_factory = EvTxEvmFactory::new(
             base_fee_redirect,

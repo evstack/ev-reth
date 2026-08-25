@@ -32,8 +32,7 @@
         "0x000000000000000000000000000000000000Ad00"
       ],
       "deployAllowlistActivationHeight": 0,
-      "deployAllowlistAdmin": "0x000000000000000000000000000000000000Ad00",
-      "deployAllowlistPrecompileActivationHeight": 0
+      "deployAllowlistAdmin": "0x000000000000000000000000000000000000Ad00"
     }
   },
   "difficulty": "0x1",

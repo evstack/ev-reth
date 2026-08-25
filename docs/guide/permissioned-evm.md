@@ -47,16 +47,14 @@ Set `deployAllowlistAdmin` to enable the state-backed precompile at
   "deployAllowlist": [
     "0xInitialDeployerAddress"
   ],
-  "deployAllowlistActivationHeight": 0,
-  "deployAllowlistAdmin": "0xAdminProxyOrGovernanceAddress",
-  "deployAllowlistPrecompileActivationHeight": 20000000
+  "deployAllowlistActivationHeight": 20000000,
+  "deployAllowlistAdmin": "0xAdminProxyOrGovernanceAddress"
 }
 ```
 
-`deployAllowlistPrecompileActivationHeight` defaults to `0` when a non-zero admin is set. Before
-that block, static behavior is unchanged. At and after that block, the genesis list is the dynamic
-baseline and state-backed enforcement is enabled by default. If the baseline is non-empty, dynamic
-activation must be at or after `deployAllowlistActivationHeight`.
+`deployAllowlistActivationHeight` defaults to `0` when omitted. Before that block, deployment
+behavior is unchanged. At and after that block, the genesis list is the dynamic baseline and
+state-backed enforcement is enabled by default.
 
 A configured empty baseline is intentionally different from legacy mode: it denies every top-level
 deployment while enforcement is enabled. Setting the admin to zero is the same as omitting it and
@@ -104,8 +102,10 @@ emits no native events in v1.
   transaction rollback and chain-reorganization semantics.
 - For production, point the fixed admin at an `AdminProxy`, multisig, or governance contract. Admin
   rotation should happen behind that contract; changing the chainspec admin requires a hard fork.
-- Existing networks must use a coordinated future `deployAllowlistPrecompileActivationHeight` and
-  upgrade all validating nodes before it.
+- Existing networks can opt in only if their configured `deployAllowlistActivationHeight` is still
+  in the future. Networks whose static activation has already passed need a separate coordinated
+  consensus upgrade mechanism; this version intentionally does not expose a second activation
+  height.
 
 References:
 
