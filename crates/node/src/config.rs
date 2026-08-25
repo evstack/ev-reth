@@ -160,8 +160,8 @@ impl EvolvePayloadBuilderConfig {
                 config.deploy_allowlist = allowlist;
             }
             config.deploy_allowlist_activation_height = extras.deploy_allowlist_activation_height;
-            if !config.deploy_allowlist.is_empty()
-                && config.deploy_allowlist_activation_height.is_none()
+            if config.deploy_allowlist_activation_height.is_none()
+                && (config.deploy_allowlist_admin.is_some() || !config.deploy_allowlist.is_empty())
             {
                 config.deploy_allowlist_activation_height = Some(0);
             }
@@ -563,7 +563,7 @@ mod tests {
 
         assert!(config.deploy_allowlist.is_empty());
         assert_eq!(config.deploy_allowlist_admin, Some(admin));
-        assert_eq!(config.deploy_allowlist_activation_height, None);
+        assert_eq!(config.deploy_allowlist_activation_height, Some(0));
         assert_eq!(
             config.deploy_allowlist_settings(),
             Some(DeployAllowlistConfig {

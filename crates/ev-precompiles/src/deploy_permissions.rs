@@ -113,12 +113,18 @@ impl DeployPermissionsPrecompile {
     }
 
     /// Creates a precompile using the fixed admin and genesis baseline.
-    pub fn new(admin: Address, mut baseline: Vec<Address>) -> Self {
-        baseline.sort_unstable();
-        baseline.dedup();
+    /// Sorted unique inputs are stored without copying.
+    pub fn new(admin: Address, baseline: impl Into<Arc<[Address]>>) -> Self {
+        let baseline = baseline.into();
+        if baseline.windows(2).all(|pair| pair[0] < pair[1]) {
+            return Self { admin, baseline };
+        }
+        let mut owned = Vec::from(baseline.as_ref());
+        owned.sort_unstable();
+        owned.dedup();
         Self {
             admin,
-            baseline: Arc::from(baseline),
+            baseline: Arc::from(owned),
         }
     }
 

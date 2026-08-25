@@ -244,7 +244,7 @@ impl<F> EvEvmFactory<F> {
 
         let deploy_permissions = Arc::new(DeployPermissionsPrecompile::new(
             admin,
-            settings.allowlist().to_vec(),
+            settings.allowlist(),
         ));
         let id = DeployPermissionsPrecompile::id().clone();
         precompiles.apply_precompile(&DEPLOY_PERMISSIONS_PRECOMPILE_ADDR, move |_| {
@@ -448,7 +448,7 @@ impl EvTxEvmFactory {
 
         let deploy_permissions = Arc::new(DeployPermissionsPrecompile::new(
             admin,
-            settings.allowlist().to_vec(),
+            settings.allowlist(),
         ));
         let id = DeployPermissionsPrecompile::id().clone();
         precompiles.apply_precompile(&DEPLOY_PERMISSIONS_PRECOMPILE_ADDR, move |_| {
