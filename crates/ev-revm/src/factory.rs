@@ -1217,6 +1217,41 @@ mod tests {
     }
 
     #[test]
+    fn legacy_static_settings_never_install_deploy_permissions_precompile() {
+        let allowed = address!("0x00000000000000000000000000000000000000aa");
+        let denied = address!("0x00000000000000000000000000000000000000bb");
+        let settings = DeployAllowlistSettings::new(vec![allowed], 0);
+        let factory = EvEvmFactory::new(
+            alloy_evm::eth::EthEvmFactory::default(),
+            None,
+            None,
+            None,
+            Some(settings),
+            None,
+        );
+        let mut evm = factory.create_evm(
+            permission_test_state(&[allowed, denied]),
+            permission_test_env(1),
+        );
+        let disable = IDeployPermissions::setEnabledCall { enabled: false }.abi_encode();
+
+        let result = evm
+            .transact_raw(permission_call(allowed, 0, disable))
+            .expect("F102 call executes as an ordinary account call in legacy mode");
+        assert!(result
+            .state
+            .get(&DEPLOY_PERMISSIONS_PRECOMPILE_ADDR)
+            .and_then(|account| account.storage.get(&disabled_slot()))
+            .is_none());
+        assert!(evm.transact_raw(deploy_tx(denied, 0)).is_err());
+        assert!(evm
+            .transact_raw(deploy_tx(allowed, 0))
+            .expect("legacy allowlisted deployment executes")
+            .result
+            .is_success());
+    }
+
+    #[test]
     fn permission_reads_do_not_change_deployment_gas_accounting() {
         let admin = address!("0x00000000000000000000000000000000000000aa");
         let deployer = address!("0x00000000000000000000000000000000000000bb");

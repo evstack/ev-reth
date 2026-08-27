@@ -455,6 +455,7 @@ mod tests {
         assert_eq!(config.base_fee_redirect_activation_height, None);
         assert_eq!(config.mint_precompile_activation_height, None);
         assert_eq!(config.proposer_control_activation_height, None);
+        assert!(config.deploy_allowlist_settings().is_none());
     }
 
     #[test]
