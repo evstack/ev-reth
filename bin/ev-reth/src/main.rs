@@ -12,10 +12,7 @@ use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
 use url::Url;
 
-use ev_node::{
-    head::{HeadApiServer, HeadPublisher},
-    log_startup, EvolveArgs, EvolveChainSpecParser, EvolveNode,
-};
+use ev_node::{head::HeadPublisher, log_startup, EvolveArgs, EvolveChainSpecParser, EvolveNode};
 
 #[global_allocator]
 static ALLOC: reth_cli_util::allocator::Allocator = reth_cli_util::allocator::new_allocator();
@@ -101,15 +98,9 @@ fn main() {
                 builder.config().chain.chain().id(),
                 builder.config().chain.genesis_hash(),
             );
-            let rpc_head_publisher = head_publisher.clone();
 
             let handle = builder
-                .node(EvolveNode::new())
-                .extend_rpc_modules(move |ctx| {
-                    ctx.modules
-                        .merge_configured(rpc_head_publisher.into_rpc())?;
-                    Ok(())
-                })
+                .node(EvolveNode::new().with_head_publisher(head_publisher.clone()))
                 .launch()
                 .await?;
 
