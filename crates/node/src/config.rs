@@ -6,7 +6,18 @@ use std::collections::HashSet;
 /// Default contract size limit in bytes (24KB per EIP-170).
 pub const DEFAULT_CONTRACT_SIZE_LIMIT: usize = 24 * 1024;
 /// Maximum number of addresses allowed in the deploy allowlist.
-pub const MAX_DEPLOY_ALLOWLIST_LEN: usize = 1024;
+pub const MAX_DEPLOY_ALLOWLIST_LEN: usize = ev_revm::MAX_DEPLOYERS;
+
+/// Deployment allowlist configuration derived from the chainspec.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeployAllowlistConfig {
+    /// Genesis deployer baseline.
+    pub baseline: Vec<Address>,
+    /// Block height at which deployment restrictions activate.
+    pub activation_height: u64,
+    /// Optional fixed admin for state-backed policy management.
+    pub admin: Option<Address>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct ChainspecEvolveConfig {
@@ -36,6 +47,9 @@ struct ChainspecEvolveConfig {
     /// Block height at which deploy allowlist enforcement activates.
     #[serde(default, rename = "deployAllowlistActivationHeight")]
     pub deploy_allowlist_activation_height: Option<u64>,
+    /// Fixed admin for the state-backed deployment-permissions precompile.
+    #[serde(default, rename = "deployAllowlistAdmin")]
+    pub deploy_allowlist_admin: Option<Address>,
 }
 
 /// Configuration for the Evolve payload builder
@@ -74,6 +88,9 @@ pub struct EvolvePayloadBuilderConfig {
     /// Block height at which deploy allowlist enforcement activates.
     #[serde(default)]
     pub deploy_allowlist_activation_height: Option<u64>,
+    /// Fixed admin for dynamic deployment permissions.
+    #[serde(default)]
+    pub deploy_allowlist_admin: Option<Address>,
 }
 
 impl EvolvePayloadBuilderConfig {
@@ -91,6 +108,7 @@ impl EvolvePayloadBuilderConfig {
             contract_size_limit_activation_height: None,
             deploy_allowlist: Vec::new(),
             deploy_allowlist_activation_height: None,
+            deploy_allowlist_admin: None,
         }
     }
 
@@ -135,15 +153,17 @@ impl EvolvePayloadBuilderConfig {
             config.contract_size_limit_activation_height =
                 extras.contract_size_limit_activation_height;
 
+            config.deploy_allowlist_admin =
+                extras.deploy_allowlist_admin.filter(|addr| !addr.is_zero());
+
             if let Some(allowlist) = extras.deploy_allowlist {
                 config.deploy_allowlist = allowlist;
-                config.deploy_allowlist_activation_height =
-                    extras.deploy_allowlist_activation_height;
-                if !config.deploy_allowlist.is_empty()
-                    && config.deploy_allowlist_activation_height.is_none()
-                {
-                    config.deploy_allowlist_activation_height = Some(0);
-                }
+            }
+            config.deploy_allowlist_activation_height = extras.deploy_allowlist_activation_height;
+            if config.deploy_allowlist_activation_height.is_none()
+                && (config.deploy_allowlist_admin.is_some() || !config.deploy_allowlist.is_empty())
+            {
+                config.deploy_allowlist_activation_height = Some(0);
             }
         }
 
@@ -173,13 +193,16 @@ impl EvolvePayloadBuilderConfig {
             .unwrap_or(DEFAULT_CONTRACT_SIZE_LIMIT)
     }
 
-    /// Returns the deploy allowlist and activation height (defaulting to 0) if configured.
-    pub fn deploy_allowlist_settings(&self) -> Option<(Vec<Address>, u64)> {
-        if self.deploy_allowlist.is_empty() {
+    /// Returns the genesis baseline, activation height, and optional admin.
+    pub fn deploy_allowlist_settings(&self) -> Option<DeployAllowlistConfig> {
+        if self.deploy_allowlist.is_empty() && self.deploy_allowlist_admin.is_none() {
             None
         } else {
-            let activation = self.deploy_allowlist_activation_height.unwrap_or(0);
-            Some((self.deploy_allowlist.clone(), activation))
+            Some(DeployAllowlistConfig {
+                baseline: self.deploy_allowlist.clone(),
+                activation_height: self.deploy_allowlist_activation_height.unwrap_or(0),
+                admin: self.deploy_allowlist_admin,
+            })
         }
     }
 
@@ -432,6 +455,7 @@ mod tests {
         assert_eq!(config.base_fee_redirect_activation_height, None);
         assert_eq!(config.mint_precompile_activation_height, None);
         assert_eq!(config.proposer_control_activation_height, None);
+        assert!(config.deploy_allowlist_settings().is_none());
     }
 
     #[test]
@@ -474,6 +498,7 @@ mod tests {
         assert_eq!(config.proposer_control_activation_height, None);
         assert!(config.deploy_allowlist.is_empty());
         assert_eq!(config.deploy_allowlist_activation_height, None);
+        assert_eq!(config.deploy_allowlist_admin, None);
     }
 
     #[test]
@@ -489,6 +514,7 @@ mod tests {
         assert_eq!(config.contract_size_limit, None);
         assert!(config.deploy_allowlist.is_empty());
         assert_eq!(config.deploy_allowlist_activation_height, None);
+        assert_eq!(config.deploy_allowlist_admin, None);
     }
 
     #[test]
@@ -524,6 +550,76 @@ mod tests {
 
         assert_eq!(config.deploy_allowlist.len(), 2);
         assert_eq!(config.deploy_allowlist_activation_height, Some(0));
+    }
+
+    #[test]
+    fn test_dynamic_deploy_permissions_default_activation_and_empty_baseline() {
+        let admin = address!("00000000000000000000000000000000000000aa");
+        let extras = json!({
+            "deployAllowlistAdmin": admin
+        });
+
+        let chainspec = create_test_chainspec_with_extras(Some(extras));
+        let config = EvolvePayloadBuilderConfig::from_chain_spec(&chainspec).unwrap();
+
+        assert!(config.deploy_allowlist.is_empty());
+        assert_eq!(config.deploy_allowlist_admin, Some(admin));
+        assert_eq!(config.deploy_allowlist_activation_height, Some(0));
+        assert_eq!(
+            config.deploy_allowlist_settings(),
+            Some(DeployAllowlistConfig {
+                baseline: Vec::new(),
+                activation_height: 0,
+                admin: Some(admin),
+            })
+        );
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_zero_admin_preserves_legacy_mode() {
+        let allowed = address!("00000000000000000000000000000000000000aa");
+        let extras = json!({
+            "deployAllowlist": [allowed],
+            "deployAllowlistAdmin": Address::ZERO
+        });
+
+        let chainspec = create_test_chainspec_with_extras(Some(extras));
+        let config = EvolvePayloadBuilderConfig::from_chain_spec(&chainspec).unwrap();
+
+        assert_eq!(config.deploy_allowlist_admin, None);
+        assert_eq!(
+            config.deploy_allowlist_settings(),
+            Some(DeployAllowlistConfig {
+                baseline: vec![allowed],
+                activation_height: 0,
+                admin: None,
+            })
+        );
+    }
+
+    #[test]
+    fn test_dynamic_permissions_use_deploy_allowlist_activation_height() {
+        let allowed = address!("00000000000000000000000000000000000000aa");
+        let admin = address!("00000000000000000000000000000000000000bb");
+        let extras = json!({
+            "deployAllowlist": [allowed],
+            "deployAllowlistActivationHeight": 20,
+            "deployAllowlistAdmin": admin
+        });
+
+        let chainspec = create_test_chainspec_with_extras(Some(extras));
+        let config = EvolvePayloadBuilderConfig::from_chain_spec(&chainspec).unwrap();
+
+        assert_eq!(
+            config.deploy_allowlist_settings(),
+            Some(DeployAllowlistConfig {
+                baseline: vec![allowed],
+                activation_height: 20,
+                admin: Some(admin),
+            })
+        );
+        assert!(config.validate().is_ok());
     }
 
     #[test]

@@ -1,3 +1,8 @@
+#![allow(
+    clippy::double_must_use,
+    reason = "jsonrpsee's async trait expansion adds must_use to an already must-use future"
+)]
+
 //! RPC accessors for Evolve proposer control state.
 
 use alloy_eips::BlockNumberOrTag;

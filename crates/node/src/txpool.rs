@@ -434,7 +434,11 @@ where
     {
         let _duration = RecordDurationOnDrop::new();
         // Unified deploy allowlist check (covers both Ethereum and EvNode txs).
-        if let Some(settings) = &self.deploy_allowlist {
+        if let Some(settings) = self
+            .deploy_allowlist
+            .as_ref()
+            .filter(|settings| !settings.is_dynamic())
+        {
             let is_top_level_create = match pooled.transaction().inner() {
                 EvTxEnvelope::Ethereum(tx) => alloy_consensus::Transaction::is_create(tx),
                 EvTxEnvelope::EvNode(ref signed) => {
@@ -621,12 +625,19 @@ where
                     );
                     Default::default()
                 });
-                let deploy_allowlist =
-                    evolve_config
-                        .deploy_allowlist_settings()
-                        .map(|(allowlist, activation)| {
-                            ev_revm::deploy::DeployAllowlistSettings::new(allowlist, activation)
-                        });
+                let deploy_allowlist = evolve_config.deploy_allowlist_settings().map(|settings| {
+                    match settings.admin {
+                        Some(admin) => ev_revm::deploy::DeployAllowlistSettings::new_dynamic(
+                            settings.baseline,
+                            settings.activation_height,
+                            admin,
+                        ),
+                        None => ev_revm::deploy::DeployAllowlistSettings::new(
+                            settings.baseline,
+                            settings.activation_height,
+                        ),
+                    }
+                });
                 EvTransactionValidator::new(inner, deploy_allowlist)
             });
 
@@ -915,6 +926,27 @@ mod tests {
         if let Err(err) = result {
             assert!(matches!(err, InvalidPoolTransactionError::Other(_)));
         }
+    }
+
+    #[test]
+    fn dynamic_mode_does_not_authoritatively_reject_create() {
+        let allowed = Address::from([0x11u8; 20]);
+        let admin = Address::from([0xaau8; 20]);
+        let settings =
+            ev_revm::deploy::DeployAllowlistSettings::new_dynamic(vec![allowed], 0, admin);
+        let validator = create_test_validator(Some(settings));
+
+        let signed_tx = create_non_sponsored_evnode_create_tx(200_000, 1_000_000_000);
+        let signer = Address::from([0x22u8; 20]);
+        let pooled = create_pooled_tx(signed_tx, signer);
+        let sender_balance = *pooled.cost() + U256::from(1);
+        let mut state: Option<Box<dyn AccountInfoReader + Send>> = None;
+
+        let result = validator.validate_evnode(&pooled, sender_balance, &mut state);
+        assert!(
+            result.is_ok(),
+            "dynamic state can change before execution, so pool admission must not reject: {result:?}"
+        );
     }
 
     #[test]
