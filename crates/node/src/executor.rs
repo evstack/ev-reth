@@ -448,18 +448,23 @@ where
                 ContractSizeLimitSettings::new(limit, activation)
             });
 
-    let deploy_allowlist =
-        evolve_config
-            .deploy_allowlist_settings()
-            .map(|(allowlist, activation)| {
-                info!(
-                    target = "ev-reth::executor",
-                    allowlist_len = allowlist.len(),
-                    activation_height = activation,
-                    "Deploy allowlist enabled"
-                );
-                DeployAllowlistSettings::new(allowlist, activation)
-            });
+    let deploy_allowlist = evolve_config.deploy_allowlist_settings().map(|settings| {
+        info!(
+            target = "ev-reth::executor",
+            allowlist_len = settings.baseline.len(),
+            activation_height = settings.activation_height,
+            dynamic = settings.admin.is_some(),
+            "Deploy allowlist enabled"
+        );
+        match settings.admin {
+            Some(admin) => DeployAllowlistSettings::new_dynamic(
+                settings.baseline,
+                settings.activation_height,
+                admin,
+            ),
+            None => DeployAllowlistSettings::new(settings.baseline, settings.activation_height),
+        }
+    });
 
     let factory = EvTxEvmFactory::new(
         redirect,

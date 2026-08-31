@@ -8,18 +8,34 @@ use std::sync::Arc;
 pub struct DeployAllowlistSettings {
     allowlist: Arc<[Address]>,
     activation_height: u64,
+    admin: Option<Address>,
 }
 
 impl DeployAllowlistSettings {
-    /// Creates a new deploy allowlist configuration.
-    /// An empty allowlist disables gating and allows all callers.
-    pub fn new(allowlist: Vec<Address>, activation_height: u64) -> Self {
+    fn from_parts(allowlist: Vec<Address>, activation_height: u64, admin: Option<Address>) -> Self {
         let mut allowlist = allowlist;
         allowlist.sort_unstable();
+        allowlist.dedup();
         Self {
             allowlist: Arc::from(allowlist),
             activation_height,
+            admin,
         }
+    }
+
+    /// Creates a static deploy allowlist configuration.
+    /// An empty allowlist disables gating and allows all callers.
+    ///
+    /// For state-backed mode use [`Self::new_dynamic`], where an empty baseline
+    /// denies all callers until the admin adds members.
+    pub fn new(allowlist: Vec<Address>, activation_height: u64) -> Self {
+        Self::from_parts(allowlist, activation_height, None)
+    }
+
+    /// Creates state-backed deployment settings with a fixed admin.
+    /// An empty baseline denies all callers; it does not disable gating.
+    pub fn new_dynamic(allowlist: Vec<Address>, activation_height: u64, admin: Address) -> Self {
+        Self::from_parts(allowlist, activation_height, Some(admin))
     }
 
     /// Returns the activation height for deploy allowlist enforcement.
@@ -27,9 +43,9 @@ impl DeployAllowlistSettings {
         self.activation_height
     }
 
-    /// Returns the allowlisted caller addresses.
-    pub fn allowlist(&self) -> &[Address] {
-        &self.allowlist
+    /// Returns the genesis baseline as a shared slice.
+    pub fn allowlist(&self) -> Arc<[Address]> {
+        Arc::clone(&self.allowlist)
     }
 
     /// Returns true if the allowlist is active at the given block number.
@@ -37,12 +53,36 @@ impl DeployAllowlistSettings {
         block_number >= self.activation_height
     }
 
-    /// Returns true if the caller is in the allowlist.
+    /// Returns true if the caller is allowed by the configured genesis policy.
+    ///
+    /// Static mode (`admin` is `None`): an empty allowlist disables gating.
+    /// Dynamic mode (`admin` is `Some`): empty baseline denies, same as
+    /// [`Self::is_baseline_member`].
     pub fn is_allowed(&self, caller: Address) -> bool {
-        if self.allowlist.is_empty() {
+        if !self.is_dynamic() && self.allowlist.is_empty() {
             return true;
         }
+        self.is_baseline_member(caller)
+    }
+
+    /// Returns whether the caller belongs to the genesis baseline.
+    pub fn is_baseline_member(&self, caller: Address) -> bool {
         self.allowlist.binary_search(&caller).is_ok()
+    }
+
+    /// Returns the configured permissions admin, if state-backed mode is enabled.
+    pub const fn admin(&self) -> Option<Address> {
+        self.admin
+    }
+
+    /// Returns whether this chain uses state-backed deployment permissions.
+    pub const fn is_dynamic(&self) -> bool {
+        self.admin.is_some()
+    }
+
+    /// Returns whether dynamic deployment permissions are active in this block.
+    pub const fn is_dynamic_active(&self, block_number: u64) -> bool {
+        self.is_dynamic() && self.is_active(block_number)
     }
 }
 
@@ -55,9 +95,11 @@ pub enum DeployCheckError {
 
 // Intentionally no envelope discriminator here to keep dependencies light.
 
-/// Enforces the deploy allowlist policy.
+/// Enforces the static deploy allowlist policy.
 ///
 /// If `is_top_level_create` is false or settings are None or not active yet, this is a no-op.
+/// Dynamic settings are evaluated against the genesis baseline only (empty = deny);
+/// runtime overrides must be applied by the execution handler.
 /// Otherwise returns `NotAllowed` if `caller` is not in the allowlist.
 pub fn check_deploy_allowed(
     settings: Option<&DeployAllowlistSettings>,
@@ -74,7 +116,12 @@ pub fn check_deploy_allowed(
     if !settings.is_active(block_number) {
         return Ok(());
     }
-    if settings.is_allowed(caller) {
+    let allowed = if settings.is_dynamic() {
+        settings.is_baseline_member(caller)
+    } else {
+        settings.is_allowed(caller)
+    };
+    if allowed {
         Ok(())
     } else {
         Err(DeployCheckError::NotAllowed)
@@ -134,6 +181,26 @@ mod tests {
         let settings = DeployAllowlistSettings::new(vec![allowed], 0);
         // caller is not in the allowlist, but is_top_level_create=false so it's allowed
         let result = check_deploy_allowed(Some(&settings), caller, false, 0);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn dynamic_empty_baseline_denies_any_caller() {
+        let admin = address!("0x00000000000000000000000000000000000000aa");
+        let caller = address!("0x00000000000000000000000000000000000000bb");
+        let settings = DeployAllowlistSettings::new_dynamic(vec![], 0, admin);
+        assert!(!settings.is_allowed(caller));
+        let result = check_deploy_allowed(Some(&settings), caller, true, 0);
+        assert_eq!(result, Err(DeployCheckError::NotAllowed));
+    }
+
+    #[test]
+    fn dynamic_baseline_member_passes_static_check() {
+        let admin = address!("0x00000000000000000000000000000000000000aa");
+        let caller = address!("0x00000000000000000000000000000000000000bb");
+        let settings = DeployAllowlistSettings::new_dynamic(vec![caller], 0, admin);
+        assert!(settings.is_allowed(caller));
+        let result = check_deploy_allowed(Some(&settings), caller, true, 0);
         assert!(result.is_ok());
     }
 }

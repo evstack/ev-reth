@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Optional state-backed deployment-permissions precompile at `0xF102`, enabled by
+  `deployAllowlistAdmin` at `deployAllowlistActivationHeight`. The fixed admin can add or remove
+  deployers and reversibly pause enforcement while preserving policy.
+
+### Changed
+
+- Dynamic deployment-permission chains use execution state as the authoritative admission check,
+  including transaction-order updates within a block. Chains without a non-zero admin retain the
+  existing static allowlist and txpool behavior.
+
 ## [0.5.0] - 2026-08-17
 
 ### Added

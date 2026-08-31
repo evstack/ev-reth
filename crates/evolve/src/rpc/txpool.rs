@@ -1,3 +1,8 @@
+#![allow(
+    clippy::double_must_use,
+    reason = "jsonrpsee's async trait expansion adds must_use to an already must-use future"
+)]
+
 use crate::config::current_block_gas_limit;
 use alloy_primitives::Bytes;
 use async_trait::async_trait;

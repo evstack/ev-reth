@@ -227,9 +227,19 @@ impl EvolveTestFixture {
         let contract_size_limit = config
             .contract_size_limit_settings()
             .map(|(limit, activation)| ContractSizeLimitSettings::new(limit, activation));
-        let deploy_allowlist = config
-            .deploy_allowlist_settings()
-            .map(|(allowlist, activation)| DeployAllowlistSettings::new(allowlist, activation));
+        let deploy_allowlist =
+            config
+                .deploy_allowlist_settings()
+                .map(|settings| match settings.admin {
+                    Some(admin) => DeployAllowlistSettings::new_dynamic(
+                        settings.baseline,
+                        settings.activation_height,
+                        admin,
+                    ),
+                    None => {
+                        DeployAllowlistSettings::new(settings.baseline, settings.activation_height)
+                    }
+                });
         let evm_factory = EvTxEvmFactory::new(
             base_fee_redirect,
             mint_precompile,
