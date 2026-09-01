@@ -3122,6 +3122,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "url",
 ]
 
 [[package]]
@@ -3240,6 +3241,7 @@ dependencies = [
  "eyre",
  "futures",
  "hex",
+ "jsonrpsee",
  "rand 0.10.2",
  "reqwest 0.12.28",
  "reth-basic-payload-builder",
@@ -3272,6 +3274,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing",
+ "url",
 ]
 
 [[package]]

@@ -30,6 +30,7 @@ use crate::{
     attributes::EvolveEnginePayloadAttributes,
     config::EvolvePayloadBuilderConfig,
     executor::EvolveExecutorBuilder,
+    head::{HeadApiServer, HeadPublisher},
     payload_service::EvolvePayloadBuilderBuilder,
     payload_types::EvBuiltPayload,
     proposer_rpc::{EvolveProposerApiImpl, EvolveProposerApiServer},
@@ -79,12 +80,22 @@ impl EngineTypes for EvolveEngineTypes {
 /// Evolve node type.
 #[derive(Debug, Clone, Default)]
 #[non_exhaustive]
-pub struct EvolveNode {}
+pub struct EvolveNode {
+    head_publisher: Option<HeadPublisher>,
+}
 
 impl EvolveNode {
-    /// Create a new evolve node with the given arguments.
+    /// Creates an evolve node without a forkchoice publisher.
     pub const fn new() -> Self {
-        Self {}
+        Self {
+            head_publisher: None,
+        }
+    }
+
+    /// Adds the forkchoice subscription RPC backed by the given publisher.
+    pub fn with_head_publisher(mut self, head_publisher: HeadPublisher) -> Self {
+        self.head_publisher = Some(head_publisher);
+        self
     }
 }
 
@@ -125,27 +136,34 @@ where
     }
 
     fn add_ons(&self) -> Self::AddOns {
-        EvolveNodeAddOns::default().extend_rpc_modules(|ctx: RpcContext<'_, NodeAdapter<N>, _>| {
-            let evolve_cfg = EvolveConfig::default();
-            let evolve_txpool =
-                EvolveTxpoolApiImpl::new(ctx.pool().clone(), evolve_cfg.max_txpool_bytes);
+        let head_publisher = self.head_publisher.clone();
+        EvolveNodeAddOns::default().extend_rpc_modules(
+            move |ctx: RpcContext<'_, NodeAdapter<N>, _>| {
+                let evolve_cfg = EvolveConfig::default();
+                let evolve_txpool =
+                    EvolveTxpoolApiImpl::new(ctx.pool().clone(), evolve_cfg.max_txpool_bytes);
 
-            let proposer_cfg =
-                EvolvePayloadBuilderConfig::from_chain_spec(ctx.config().chain.as_ref())?;
+                let proposer_cfg =
+                    EvolvePayloadBuilderConfig::from_chain_spec(ctx.config().chain.as_ref())?;
 
-            ctx.modules.merge_configured(evolve_txpool.into_rpc())?;
+                ctx.modules.merge_configured(evolve_txpool.into_rpc())?;
 
-            // Only expose the proposer RPC on chains that enable the precompile, so callers
-            // get method-not-found instead of a meaningless zero value elsewhere.
-            if let Some((_, _, initial_next_proposer)) =
-                proposer_cfg.proposer_control_precompile_settings()
-            {
-                let proposer_api =
-                    EvolveProposerApiImpl::new(ctx.provider().clone(), initial_next_proposer);
-                ctx.modules.merge_configured(proposer_api.into_rpc())?;
-            }
-            Ok(())
-        })
+                // Only expose the proposer RPC on chains that enable the precompile, so callers
+                // get method-not-found instead of a meaningless zero value elsewhere.
+                if let Some((_, _, initial_next_proposer)) =
+                    proposer_cfg.proposer_control_precompile_settings()
+                {
+                    let proposer_api =
+                        EvolveProposerApiImpl::new(ctx.provider().clone(), initial_next_proposer);
+                    ctx.modules.merge_configured(proposer_api.into_rpc())?;
+                }
+
+                if let Some(head_publisher) = head_publisher {
+                    ctx.modules.merge_configured(head_publisher.into_rpc())?;
+                }
+                Ok(())
+            },
+        )
     }
 }
 

@@ -12,7 +12,7 @@ use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
 use url::Url;
 
-use ev_node::{log_startup, EvolveArgs, EvolveChainSpecParser, EvolveNode};
+use ev_node::{head::HeadPublisher, log_startup, EvolveArgs, EvolveChainSpecParser, EvolveNode};
 
 #[global_allocator]
 static ALLOC: reth_cli_util::allocator::Allocator = reth_cli_util::allocator::new_allocator();
@@ -92,11 +92,38 @@ fn main() {
     init_tracing();
 
     if let Err(err) =
-        Cli::<EvolveChainSpecParser, EvolveArgs>::parse().run(|builder, _evolve_args| async move {
+        Cli::<EvolveChainSpecParser, EvolveArgs>::parse().run(|builder, evolve_args| async move {
             log_startup();
-            // The evolve txpool and proposer RPC modules are registered by
-            // `EvolveNode::add_ons`.
-            let handle = builder.node(EvolveNode::new()).launch().await?;
+            let head_publisher = HeadPublisher::new(
+                builder.config().chain.chain().id(),
+                builder.config().chain.genesis_hash(),
+            );
+
+            let handle = builder
+                .node(EvolveNode::new().with_head_publisher(head_publisher.clone()))
+                .launch()
+                .await?;
+
+            ev_node::head::spawn_publisher(
+                handle.node.task_executor.clone(),
+                handle.node.provider.clone(),
+                handle
+                    .node
+                    .add_ons_handle
+                    .consensus_engine_events()
+                    .new_listener(),
+                head_publisher,
+            );
+
+            if let Some(peer_url) = evolve_args.subscribe_peer {
+                ev_node::head::spawn_subscriber(
+                    handle.node.task_executor.clone(),
+                    handle.node.add_ons_handle.beacon_engine_handle.clone(),
+                    peer_url,
+                    handle.node.config.chain.chain().id(),
+                    handle.node.config.chain.genesis_hash(),
+                );
+            }
 
             info!("=== EV-RETH: Node launched successfully with ev-reth payload builder ===");
             handle.node_exit_future.await
