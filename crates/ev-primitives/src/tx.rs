@@ -436,9 +436,11 @@ impl Compact for EvTxType {
 
     /// Decodes `EvTxType` from compact format.
     ///
-    /// Standard Ethereum extended identifiers are delegated to `TxType`. This is important for
-    /// EIP-7702 (`0x04`), which was written to existing static files before EvNode introduced its
-    /// own extended identifier.
+    /// Static files store EIP-7702 as `0x04`, not `0x76`.
+    ///
+    /// # Panics
+    ///
+    /// Panics on an unknown extended identifier or a truncated buffer.
     fn from_compact(mut buf: &[u8], identifier: usize) -> (Self, &[u8]) {
         match identifier {
             COMPACT_EXTENDED_IDENTIFIER_FLAG => {
@@ -537,14 +539,8 @@ impl Decompress for EvTxEnvelope {
     }
 }
 
-/// Rejects unknown uncompressed extended transaction identifiers before the infallible compact
-/// decoder runs.
-///
-/// `Compact` predates fallible database decoding and therefore panics for unsupported types. The
-/// static-file path uses `Decompress`, so validating an uncompressed unsupported on-disk type here
-/// turns it into a normal database decoding error instead of terminating the cache worker task.
-/// Compressed transactions are left to the compact decoder so a static-file read performs only one
-/// zstd decompression.
+/// Rejects unknown uncompressed extended identifiers so `Decompress` returns an error instead of
+/// panicking in `Compact`. Compressed payloads skip this check to avoid a second zstd pass.
 fn ensure_supported_compact_tx_type(value: &[u8]) -> Result<(), DecompressError> {
     const COMPACT_HEADER_LEN: usize = 1 + 64;
 
@@ -637,6 +633,38 @@ mod tests {
         }
     }
 
+    fn sample_eip7702_envelope(input: Bytes) -> EvTxEnvelope {
+        let transaction = TxEip7702 {
+            chain_id: 1,
+            nonce: 1,
+            gas_limit: 30_000,
+            max_fee_per_gas: 2,
+            max_priority_fee_per_gas: 1,
+            to: Address::ZERO,
+            value: U256::ZERO,
+            access_list: AccessList::default(),
+            authorization_list: Vec::new(),
+            input,
+        };
+        let signed = alloy_consensus::Signed::new_unhashed(transaction, sample_signature());
+        EvTxEnvelope::Ethereum(signed.into())
+    }
+
+    fn assert_eip7702_static_file_roundtrip(input: Bytes, zstd: bool) {
+        let encoded = sample_eip7702_envelope(input).compress();
+        assert_eq!(
+            encoded[0] >> 3 != 0,
+            zstd,
+            "compact zstd flag should match calldata size"
+        );
+        let decoded = EvTxEnvelope::decompress(&encoded).expect("decode static-file transaction");
+        assert!(matches!(
+            decoded,
+            EvTxEnvelope::Ethereum(ref tx)
+                if tx.tx_type() == alloy_consensus::TxType::Eip7702
+        ));
+    }
+
     #[test]
     fn executor_signing_hash_ignores_sponsor_fields() {
         let mut tx = sample_tx();
@@ -701,36 +729,13 @@ mod tests {
 
     #[test]
     fn static_file_compact_eip7702_transaction_roundtrip() {
-        let transaction = TxEip7702 {
-            chain_id: 1,
-            nonce: 1,
-            gas_limit: 30_000,
-            max_fee_per_gas: 2,
-            max_priority_fee_per_gas: 1,
-            to: Address::ZERO,
-            value: U256::ZERO,
-            access_list: AccessList::default(),
-            authorization_list: Vec::new(),
-            // Reth's compact envelope enables zstd compression at 32 bytes of calldata.
-            input: Bytes::from(vec![0; 32]),
-        };
-        let signed = alloy_consensus::Signed::new_unhashed(transaction, sample_signature());
-        let envelope = EvTxEnvelope::Ethereum(signed.into());
+        assert_eip7702_static_file_roundtrip(Bytes::new(), false);
+    }
 
-        let compressed = envelope.compress();
-        assert_ne!(
-            compressed[0] >> 3,
-            0,
-            "transaction should use zstd compact encoding"
-        );
-        let decoded =
-            EvTxEnvelope::decompress(&compressed).expect("decode static-file transaction");
-
-        assert!(matches!(
-            decoded,
-            EvTxEnvelope::Ethereum(ref tx)
-                if tx.tx_type() == alloy_consensus::TxType::Eip7702
-        ));
+    #[test]
+    fn static_file_compact_eip7702_compressed_transaction_roundtrip() {
+        // CompactEnvelope sets the zstd bit at 32 bytes of calldata.
+        assert_eip7702_static_file_roundtrip(Bytes::from(vec![0; 32]), true);
     }
 
     #[test]
@@ -743,5 +748,15 @@ mod tests {
         assert!(err
             .to_string()
             .contains("unsupported compact transaction identifier 0x7f"));
+    }
+
+    #[test]
+    fn static_file_compressed_unknown_extended_type_is_skipped() {
+        let mut encoded = vec![((COMPACT_EXTENDED_IDENTIFIER_FLAG as u8) << 1) | (1 << 3)];
+        encoded.extend_from_slice(&[0; 64]);
+        encoded.push(0x7f);
+
+        ensure_supported_compact_tx_type(&encoded)
+            .expect("compressed identifiers are left to Compact");
     }
 }
