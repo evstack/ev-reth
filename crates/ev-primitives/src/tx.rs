@@ -537,11 +537,14 @@ impl Decompress for EvTxEnvelope {
     }
 }
 
-/// Rejects unknown extended transaction identifiers before the infallible compact decoder runs.
+/// Rejects unknown uncompressed extended transaction identifiers before the infallible compact
+/// decoder runs.
 ///
 /// `Compact` predates fallible database decoding and therefore panics for unsupported types. The
-/// static-file path uses `Decompress`, so validating here turns an unsupported on-disk type into a
-/// normal database decoding error instead of terminating the cache worker task.
+/// static-file path uses `Decompress`, so validating an uncompressed unsupported on-disk type here
+/// turns it into a normal database decoding error instead of terminating the cache worker task.
+/// Compressed transactions are left to the compact decoder so a static-file read performs only one
+/// zstd decompression.
 fn ensure_supported_compact_tx_type(value: &[u8]) -> Result<(), DecompressError> {
     const COMPACT_HEADER_LEN: usize = 1 + 64;
 
@@ -553,22 +556,13 @@ fn ensure_supported_compact_tx_type(value: &[u8]) -> Result<(), DecompressError>
         return Ok(());
     }
 
-    let tx_type = if flags >> 3 == 0 {
-        *value
-            .get(COMPACT_HEADER_LEN)
-            .ok_or_else(|| compact_decode_error("missing extended transaction identifier"))?
-    } else {
-        if value.len() < COMPACT_HEADER_LEN {
-            return Err(compact_decode_error("missing compact signature"));
-        }
-        reth_zstd_compressors::with_tx_decompressor(|decompressor| {
-            decompressor
-                .decompress(&value[COMPACT_HEADER_LEN..])
-                .first()
-                .copied()
-        })
-        .ok_or_else(|| compact_decode_error("missing compressed transaction identifier"))?
-    };
+    if flags >> 3 != 0 {
+        return Ok(());
+    }
+
+    let tx_type = *value
+        .get(COMPACT_HEADER_LEN)
+        .ok_or_else(|| compact_decode_error("missing extended transaction identifier"))?;
 
     match tx_type {
         alloy_consensus::constants::EIP4844_TX_TYPE_ID
@@ -717,12 +711,18 @@ mod tests {
             value: U256::ZERO,
             access_list: AccessList::default(),
             authorization_list: Vec::new(),
-            input: Bytes::new(),
+            // Reth's compact envelope enables zstd compression at 32 bytes of calldata.
+            input: Bytes::from(vec![0; 32]),
         };
         let signed = alloy_consensus::Signed::new_unhashed(transaction, sample_signature());
         let envelope = EvTxEnvelope::Ethereum(signed.into());
 
         let compressed = envelope.compress();
+        assert_ne!(
+            compressed[0] >> 3,
+            0,
+            "transaction should use zstd compact encoding"
+        );
         let decoded =
             EvTxEnvelope::decompress(&compressed).expect("decode static-file transaction");
 

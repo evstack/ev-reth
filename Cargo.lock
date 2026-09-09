@@ -3083,7 +3083,6 @@ dependencies = [
  "reth-db-api",
  "reth-ethereum-primitives",
  "reth-primitives-traits",
- "reth-zstd-compressors",
  "serde",
 ]
 
