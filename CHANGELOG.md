@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-10
+
 ### Added
 
 - Optional state-backed deployment-permissions precompile at `0xF102`, enabled by
@@ -18,6 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dynamic deployment-permission chains use execution state as the authoritative admission check,
   including transaction-order updates within a block. Chains without a non-zero admin retain the
   existing static allowlist and txpool behavior.
+- Refreshed locked dependencies, including Alloy 2.4.1 and related transitive packages.
+
+### Fixed
+
+- Decode EIP-7702 transactions from static files using their stored type byte, and avoid duplicate
+  compact-transaction decompression.
 
 ## [0.5.0] - 2026-08-17
 
