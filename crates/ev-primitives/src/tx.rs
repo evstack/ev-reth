@@ -436,18 +436,20 @@ impl Compact for EvTxType {
 
     /// Decodes `EvTxType` from compact format.
     ///
+    /// Static files store EIP-7702 as `0x04`, not `0x76`.
+    ///
     /// # Panics
-    /// Panics if an unknown transaction type identifier is encountered. This indicates
-    /// database corruption or a version mismatch - the node should not continue.
+    ///
+    /// Panics on an unknown extended identifier or a truncated buffer.
     fn from_compact(mut buf: &[u8], identifier: usize) -> (Self, &[u8]) {
         match identifier {
             COMPACT_EXTENDED_IDENTIFIER_FLAG => {
-                let extended_identifier = buf.get_u8();
-                match extended_identifier {
-                    EVNODE_TX_TYPE_ID => (Self::EvNode, buf),
-                    _ => panic!(
-                        "failed to decode EvTxType from database: unknown identifier {extended_identifier:#x}"
-                    ),
+                if buf.first() == Some(&EVNODE_TX_TYPE_ID) {
+                    buf.advance(1);
+                    (Self::EvNode, buf)
+                } else {
+                    let (inner, buf) = alloy_consensus::TxType::from_compact(buf, identifier);
+                    (Self::Ethereum(inner), buf)
                 }
             }
             v => {
@@ -531,9 +533,48 @@ impl Compress for EvTxEnvelope {
 
 impl Decompress for EvTxEnvelope {
     fn decompress(value: &[u8]) -> Result<Self, DecompressError> {
+        ensure_supported_compact_tx_type(value)?;
         let (obj, _) = Compact::from_compact(value, value.len());
         Ok(obj)
     }
+}
+
+/// Rejects unknown uncompressed extended identifiers so `Decompress` returns an error instead of
+/// panicking in `Compact`. Compressed payloads skip this check to avoid a second zstd pass.
+fn ensure_supported_compact_tx_type(value: &[u8]) -> Result<(), DecompressError> {
+    const COMPACT_HEADER_LEN: usize = 1 + 64;
+
+    let flags = *value
+        .first()
+        .ok_or_else(|| compact_decode_error("missing compact header"))?;
+    let identifier = (flags & 0b110) >> 1;
+    if identifier != COMPACT_EXTENDED_IDENTIFIER_FLAG as u8 {
+        return Ok(());
+    }
+
+    if flags >> 3 != 0 {
+        return Ok(());
+    }
+
+    let tx_type = *value
+        .get(COMPACT_HEADER_LEN)
+        .ok_or_else(|| compact_decode_error("missing extended transaction identifier"))?;
+
+    match tx_type {
+        alloy_consensus::constants::EIP4844_TX_TYPE_ID
+        | alloy_consensus::constants::EIP7702_TX_TYPE_ID
+        | EVNODE_TX_TYPE_ID => Ok(()),
+        _ => Err(compact_decode_error(format!(
+            "unsupported compact transaction identifier {tx_type:#x}"
+        ))),
+    }
+}
+
+fn compact_decode_error(message: impl Into<String>) -> DecompressError {
+    DecompressError::new(std::io::Error::new(
+        std::io::ErrorKind::InvalidData,
+        message.into(),
+    ))
 }
 
 fn optional_signature_length(value: Option<&Signature>) -> usize {
@@ -566,6 +607,7 @@ fn decode_optional_signature(buf: &mut &[u8]) -> alloy_rlp::Result<Option<Signat
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloy_consensus::TxEip7702;
     use alloy_eips::eip2930::AccessList;
 
     fn sample_signature() -> Signature {
@@ -589,6 +631,38 @@ mod tests {
             access_list: AccessList::default(),
             fee_payer_signature: None,
         }
+    }
+
+    fn sample_eip7702_envelope(input: Bytes) -> EvTxEnvelope {
+        let transaction = TxEip7702 {
+            chain_id: 1,
+            nonce: 1,
+            gas_limit: 30_000,
+            max_fee_per_gas: 2,
+            max_priority_fee_per_gas: 1,
+            to: Address::ZERO,
+            value: U256::ZERO,
+            access_list: AccessList::default(),
+            authorization_list: Vec::new(),
+            input,
+        };
+        let signed = alloy_consensus::Signed::new_unhashed(transaction, sample_signature());
+        EvTxEnvelope::Ethereum(signed.into())
+    }
+
+    fn assert_eip7702_static_file_roundtrip(input: Bytes, zstd: bool) {
+        let encoded = sample_eip7702_envelope(input).compress();
+        assert_eq!(
+            encoded[0] >> 3 != 0,
+            zstd,
+            "compact zstd flag should match calldata size"
+        );
+        let decoded = EvTxEnvelope::decompress(&encoded).expect("decode static-file transaction");
+        assert!(matches!(
+            decoded,
+            EvTxEnvelope::Ethereum(ref tx)
+                if tx.tx_type() == alloy_consensus::TxType::Eip7702
+        ));
     }
 
     #[test]
@@ -634,5 +708,55 @@ mod tests {
         let mut buf: &[u8] = &[0x82, 0x01, 0x02];
         let err = decode_optional_signature(&mut buf).expect_err("invalid length");
         assert_eq!(err, alloy_rlp::Error::UnexpectedLength);
+    }
+
+    #[test]
+    fn compact_eip7702_type_roundtrip() {
+        let mut encoded = Vec::new();
+        let identifier =
+            EvTxType::Ethereum(alloy_consensus::TxType::Eip7702).to_compact(&mut encoded);
+
+        assert_eq!(identifier, COMPACT_EXTENDED_IDENTIFIER_FLAG);
+        assert_eq!(encoded, [alloy_consensus::constants::EIP7702_TX_TYPE_ID]);
+
+        let (decoded, remaining) = EvTxType::from_compact(&encoded, identifier);
+        assert_eq!(
+            decoded,
+            EvTxType::Ethereum(alloy_consensus::TxType::Eip7702)
+        );
+        assert!(remaining.is_empty());
+    }
+
+    #[test]
+    fn static_file_compact_eip7702_transaction_roundtrip() {
+        assert_eip7702_static_file_roundtrip(Bytes::new(), false);
+    }
+
+    #[test]
+    fn static_file_compact_eip7702_compressed_transaction_roundtrip() {
+        // CompactEnvelope sets the zstd bit at 32 bytes of calldata.
+        assert_eip7702_static_file_roundtrip(Bytes::from(vec![0; 32]), true);
+    }
+
+    #[test]
+    fn static_file_unknown_extended_type_returns_error() {
+        let mut encoded = vec![(COMPACT_EXTENDED_IDENTIFIER_FLAG as u8) << 1];
+        encoded.extend_from_slice(&[0; 64]);
+        encoded.push(0x7f);
+
+        let err = EvTxEnvelope::decompress(&encoded).expect_err("unsupported type must fail");
+        assert!(err
+            .to_string()
+            .contains("unsupported compact transaction identifier 0x7f"));
+    }
+
+    #[test]
+    fn static_file_compressed_unknown_extended_type_is_skipped() {
+        let mut encoded = vec![((COMPACT_EXTENDED_IDENTIFIER_FLAG as u8) << 1) | (1 << 3)];
+        encoded.extend_from_slice(&[0; 64]);
+        encoded.push(0x7f);
+
+        ensure_supported_compact_tx_type(&encoded)
+            .expect("compressed identifiers are left to Compact");
     }
 }
