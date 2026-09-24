@@ -70,6 +70,8 @@ async-trait.workspace = true
 futures.workspace = true
 eyre.workspace = true
 tracing.workspace = true
+jsonrpsee = { workspace = true, features = ["server"] }
+url.workspace = true
 
 [lints]
 workspace = true

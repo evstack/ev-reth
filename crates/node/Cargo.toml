@@ -52,6 +52,7 @@ reth-rpc-eth-api.workspace = true
 reth-rpc-eth-types.workspace = true
 reth-engine-primitives.workspace = true
 reth-ethereum-primitives.workspace = true
+reth-tasks.workspace = true
 
 # Alloy dependencies
 alloy-rpc-types.workspace = true
@@ -71,13 +72,14 @@ c-kzg = "2.1.6"
 eyre.workspace = true
 tracing.workspace = true
 tokio = { workspace = true, features = ["full"] }
+jsonrpsee = { workspace = true, features = ["server", "macros", "client-core", "ws-client", "client-ws-transport-tls"] }
 serde = { workspace = true, features = ["derive"] }
+url.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 async-trait.workspace = true
 futures.workspace = true
 clap.workspace = true
-jsonrpsee = { workspace = true, features = ["server", "macros", "client-core"] }
 jsonrpsee-core.workspace = true
 jsonrpsee-proc-macros.workspace = true
 jsonrpsee-types.workspace = true
