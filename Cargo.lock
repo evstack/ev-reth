@@ -3112,7 +3112,7 @@ dependencies = [
  "reth-storage-api",
  "reth-tasks",
  "reth-testing-utils",
- "reth-tracing",
+ "reth-tracing 2.5.2",
  "reth-transaction-pool",
  "reth-trie-db",
  "serde",
@@ -3189,7 +3189,7 @@ dependencies = [
  "reth-primitives-traits",
  "reth-provider",
  "reth-revm",
- "reth-tracing-otlp",
+ "reth-tracing-otlp 2.5.0",
  "reth-trie-db",
  "serde",
  "thiserror 2.0.20",
@@ -3265,7 +3265,7 @@ dependencies = [
  "reth-rpc-api",
  "reth-tasks",
  "reth-testing-utils",
- "reth-tracing",
+ "reth-tracing 2.5.2",
  "reth-transaction-pool",
  "serde",
  "serde_json",
@@ -6954,7 +6954,7 @@ dependencies = [
  "libc",
  "rand 0.8.8",
  "reth-fs-util",
- "reth-tracing",
+ "reth-tracing 2.5.0",
  "secp256k1 0.30.0",
  "serde",
  "thiserror 2.0.20",
@@ -7057,7 +7057,7 @@ dependencies = [
  "futures",
  "reqwest 0.13.4",
  "reth-node-api",
- "reth-tracing",
+ "reth-tracing 2.5.0",
  "ringbuffer",
  "serde",
  "serde_json",
@@ -7084,7 +7084,7 @@ dependencies = [
  "reth-nippy-jar",
  "reth-static-file-types",
  "reth-storage-errors",
- "reth-tracing",
+ "reth-tracing 2.5.0",
  "rustc-hash",
  "strum 0.27.2",
  "sysinfo",
@@ -7319,7 +7319,7 @@ dependencies = [
  "reth-stages-types",
  "reth-tasks",
  "reth-tokio-util",
- "reth-tracing",
+ "reth-tracing 2.5.0",
  "revm",
  "serde_json",
  "tempfile",
@@ -7450,7 +7450,7 @@ dependencies = [
  "reth-static-file",
  "reth-storage-overlay",
  "reth-tasks",
- "reth-tracing",
+ "reth-tracing 2.5.0",
  "reth-trie",
  "reth-trie-common",
  "reth-trie-parallel",
@@ -7675,7 +7675,7 @@ dependencies = [
  "reth-node-metrics",
  "reth-rpc-server-types",
  "reth-tasks",
- "reth-tracing",
+ "reth-tracing 2.5.0",
  "tracing",
 ]
 
@@ -7905,7 +7905,7 @@ dependencies = [
  "reth-revm",
  "reth-stages-api",
  "reth-tasks",
- "reth-tracing",
+ "reth-tracing 2.5.0",
  "rmp-serde",
  "thiserror 2.0.20",
  "tokio",
@@ -7956,7 +7956,7 @@ dependencies = [
  "reth-provider",
  "reth-revm",
  "reth-rpc-api",
- "reth-tracing",
+ "reth-tracing 2.5.0",
  "reth-trie",
  "revm",
  "serde",
@@ -8283,7 +8283,7 @@ dependencies = [
  "reth-storage-overlay",
  "reth-tasks",
  "reth-tokio-util",
- "reth-tracing",
+ "reth-tracing 2.5.0",
  "reth-transaction-pool",
  "secp256k1 0.30.0",
  "serde_json",
@@ -8333,8 +8333,8 @@ dependencies = [
  "reth-storage-api",
  "reth-storage-errors",
  "reth-tasks",
- "reth-tracing",
- "reth-tracing-otlp",
+ "reth-tracing 2.5.0",
+ "reth-tracing-otlp 2.5.0",
  "reth-transaction-pool",
  "secp256k1 0.30.0",
  "serde",
@@ -8387,7 +8387,7 @@ dependencies = [
  "reth-rpc-eth-api",
  "reth-rpc-eth-types",
  "reth-rpc-server-types",
- "reth-tracing",
+ "reth-tracing 2.5.0",
  "reth-transaction-pool",
  "revm",
  "serde",
@@ -9284,7 +9284,25 @@ source = "git+https://github.com/paradigmxyz/reth.git?tag=v2.5.0#189c0df32617afc
 dependencies = [
  "clap",
  "eyre",
- "reth-tracing-otlp",
+ "reth-tracing-otlp 2.5.0",
+ "rolling-file",
+ "tracing",
+ "tracing-appender",
+ "tracing-chrome",
+ "tracing-journald",
+ "tracing-logfmt",
+ "tracing-samply",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "reth-tracing"
+version = "2.5.2"
+source = "git+https://github.com/paradigmxyz/reth.git?tag=v2.5.2#5a6940e351fed80458fe6c9da8581cbe4b8bd036"
+dependencies = [
+ "clap",
+ "eyre",
+ "reth-tracing-otlp 2.5.2",
  "rolling-file",
  "tracing",
  "tracing-appender",
@@ -9299,6 +9317,24 @@ dependencies = [
 name = "reth-tracing-otlp"
 version = "2.5.0"
 source = "git+https://github.com/paradigmxyz/reth.git?tag=v2.5.0#189c0df32617afc488e0f091dbface1bd72cceb4"
+dependencies = [
+ "base64 0.22.1",
+ "clap",
+ "eyre",
+ "opentelemetry",
+ "opentelemetry-otlp",
+ "opentelemetry-semantic-conventions",
+ "opentelemetry_sdk",
+ "tracing",
+ "tracing-opentelemetry",
+ "tracing-subscriber",
+ "url",
+]
+
+[[package]]
+name = "reth-tracing-otlp"
+version = "2.5.2"
+source = "git+https://github.com/paradigmxyz/reth.git?tag=v2.5.2#5a6940e351fed80458fe6c9da8581cbe4b8bd036"
 dependencies = [
  "base64 0.22.1",
  "clap",
