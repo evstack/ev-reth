@@ -1,4 +1,6 @@
-use alloy_consensus::{transaction::TxHashRef, SignableTransaction, TxEnvelope, TxReceipt};
+use alloy_consensus::{
+    transaction::TxHashRef, SignableTransaction, TransactionEnvelope, TxEnvelope, TxReceipt,
+};
 use alloy_eips::{eip2718::Encodable2718, eip2930::AccessList, BlockNumberOrTag};
 use alloy_network::{eip2718::Decodable2718, ReceiptResponse};
 use alloy_primitives::{address, Address, Bytes, Signature, TxKind, B256, U256};
@@ -12,11 +14,13 @@ use alloy_rpc_types::{
 use alloy_rpc_types_engine::{ForkchoiceState, PayloadAttributes, PayloadStatusEnum};
 use alloy_signer::SignerSync;
 use alloy_sol_types::{sol, SolCall, SolValue};
+use async_trait::async_trait;
 use eyre::Result;
 use futures::future;
+use jsonrpsee::server::ServerBuilder;
 use reth_e2e_test_utils::{
     testsuite::{
-        actions::MakeCanonical,
+        actions::{Action, MakeCanonical, WaitForSync},
         setup::{NetworkSetup, Setup},
         BlockInfo, Environment, TestBuilder,
     },
@@ -24,13 +28,17 @@ use reth_e2e_test_utils::{
     wallet::Wallet,
 };
 use reth_rpc_api::clients::{EngineApiClient, EthApiClient};
+use std::time::Duration;
 
 use crate::common::{
     create_test_chain_spec, create_test_chain_spec_with_base_fee_sink,
     create_test_chain_spec_with_deploy_allowlist, create_test_chain_spec_with_mint_admin,
     create_test_chain_spec_with_proposer_control, e2e_test_tree_config, TEST_CHAIN_ID,
 };
-use ev_node::rpc::{EvRpcReceipt, EvRpcTransaction, EvTransactionRequest};
+use ev_node::{
+    head::{ForkchoiceSink, HeadApiServer, HeadPublisher},
+    rpc::{EvRpcReceipt, EvRpcTransaction, EvTransactionRequest},
+};
 use ev_precompiles::{mint::MINT_PRECOMPILE_ADDR, proposer::PROPOSER_CONTROL_PRECOMPILE_ADDR};
 use ev_primitives::{Call, EvNodeTransaction, EvTxEnvelope};
 
@@ -76,6 +84,30 @@ const REVERT_INITCODE: [u8; 17] = [
     0x60, 0x05, 0x60, 0x0c, 0x60, 0x00, 0x39, 0x60, 0x05, 0x60, 0x00, 0xf3, 0x60, 0x00, 0x60, 0x00,
     0xfd,
 ];
+
+async fn start_head_peer(
+    publisher: HeadPublisher,
+) -> Result<(url::Url, jsonrpsee::server::ServerHandle)> {
+    let server = ServerBuilder::default().build("127.0.0.1:0").await?;
+    let endpoint = format!("ws://{}", server.local_addr()?).parse()?;
+    Ok((endpoint, server.start(publisher.into_rpc())))
+}
+
+#[derive(Clone)]
+struct EngineHttpForkchoiceSink<C>(C);
+
+#[async_trait]
+impl<C> ForkchoiceSink for EngineHttpForkchoiceSink<C>
+where
+    C: jsonrpsee::core::client::ClientT + Send + Sync,
+{
+    async fn apply_forkchoice(&self, state: ForkchoiceState) -> Result<PayloadStatusEnum, String> {
+        EngineApiClient::<EvolveEngineTypes>::fork_choice_updated_v3(&self.0, state, None)
+            .await
+            .map(|response| response.payload_status.status)
+            .map_err(|error| error.to_string())
+    }
+}
 
 /// Computes the contract address that will be created by a deployer at a given nonce.
 ///
@@ -249,6 +281,200 @@ async fn test_e2e_single_node_produces_blocks() -> Result<()> {
         })
         .run::<EvolveNode>()
         .await
+}
+
+/// Verifies that an ev-reth peer can fetch and execute Evolve blocks through native Reth P2P.
+///
+/// Node 0 builds a three-block chain locally, including a type `0x76` `EvNode` transaction. Node
+/// 1 receives only a pushed forkchoice update for Node 0's final head; it never receives a payload
+/// via `engine_newPayload` or a block through WebSocket. It must therefore retrieve headers and
+/// bodies through Reth P2P before the final forkchoice update can be accepted as valid.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_e2e_subscriber_syncs_evnode_block_over_native_reth_p2p() -> Result<()> {
+    reth_tracing::init_test_tracing();
+
+    let chain_spec = create_test_chain_spec();
+    let chain_id = chain_spec.chain().id();
+    let mut setup = Setup::<EvolveEngineTypes>::default()
+        .with_chain_spec(chain_spec)
+        .with_network(NetworkSetup::multi_node(2))
+        .with_dev_mode(false)
+        .with_tree_config(e2e_test_tree_config());
+    let mut env = Environment::<EvolveEngineTypes>::default();
+    setup.apply::<EvolveNode>(&mut env).await?;
+
+    let parent_block = env.node_clients[0]
+        .get_block_by_number(BlockNumberOrTag::Latest)
+        .await?
+        .expect("sequencer genesis block should exist");
+    let mut parent_hash = parent_block.header.hash;
+    let mut parent_timestamp = parent_block.header.inner.timestamp;
+    let mut parent_number = parent_block.header.inner.number;
+    let gas_limit = parent_block.header.inner.gas_limit;
+
+    let mut wallets = Wallet::new(3).with_chain_id(chain_id).wallet_gen();
+    let executor = wallets.remove(0);
+    let sponsor = wallets.remove(0);
+    let recipient = Address::random();
+    let executor_address = executor.address();
+    let executor_nonce = EthApiClient::<
+        TransactionRequest,
+        Transaction,
+        Block,
+        Receipt,
+        Header,
+        Bytes,
+    >::transaction_count(
+        &env.node_clients[0].rpc,
+        executor_address,
+        Some(BlockId::latest()),
+    )
+    .await?;
+    let executor_nonce = u64::try_from(executor_nonce).expect("nonce fits into u64");
+
+    let transfer_value = U256::from(1_000_000_000_000_000u64);
+    let ev_tx = EvNodeTransaction {
+        chain_id,
+        nonce: executor_nonce,
+        max_priority_fee_per_gas: 1_000_000_000,
+        max_fee_per_gas: 2_000_000_000,
+        gas_limit: 100_000,
+        calls: vec![Call {
+            to: TxKind::Call(recipient),
+            value: transfer_value,
+            input: Bytes::default(),
+        }],
+        access_list: AccessList::default(),
+        fee_payer_signature: None,
+    };
+    let executor_sig = executor
+        .sign_hash_sync(&ev_tx.signature_hash())
+        .expect("executor signature");
+    let mut signed = ev_tx.into_signed(executor_sig);
+    let sponsor_hash = signed.tx().sponsor_signing_hash(executor_address);
+    signed.tx_mut().fee_payer_signature = Some(
+        sponsor
+            .sign_hash_sync(&sponsor_hash)
+            .expect("sponsor signature"),
+    );
+    let ev_tx = EvTxEnvelope::EvNode(signed);
+    let ev_tx_hash = *ev_tx.tx_hash();
+
+    build_block_with_transactions(
+        &mut env,
+        &mut parent_hash,
+        &mut parent_number,
+        &mut parent_timestamp,
+        Some(gas_limit),
+        vec![ev_tx.encoded_2718().into()],
+        Address::ZERO,
+    )
+    .await?;
+    build_block_with_transactions(
+        &mut env,
+        &mut parent_hash,
+        &mut parent_number,
+        &mut parent_timestamp,
+        Some(gas_limit),
+        vec![],
+        Address::ZERO,
+    )
+    .await?;
+    build_block_with_transactions(
+        &mut env,
+        &mut parent_hash,
+        &mut parent_number,
+        &mut parent_timestamp,
+        Some(gas_limit),
+        vec![],
+        Address::ZERO,
+    )
+    .await?;
+
+    let source_head = BlockInfo {
+        hash: parent_hash,
+        number: parent_number,
+        timestamp: parent_timestamp,
+    };
+    let follower_head_before = env.node_clients[1]
+        .get_block_by_number(BlockNumberOrTag::Latest)
+        .await?
+        .expect("follower genesis block should exist");
+    assert_ne!(
+        follower_head_before.header.hash, source_head.hash,
+        "subscriber must not receive the source blocks before forkchoice is sent"
+    );
+
+    let genesis_hash = parent_block.header.hash;
+    let publisher = HeadPublisher::new(chain_id, genesis_hash);
+    let (peer_ws, ws_server) = start_head_peer(publisher.clone()).await?;
+    let peer_subscriber = tokio::spawn(ev_node::head::subscribe(
+        EngineHttpForkchoiceSink(env.node_clients[1].engine.http_client()),
+        peer_ws,
+        chain_id,
+        genesis_hash,
+    ));
+    // Wait for the actual custom subscription path before publishing the source's current state.
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while publisher.subscriber_count() == 0 {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("peer must subscribe to forkchoice updates");
+    assert!(publisher.publish(
+        ForkchoiceState {
+            head_block_hash: source_head.hash,
+            safe_block_hash: source_head.hash,
+            finalized_block_hash: source_head.hash,
+        },
+        source_head.number,
+        source_head.number,
+        source_head.number,
+    ));
+
+    let mut wait_for_sync = WaitForSync::new(0, 1).with_timeout(60);
+    wait_for_sync.execute(&mut env).await?;
+
+    let follower_head = env.node_clients[1]
+        .get_block_by_number(BlockNumberOrTag::Latest)
+        .await?
+        .expect("follower head should exist after synchronization");
+    assert_eq!(follower_head.header.hash, source_head.hash);
+    assert_eq!(follower_head.header.inner.number, source_head.number);
+
+    let type_0x76_tx = EthApiClient::<
+        EvTransactionRequest,
+        EvRpcTransaction,
+        Block<EvRpcTransaction, Header>,
+        EvRpcReceipt,
+        Header,
+        Bytes,
+    >::transaction_by_hash(&env.node_clients[1].rpc, ev_tx_hash)
+    .await?
+    .expect("follower should serve the type 0x76 transaction fetched through P2P");
+    assert_eq!(
+        type_0x76_tx.inner().inner.tx_type(),
+        ev_primitives::EVNODE_TX_TYPE_ID
+    );
+
+    let follower_recipient_balance =
+        EthApiClient::<TransactionRequest, Transaction, Block, Receipt, Header, Bytes>::balance(
+            &env.node_clients[1].rpc,
+            recipient,
+            Some(BlockId::latest()),
+        )
+        .await?;
+    assert_eq!(
+        follower_recipient_balance, transfer_value,
+        "follower must execute the P2P-fetched type 0x76 transaction"
+    );
+
+    peer_subscriber.abort();
+    ws_server.stop()?;
+
+    drop(setup);
+    Ok(())
 }
 
 /// Tests that the base fee sink address correctly receives base fees and priority tips.

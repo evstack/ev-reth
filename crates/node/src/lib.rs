@@ -21,6 +21,8 @@ pub mod error;
 pub mod evm_executor;
 /// Executor wiring for EV aware execution.
 pub mod executor;
+/// Push-based forkchoice sharing between ev-reth peers.
+pub mod head;
 /// Node composition and payload types.
 pub mod node;
 /// Payload service integration.
