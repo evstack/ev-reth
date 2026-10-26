@@ -111,6 +111,20 @@ impl ProposerControlPrecompile {
         }
     }
 
+    /// Rejects calls that do not target the precompile directly. Under
+    /// DELEGATECALL/CALLCODE `caller` is still the delegating contract's own
+    /// caller, so an admin calling an attacker-controlled contract could have
+    /// its authority borrowed to rotate the proposer.
+    const fn ensure_direct_call(is_direct_call: bool) -> ProposerControlPrecompileResult<()> {
+        if is_direct_call {
+            Ok(())
+        } else {
+            Err(ProposerControlPrecompileError::halt_static(
+                "state change during delegate call",
+            ))
+        }
+    }
+
     fn next_proposer(
         &self,
         internals: &mut EvmInternals<'_>,
@@ -156,6 +170,7 @@ impl Precompile for ProposerControlPrecompile {
         let caller = input.caller;
         let reservoir = input.reservoir;
         let is_static = input.is_static;
+        let is_direct_call = input.is_direct_call();
 
         let decoded = match IProposerControl::IProposerControlCalls::abi_decode(input.data) {
             Ok(v) => v,
@@ -180,6 +195,7 @@ impl Precompile for ProposerControlPrecompile {
                             "state change during static call",
                         ));
                     }
+                    Self::ensure_direct_call(is_direct_call)?;
                     self.ensure_admin(caller)?;
                     Self::set_next_proposer(internals, call.proposer)?;
                     Ok(Bytes::new())
@@ -244,6 +260,34 @@ mod tests {
             value: U256::ZERO,
             target_address: PROPOSER_CONTROL_PRECOMPILE_ADDR,
             is_static,
+            bytecode_address: PROPOSER_CONTROL_PRECOMPILE_ADDR,
+            internals: EvmInternals::new(journal, block_env, cfg_env, &tx_env),
+        };
+
+        precompile.call(input)
+    }
+
+    /// Reaches the precompile the way a DELEGATECALL does: `target_address` is
+    /// the delegating contract, not the precompile, so `is_direct_call()` is
+    /// false while `caller` is still the authorized account.
+    fn run_call_via_delegatecall<'a>(
+        journal: &'a mut TestJournal,
+        block_env: &'a BlockEnv,
+        cfg_env: &'a CfgEnv,
+        precompile: &ProposerControlPrecompile,
+        caller: Address,
+        data: &'a [u8],
+    ) -> PrecompileResult {
+        let tx_env = TxEnv::default();
+        let delegating_contract = address!("0x0000000000000000000000000000000000000bad");
+        let input = PrecompileInput {
+            data,
+            gas: GAS_LIMIT,
+            reservoir: 0,
+            caller,
+            value: U256::ZERO,
+            target_address: delegating_contract,
+            is_static: false,
             bytecode_address: PROPOSER_CONTROL_PRECOMPILE_ADDR,
             internals: EvmInternals::new(journal, block_env, cfg_env, &tx_env),
         };
@@ -395,6 +439,50 @@ mod tests {
         );
 
         assert_halt_message(result, "state change during static call");
+    }
+
+    #[test]
+    fn rejects_state_change_through_delegatecall_from_admin() {
+        // The admin's authority must not carry through a DELEGATECALL into the
+        // precompile.
+        let admin = address!("0x0000000000000000000000000000000000000aaa");
+        let initial = B256::from([0xbb; 32]);
+        let precompile = ProposerControlPrecompile::new(admin, initial);
+        let (mut journal, block_env, cfg_env) = setup_context();
+
+        let new_proposer = B256::from([0xcc; 32]);
+        let data = IProposerControl::setNextProposerCall {
+            proposer: new_proposer,
+        }
+        .abi_encode();
+
+        let result = run_call_via_delegatecall(
+            &mut journal,
+            &block_env,
+            &cfg_env,
+            &precompile,
+            admin,
+            &data,
+        );
+        assert_halt_message(result, "state change during delegate call");
+
+        // The stored proposer is unchanged: a read still returns the initial value.
+        let read = IProposerControl::nextProposerCall {}.abi_encode();
+        let output = run_call(
+            &mut journal,
+            &block_env,
+            &cfg_env,
+            &precompile,
+            admin,
+            &read,
+            false,
+        );
+        let bytes = output_bytes(output);
+        assert_eq!(
+            B256::from_slice(&bytes[..32]),
+            initial,
+            "proposer must be unchanged after a rejected delegatecall"
+        );
     }
 
     #[test]

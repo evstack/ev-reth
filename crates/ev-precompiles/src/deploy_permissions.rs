@@ -144,6 +144,20 @@ impl DeployPermissionsPrecompile {
         }
     }
 
+    /// Rejects calls that do not target the precompile directly. Under
+    /// DELEGATECALL/CALLCODE `caller` is still the delegating contract's own
+    /// caller, so an admin calling an attacker-controlled contract could have
+    /// its authority borrowed to change deploy permissions.
+    const fn ensure_direct_call(is_direct_call: bool) -> DeployPermissionsResult<()> {
+        if is_direct_call {
+            Ok(())
+        } else {
+            Err(DeployPermissionsError::halt(
+                "state change during delegate call",
+            ))
+        }
+    }
+
     fn ensure_account_created(internals: &mut EvmInternals<'_>) -> DeployPermissionsResult<()> {
         let account = internals
             .load_account(DEPLOY_PERMISSIONS_PRECOMPILE_ADDR)
@@ -300,6 +314,7 @@ impl Precompile for DeployPermissionsPrecompile {
         let caller = input.caller;
         let reservoir = input.reservoir;
         let is_static = input.is_static;
+        let is_direct_call = input.is_direct_call();
         let decoded = match IDeployPermissions::IDeployPermissionsCalls::abi_decode(input.data) {
             Ok(value) => value,
             Err(err) => {
@@ -319,6 +334,7 @@ impl Precompile for DeployPermissionsPrecompile {
                             "state change during static call",
                         ));
                     }
+                    Self::ensure_direct_call(is_direct_call)?;
                     self.ensure_admin(caller)?;
                     self.add_deployer(internals, call.account)?;
                     Ok(Bytes::new())
@@ -329,6 +345,7 @@ impl Precompile for DeployPermissionsPrecompile {
                             "state change during static call",
                         ));
                     }
+                    Self::ensure_direct_call(is_direct_call)?;
                     self.ensure_admin(caller)?;
                     self.remove_deployer(internals, call.account)?;
                     Ok(Bytes::new())
@@ -339,6 +356,7 @@ impl Precompile for DeployPermissionsPrecompile {
                             "state change during static call",
                         ));
                     }
+                    Self::ensure_direct_call(is_direct_call)?;
                     self.ensure_admin(caller)?;
                     Self::set_enabled(internals, call.enabled)?;
                     Ok(Bytes::new())
@@ -427,6 +445,32 @@ mod tests {
         })
     }
 
+    /// Reaches the precompile the way a DELEGATECALL does: `target_address` is
+    /// the delegating contract, not the precompile, so `is_direct_call()` is
+    /// false while `caller` is still the authorized account.
+    fn run_call_via_delegatecall<'a>(
+        journal: &'a mut TestJournal,
+        block_env: &'a BlockEnv,
+        cfg_env: &'a CfgEnv,
+        tx_env: &'a TxEnv,
+        precompile: &DeployPermissionsPrecompile,
+        caller: Address,
+        data: &'a [u8],
+    ) -> PrecompileResult {
+        let delegating_contract = address!("0x0000000000000000000000000000000000000bad");
+        precompile.call(PrecompileInput {
+            data,
+            gas: GAS_LIMIT,
+            reservoir: 0,
+            caller,
+            value: U256::ZERO,
+            target_address: delegating_contract,
+            is_static: false,
+            bytecode_address: DEPLOY_PERMISSIONS_PRECOMPILE_ADDR,
+            internals: EvmInternals::new(journal, block_env, cfg_env, tx_env),
+        })
+    }
+
     fn output_bytes(result: PrecompileResult) -> Bytes {
         match result {
             Ok(output) if !output.is_halt() => output.bytes.clone(),
@@ -484,6 +528,33 @@ mod tests {
             true,
         )))
         .expect("count output decodes")
+    }
+
+    #[test]
+    fn add_deployer_rejected_through_delegatecall_from_admin() {
+        // The admin's authority must not carry through a DELEGATECALL into the
+        // precompile.
+        let admin = address!("0x00000000000000000000000000000000000000aa");
+        let deployer = address!("0x00000000000000000000000000000000000000dd");
+        let precompile = DeployPermissionsPrecompile::new(admin, Vec::<Address>::new());
+        let (mut journal, block, cfg, tx) = setup_context();
+
+        let data = IDeployPermissions::addDeployerCall { account: deployer }.abi_encode();
+        let result =
+            run_call_via_delegatecall(&mut journal, &block, &cfg, &tx, &precompile, admin, &data);
+        assert_halt(result, "state change during delegate call");
+
+        assert!(
+            !call_bool(
+                &mut journal,
+                &block,
+                &cfg,
+                &tx,
+                &precompile,
+                &IDeployPermissions::isDeployerAllowedCall { account: deployer }.abi_encode(),
+            ),
+            "no deployer may be added through a delegatecall"
+        );
     }
 
     #[test]
