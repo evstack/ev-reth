@@ -35,12 +35,10 @@ jobs:
       - uses: taiki-e/install-action@nextest
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
-      # Keep the profile and package selection aligned with nextest so dependencies are reused.
-      # The client E2E harness also supports target/debug/ev-reth.
-      - name: Build E2E node
+      - name: Build ev-reth
         run: |
           for attempt in 1 2 3; do
-            cargo build --locked -p ev-reth -p ev-tests --bin ev-reth && exit 0
+            cargo build --profile release --locked --bin ev-reth && exit 0
             if [ "$attempt" = "3" ]; then
               exit 1
             fi
@@ -51,7 +49,7 @@ jobs:
         run: |
           cargo nextest run \
             --locked \
-            -p ev-reth -p ev-tests \
+            --workspace \
             -E "package(ev-tests)" \
             --no-capture
         env:
