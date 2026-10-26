@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-26
+
+### Changed
+
+- Upgraded Reth from v2.5.0 to v2.8.0, with matching Alloy 2.5.0, revm 43.0.3,
+  alloy-evm 0.39.0, reth-codecs / reth-primitives-traits 0.8.2, and revm-inspectors
+  0.44.3. Adapted payload building to Reth's EVM state-provider API ([#419](https://github.com/evstack/ev-reth/pull/419)).
+- Refreshed locked dependencies, including Tokio 1.54.1, rand 0.10.3, and
+  hickory-resolver 0.26.3 ([#405](https://github.com/evstack/ev-reth/pull/405), [#419](https://github.com/evstack/ev-reth/pull/419)).
+- Reused debug-profile dependencies for end-to-end CI builds to reduce rebuild work
+  ([#420](https://github.com/evstack/ev-reth/pull/420)).
+
+### Fixed
+
+- Reject non-direct calls (`DELEGATECALL` / `CALLCODE`) to state-changing methods on
+  the native-token, proposer-control, and deployment-permissions precompiles,
+  preventing a delegating contract from borrowing its caller's authority
+  ([#417](https://github.com/evstack/ev-reth/pull/417)).
+- Return an invalid-transaction error instead of panicking when transaction payment
+  calculation overflows ([#418](https://github.com/evstack/ev-reth/pull/418)).
+- Support Windows release builds and avoid host-specific CPU flags in release
+  binaries ([#404](https://github.com/evstack/ev-reth/pull/404)).
+
 ## [0.6.0] - 2026-09-10
 
 ### Added
