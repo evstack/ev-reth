@@ -507,9 +507,7 @@ fn calculate_caller_fee<Tx>(
 where
     Tx: Transaction,
 {
-    let effective_balance_spending = tx
-        .effective_balance_spending(basefee, blob_price)
-        .expect("effective balance is always smaller than max balance so it can't overflow");
+    let effective_balance_spending = tx.effective_balance_spending(basefee, blob_price)?;
     if !is_balance_check_disabled && balance < effective_balance_spending {
         return Err(
             reth_revm::revm::context_interface::result::InvalidTransaction::LackOfFundForMaxFee {
@@ -852,6 +850,39 @@ mod tests {
     const GAS_PRICE: u128 = 200;
     const STORAGE_RUNTIME: [u8; 6] = [0x60, 0x01, 0x60, 0x00, 0x55, 0x00];
     const REVERT_RUNTIME: [u8; 5] = [0x60, 0x00, 0x60, 0x00, 0xfd];
+
+    #[test]
+    fn caller_fee_returns_error_on_payment_overflow() {
+        // gas_limit * effective_gas_price exceeds u128, so the fee cannot be represented.
+        let tx = TxEnv {
+            gas_limit: u64::MAX,
+            gas_price: u128::MAX,
+            ..Default::default()
+        };
+
+        let result = calculate_caller_fee(U256::MAX, &tx, BASE_FEE as u128, 0, false);
+
+        assert!(matches!(
+            result,
+            Err(InvalidTransaction::OverflowPaymentInTransaction)
+        ));
+    }
+
+    #[test]
+    fn caller_fee_computes_normal_spending() {
+        let tx = TxEnv {
+            gas_limit: 21_000,
+            gas_price: GAS_PRICE,
+            ..Default::default()
+        };
+        let balance = U256::from(10u128.pow(18));
+
+        let new_balance = calculate_caller_fee(balance, &tx, BASE_FEE as u128, 0, false)
+            .expect("fee is representable");
+
+        let spent = U256::from(21_000u128 * GAS_PRICE);
+        assert_eq!(new_balance, balance - spent);
+    }
 
     #[test]
     fn reward_beneficiary_redirects_base_fee_sink() {
