@@ -369,7 +369,8 @@ mod tests {
     use reth_payload_primitives::PayloadAttributes;
     use reth_primitives_traits::SealedHeader;
     use reth_provider::test_utils::MockEthProvider;
-    use reth_revm::{cached::CachedReads, cancelled::CancelOnDrop};
+    use reth_revm::cached::CachedReads;
+    use reth_tasks::CancelOnDrop;
     use reth_transaction_pool::noop::NoopTransactionPool;
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

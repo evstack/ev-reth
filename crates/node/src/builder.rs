@@ -16,7 +16,7 @@ use reth_evm::{
 };
 use reth_payload_builder_primitives::PayloadBuilderError;
 use reth_primitives_traits::{SealedBlock, SealedHeader, SignedTransaction};
-use reth_provider::{HeaderProvider, StateProviderFactory};
+use reth_provider::{HeaderProvider, StateProvider, StateProviderFactory};
 use reth_revm::{database::StateProviderDatabase, State};
 use std::sync::Arc;
 use tracing::{debug, debug_span, info, instrument};
@@ -96,7 +96,7 @@ where
         let state_provider = self.client.latest().map_err(PayloadBuilderError::other)?;
 
         // Create a database from the state provider
-        let db = StateProviderDatabase::new(&state_provider);
+        let db = StateProviderDatabase::new((&state_provider).into_evm_state_provider());
         let is_amsterdam = self
             .client
             .chain_spec()
