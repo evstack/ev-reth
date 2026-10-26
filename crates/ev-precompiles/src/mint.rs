@@ -138,6 +138,22 @@ impl MintPrecompile {
         }
     }
 
+    /// Rejects calls that do not target the precompile directly. Under
+    /// DELEGATECALL/CALLCODE the precompile runs in the delegating contract's
+    /// frame while `caller` is still the delegating contract's own caller, so
+    /// an authorized account calling an attacker-controlled contract could have
+    /// its authority borrowed to mint, burn or edit the allowlist. The writing
+    /// methods must only act on a direct CALL.
+    const fn ensure_direct_call(is_direct_call: bool) -> MintPrecompileResult<()> {
+        if is_direct_call {
+            Ok(())
+        } else {
+            Err(MintPrecompileError::halt_static(
+                "state change during delegate call",
+            ))
+        }
+    }
+
     fn ensure_authorized(
         &self,
         internals: &mut EvmInternals<'_>,
@@ -209,6 +225,7 @@ impl Precompile for MintPrecompile {
     /// Execute the precompile with the given input data, gas limit, and caller address.
     fn call(&self, mut input: PrecompileInput<'_>) -> PrecompileResult {
         let caller: Address = input.caller;
+        let is_direct_call = input.is_direct_call();
         let gas_limit = input.gas;
         let reservoir = input.reservoir;
         let data_len = input.data.len();
@@ -237,6 +254,7 @@ impl Precompile for MintPrecompile {
         let result = (|| -> MintPrecompileResult<Bytes> {
             match decoded {
                 INativeToken::INativeTokenCalls::mint(call) => {
+                    Self::ensure_direct_call(is_direct_call)?;
                     self.ensure_authorized(internals, caller)?;
                     let to = call.to;
                     let amount = call.amount;
@@ -250,6 +268,7 @@ impl Precompile for MintPrecompile {
                     Ok(Bytes::new())
                 }
                 INativeToken::INativeTokenCalls::burn(call) => {
+                    Self::ensure_direct_call(is_direct_call)?;
                     self.ensure_authorized(internals, caller)?;
                     let from = call.from;
                     let amount = call.amount;
@@ -263,11 +282,13 @@ impl Precompile for MintPrecompile {
                     Ok(Bytes::new())
                 }
                 INativeToken::INativeTokenCalls::addToAllowList(call) => {
+                    Self::ensure_direct_call(is_direct_call)?;
                     self.ensure_admin(caller)?;
                     Self::set_allowlisted(internals, call.account, true)?;
                     Ok(Bytes::new())
                 }
                 INativeToken::INativeTokenCalls::removeFromAllowList(call) => {
+                    Self::ensure_direct_call(is_direct_call)?;
                     self.ensure_admin(caller)?;
                     Self::set_allowlisted(internals, call.account, false)?;
                     Ok(Bytes::new())
@@ -339,6 +360,36 @@ mod tests {
         precompile.call(input)
     }
 
+    /// Reaches the precompile the way a DELEGATECALL does: the running bytecode
+    /// is the precompile's (`bytecode_address`), but the frame's address is the
+    /// delegating contract (`target_address`), so `is_direct_call()` is false
+    /// while `caller` is still the authorized account whose authority is being
+    /// borrowed.
+    fn run_call_via_delegatecall<'a>(
+        journal: &'a mut TestJournal,
+        block_env: &'a BlockEnv,
+        cfg_env: &'a CfgEnv,
+        tx_env: &'a TxEnv,
+        precompile: &MintPrecompile,
+        caller: Address,
+        data: &'a [u8],
+    ) -> PrecompileResult {
+        let delegating_contract = address!("0x0000000000000000000000000000000000000bad");
+        let input = PrecompileInput {
+            data,
+            gas: GAS_LIMIT,
+            reservoir: 0,
+            caller,
+            value: U256::ZERO,
+            target_address: delegating_contract,
+            is_static: false,
+            bytecode_address: MINT_PRECOMPILE_ADDR,
+            internals: EvmInternals::new(journal, block_env, cfg_env, tx_env),
+        };
+
+        precompile.call(input)
+    }
+
     fn assert_halt_message(result: PrecompileResult, expected: &str) {
         match result {
             Ok(output) => {
@@ -400,6 +451,71 @@ mod tests {
         );
         // note: is_created() is only true for accounts created via CREATE/CREATE2,
         // not for accounts that just received a balance transfer
+    }
+
+    #[test]
+    fn mint_rejected_through_delegatecall_from_admin() {
+        // An admin's authority must not carry through a DELEGATECALL. A contract
+        // the admin calls could otherwise delegatecall the precompile and mint
+        // with the admin's authority.
+        let admin = address!("0x00000000000000000000000000000000000000a1");
+        let recipient = address!("0x00000000000000000000000000000000000000b1");
+        let precompile = MintPrecompile::new(admin);
+
+        let (mut journal, block_env, cfg_env, tx_env) = setup_context();
+        let calldata = INativeToken::mintCall {
+            to: recipient,
+            amount: U256::from(42u64),
+        }
+        .abi_encode();
+
+        let result = run_call_via_delegatecall(
+            &mut journal,
+            &block_env,
+            &cfg_env,
+            &tx_env,
+            &precompile,
+            admin,
+            &calldata,
+        );
+
+        assert_halt_message(result, "state change during delegate call");
+        assert!(
+            account_balance(&journal, recipient).is_none(),
+            "no mint may occur through a delegatecall"
+        );
+    }
+
+    #[test]
+    fn add_to_allowlist_rejected_through_delegatecall_from_admin() {
+        // Covers the admin-only writer path (ensure_admin), which the mint/burn
+        // path (ensure_authorized) does not exercise.
+        let admin = address!("0x00000000000000000000000000000000000000a3");
+        let operator = address!("0x00000000000000000000000000000000000000c3");
+        let precompile = MintPrecompile::new(admin);
+
+        let (mut journal, block_env, cfg_env, tx_env) = setup_context();
+        let calldata = INativeToken::addToAllowListCall { account: operator }.abi_encode();
+
+        let result = run_call_via_delegatecall(
+            &mut journal,
+            &block_env,
+            &cfg_env,
+            &tx_env,
+            &precompile,
+            admin,
+            &calldata,
+        );
+
+        assert_halt_message(result, "state change during delegate call");
+        assert!(
+            !MintPrecompile::is_allowlisted(
+                &mut EvmInternals::new(&mut journal, &block_env, &cfg_env, &tx_env),
+                operator,
+            )
+            .expect("allowlist read should succeed"),
+            "no allowlist change may occur through a delegatecall"
+        );
     }
 
     #[test]
