@@ -315,6 +315,7 @@ where
                 let frame_gas = frame_result.gas_mut().tracker_mut();
                 frame_gas.rollback_state_gas();
                 frame_gas.set_refunded(0);
+                bump_create_nonce(evm, &base_tx);
                 return Ok(Some(frame_result));
             }
             let mut call_tx = base_tx.clone();
@@ -1439,6 +1440,76 @@ mod tests {
 
         let state: EvmState = result_and_state.state;
         let caller_account = state.get(&caller).expect("caller should be loaded");
+        assert_eq!(caller_account.info.nonce, 1);
+    }
+
+    #[test]
+    fn batch_execution_bumps_create_nonce_when_first_call_reverts() {
+        // A CREATE-first batch whose first call reverts is caught at the top of
+        // the loop before the remaining calls run. The executor nonce must still
+        // advance so the signed transaction cannot be re-included.
+        let caller = address!("0x0000000000000000000000000000000000000aaa");
+        let recipient = address!("0x0000000000000000000000000000000000000bbb");
+
+        let mut state = State::builder()
+            .with_database(CacheDB::<EmptyDB>::default())
+            .with_bundle_update()
+            .build();
+        state.insert_account(
+            caller,
+            AccountInfo {
+                balance: U256::from(10_000_000_000u64),
+                nonce: 0,
+                code_hash: KECCAK_EMPTY,
+                code: None,
+                account_id: None,
+            },
+        );
+
+        let mut evm_env: EvmEnv<SpecId> = EvmEnv::default();
+        evm_env.cfg_env.chain_id = 1;
+        evm_env.cfg_env.spec = SpecId::CANCUN;
+        evm_env.block_env.basefee = 1;
+        evm_env.block_env.gas_limit = 30_000_000;
+        evm_env.block_env.number = U256::from(1);
+        let mut evm = EvTxEvmFactory::default().create_evm(state, evm_env);
+
+        // First call is a CREATE whose init code reverts; the second never runs.
+        let calls = vec![
+            Call {
+                to: TxKind::Create,
+                value: U256::ZERO,
+                input: Bytes::copy_from_slice(REVERT_RUNTIME.as_slice()),
+            },
+            Call {
+                to: TxKind::Call(recipient),
+                value: U256::ZERO,
+                input: Bytes::new(),
+            },
+        ];
+        let tx_env = TxEnv {
+            caller,
+            gas_limit: 200_000,
+            gas_price: 1,
+            gas_priority_fee: Some(1),
+            chain_id: Some(1),
+            tx_type: TransactionType::Eip1559.into(),
+            ..Default::default()
+        };
+
+        let result_and_state = evm
+            .transact_raw(EvTxEnv::with_calls(tx_env, calls))
+            .expect("batch execution should complete");
+
+        assert!(
+            matches!(result_and_state.result, ExecutionResult::Revert { .. }),
+            "unexpected execution result: {:?}",
+            result_and_state.result
+        );
+        let caller_account = result_and_state
+            .state
+            .get(&caller)
+            .expect("caller should be loaded");
         assert_eq!(caller_account.info.nonce, 1);
     }
 
