@@ -113,6 +113,13 @@ impl EvNodeTransaction {
         executor: Address,
         signature: &Signature,
     ) -> Result<Address, alloy_primitives::SignatureError> {
+        // Reject malleable high-s signatures (EIP-2): `s` must be in the lower
+        // half of the curve order.
+        if signature.normalize_s().is_some() {
+            return Err(alloy_primitives::SignatureError::FromBytes(
+                "high-s signature",
+            ));
+        }
         signature.recover_address_from_prehash(&self.sponsor_signing_hash(executor))
     }
 
@@ -708,6 +715,46 @@ mod tests {
         let mut buf: &[u8] = &[0x82, 0x01, 0x02];
         let err = decode_optional_signature(&mut buf).expect_err("invalid length");
         assert_eq!(err, alloy_rlp::Error::UnexpectedLength);
+    }
+
+    #[test]
+    fn recover_sponsor_rejects_high_s_signature() {
+        let tx = sample_tx();
+        let executor = Address::from_slice(&[7u8; 20]);
+        // secp256k1 curve order n.
+        let n = U256::from_str_radix(
+            "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141",
+            16,
+        )
+        .unwrap();
+        let high_s = Signature::new(U256::from(1u64), n - U256::from(1u64), false);
+        assert!(matches!(
+            tx.recover_sponsor(executor, &high_s),
+            Err(alloy_primitives::SignatureError::FromBytes(
+                "high-s signature"
+            ))
+        ));
+    }
+
+    #[test]
+    fn decode_2718_exact_rejects_trailing_bytes() {
+        use alloy_eips::eip2718::{Decodable2718, Encodable2718};
+
+        let signed = alloy_consensus::Signed::new_unhashed(sample_tx(), sample_signature());
+        let envelope = EvTxEnvelope::EvNode(signed);
+        let mut encoded = Vec::new();
+        envelope.encode_2718(&mut encoded);
+
+        // The clean encoding decodes.
+        assert!(EvTxEnvelope::decode_2718_exact(&encoded).is_ok());
+
+        // Trailing bytes would change the transaction hash while decoding to the
+        // same transaction, so the exact decoder must reject them.
+        let mut with_trailing = encoded.clone();
+        with_trailing.push(0xff);
+        assert!(EvTxEnvelope::decode_2718_exact(&with_trailing).is_err());
+        // The non-exact decoder (previously used at payload ingress) tolerates them.
+        assert!(EvTxEnvelope::decode_2718(&mut with_trailing.as_slice()).is_ok());
     }
 
     #[test]

@@ -146,7 +146,7 @@ fn parse_evolve_payload(
         .transactions()
         .iter()
         .map(|tx| {
-            EvTxEnvelope::decode_2718(&mut tx.as_ref())
+            EvTxEnvelope::decode_2718_exact(tx.as_ref())
                 .map_err(|e| NewPayloadError::Other(Box::new(e)))
         })
         .collect::<Result<Vec<_>, _>>()?;
