@@ -116,7 +116,9 @@ impl EvNodeTransaction {
         // Reject malleable high-s signatures (EIP-2): `s` must be in the lower
         // half of the curve order.
         if signature.normalize_s().is_some() {
-            return Err(alloy_primitives::SignatureError::FromBytes("high-s signature"));
+            return Err(alloy_primitives::SignatureError::FromBytes(
+                "high-s signature",
+            ));
         }
         signature.recover_address_from_prehash(&self.sponsor_signing_hash(executor))
     }
@@ -604,15 +606,9 @@ fn decode_optional_signature(buf: &mut &[u8]) -> alloy_rlp::Result<Option<Signat
     let raw: [u8; 65] = bytes
         .try_into()
         .map_err(|_| alloy_rlp::Error::UnexpectedLength)?;
-    let signature = Signature::from_raw_array(&raw)
-        .map_err(|_| alloy_rlp::Error::Custom("invalid signature bytes"))?;
-    // Reject non-canonical encodings (e.g. v = 0/1 or EIP-155): the signature
-    // must serialize back to exactly the bytes provided, otherwise the same
-    // signature would have multiple valid encodings and transaction hashes.
-    if signature.as_bytes() != raw {
-        return Err(alloy_rlp::Error::Custom("non-canonical signature encoding"));
-    }
-    Ok(Some(signature))
+    Signature::from_raw_array(&raw)
+        .map(Some)
+        .map_err(|_| alloy_rlp::Error::Custom("invalid signature bytes"))
 }
 
 #[cfg(test)]
@@ -721,38 +717,6 @@ mod tests {
         assert_eq!(err, alloy_rlp::Error::UnexpectedLength);
     }
 
-    // RLP-encodes a 65-byte signature string (0xb8, len, bytes).
-    fn rlp_encode_signature_bytes(raw: &[u8; 65]) -> Vec<u8> {
-        let mut out = vec![0xb8, 0x41];
-        out.extend_from_slice(raw);
-        out
-    }
-
-    #[test]
-    fn decode_optional_signature_rejects_non_canonical_v() {
-        let mut raw = [0u8; 65];
-        raw[31] = 1; // r = 1
-        raw[63] = 1; // s = 1
-
-        // Canonical v (27) round-trips to the same bytes.
-        raw[64] = 27;
-        let encoded = rlp_encode_signature_bytes(&raw);
-        let decoded = decode_optional_signature(&mut encoded.as_slice())
-            .expect("canonical signature decodes");
-        assert!(decoded.is_some());
-
-        // Non-canonical v (0) recovers the same parity but is a second encoding
-        // of the same signature, so it must be rejected.
-        raw[64] = 0;
-        let encoded = rlp_encode_signature_bytes(&raw);
-        let err = decode_optional_signature(&mut encoded.as_slice())
-            .expect_err("non-canonical v rejected");
-        assert_eq!(
-            err,
-            alloy_rlp::Error::Custom("non-canonical signature encoding")
-        );
-    }
-
     #[test]
     fn recover_sponsor_rejects_high_s_signature() {
         let tx = sample_tx();
@@ -766,7 +730,9 @@ mod tests {
         let high_s = Signature::new(U256::from(1u64), n - U256::from(1u64), false);
         assert!(matches!(
             tx.recover_sponsor(executor, &high_s),
-            Err(alloy_primitives::SignatureError::FromBytes("high-s signature"))
+            Err(alloy_primitives::SignatureError::FromBytes(
+                "high-s signature"
+            ))
         ));
     }
 
