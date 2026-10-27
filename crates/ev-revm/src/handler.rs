@@ -392,10 +392,12 @@ where
             let gas = exec_result.gas();
             let basefee = evm.ctx().block().basefee() as u128;
             let effective_gas_price = evm.ctx().tx().effective_gas_price(basefee);
-            let reimbursement = U256::from(
-                effective_gas_price
-                    .saturating_mul((gas.remaining() + gas.refunded() as u64) as u128),
-            );
+            // Include reservoir gas (EIP-8037): like remaining and refunded gas
+            // it was charged upfront but not spent, so the sponsor must get it
+            // back. This mirrors revm's reimburse_caller.
+            let reimbursement = U256::from(effective_gas_price.saturating_mul(
+                (gas.remaining() + gas.reservoir() + gas.refunded() as u64) as u128,
+            ));
             let journal = evm.ctx_mut().journal_mut();
             let mut sponsor_account = journal.load_account_mut(sponsor)?.data;
             let new_balance = sponsor_account.balance().saturating_add(reimbursement);
@@ -931,6 +933,60 @@ mod tests {
 
         let beneficiary_balance = journal.account(beneficiary).info.balance;
         assert!(beneficiary_balance.is_zero());
+    }
+
+    #[test]
+    fn sponsor_reimbursement_includes_reservoir() {
+        // A sponsored tx leaves unused reservoir gas (EIP-8037). It was charged
+        // upfront, so the sponsor must be reimbursed for it alongside remaining
+        // and refunded gas.
+        let caller = address!("0x0000000000000000000000000000000000000aaa");
+        let sponsor = address!("0x0000000000000000000000000000000000000bbb");
+
+        let mut evm_env: EvmEnv<SpecId> = EvmEnv::default();
+        evm_env.cfg_env.chain_id = 1;
+        evm_env.cfg_env.spec = SpecId::CANCUN;
+        evm_env.block_env.basefee = 0;
+        evm_env.block_env.gas_limit = 30_000_000;
+        evm_env.block_env.number = U256::from(1);
+        let mut evm = EvTxEvmFactory::default().create_evm(EmptyDB::default(), evm_env);
+
+        let calls = vec![Call {
+            to: TxKind::Call(caller),
+            value: U256::ZERO,
+            input: Bytes::new(),
+        }];
+        let tx_env = TxEnv {
+            caller,
+            gas_limit: 100_000,
+            gas_price: 100,
+            gas_priority_fee: Some(100),
+            chain_id: Some(1),
+            tx_type: TransactionType::Eip1559.into(),
+            ..Default::default()
+        };
+        let tx = EvTxEnv::with_calls_and_sponsor(tx_env, calls, sponsor);
+        let price = tx.effective_gas_price(0);
+        evm.ctx_mut().set_tx(tx);
+
+        const RESERVOIR: u64 = 1_000;
+        let gas = Gas::new_spent_with_reservoir(50_000, RESERVOIR);
+        let interpreter_result =
+            InterpreterResult::new(InstructionResult::Return, Bytes::new(), gas);
+        let mut frame_result = FrameResult::Call(CallOutcome::new(interpreter_result, 0..0));
+
+        let handler: EvHandler<_, TestError, EthFrame<EthInterpreter>> = EvHandler::new(None, None);
+        handler
+            .reimburse_caller(&mut evm, &mut frame_result)
+            .expect("reimburse succeeds");
+
+        // remaining and refunded are 0 here, so the whole reimbursement is the
+        // reservoir — zero without the fix.
+        let expected = U256::from(price.saturating_mul(RESERVOIR as u128));
+        assert!(!expected.is_zero());
+        let ctx_ref = evm.ctx();
+        let balance = ctx_ref.journal().account(sponsor).info.balance;
+        assert_eq!(balance, expected);
     }
 
     #[test]
