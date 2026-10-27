@@ -104,6 +104,11 @@ impl EvNodeTransaction {
         &self,
         signature: &Signature,
     ) -> Result<Address, alloy_primitives::SignatureError> {
+        // Reject malleable high-s signatures (EIP-2): `s` must be in the lower
+        // half of the curve order.
+        if signature.normalize_s().is_some() {
+            return Err(alloy_primitives::SignatureError::FromBytes("high-s signature"));
+        }
         signature.recover_address_from_prehash(&self.executor_signing_hash())
     }
 
@@ -400,8 +405,8 @@ impl SignerRecoverable for EvTxEnvelope {
         match self {
             EvTxEnvelope::Ethereum(tx) => tx.recover_signer(),
             EvTxEnvelope::EvNode(tx) => tx
-                .signature()
-                .recover_address_from_prehash(&tx.tx().executor_signing_hash())
+                .tx()
+                .recover_executor(tx.signature())
                 .map_err(|_| alloy_consensus::crypto::RecoveryError::new()),
         }
     }
@@ -681,6 +686,32 @@ mod tests {
         let a = Address::from_slice(&[1u8; 20]);
         let b = Address::from_slice(&[2u8; 20]);
         assert_ne!(tx.sponsor_signing_hash(a), tx.sponsor_signing_hash(b));
+    }
+
+    #[test]
+    fn recover_executor_rejects_high_s_signature() {
+        let tx = sample_tx();
+        // secp256k1 curve order n.
+        let n = U256::from_str_radix(
+            "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141",
+            16,
+        )
+        .unwrap();
+
+        // s in the upper half of the order is malleable and must be rejected.
+        let high_s = Signature::new(U256::from(1u64), n - U256::from(1u64), false);
+        assert!(matches!(
+            tx.recover_executor(&high_s),
+            Err(alloy_primitives::SignatureError::FromBytes("high-s signature"))
+        ));
+
+        // A low-s signature passes the malleability guard (recovery may then
+        // fail for an unrelated reason; that is not the high-s rejection).
+        let low_s = Signature::new(U256::from(1u64), U256::from(1u64), false);
+        assert!(!matches!(
+            tx.recover_executor(&low_s),
+            Err(alloy_primitives::SignatureError::FromBytes("high-s signature"))
+        ));
     }
 
     #[test]
