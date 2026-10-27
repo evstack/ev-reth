@@ -226,6 +226,7 @@ impl Precompile for MintPrecompile {
     fn call(&self, mut input: PrecompileInput<'_>) -> PrecompileResult {
         let caller: Address = input.caller;
         let is_direct_call = input.is_direct_call();
+        let is_static = input.is_static;
         let gas_limit = input.gas;
         let reservoir = input.reservoir;
         let data_len = input.data.len();
@@ -254,6 +255,11 @@ impl Precompile for MintPrecompile {
         let result = (|| -> MintPrecompileResult<Bytes> {
             match decoded {
                 INativeToken::INativeTokenCalls::mint(call) => {
+                    if is_static {
+                        return Err(MintPrecompileError::halt_static(
+                            "state change during static call",
+                        ));
+                    }
                     Self::ensure_direct_call(is_direct_call)?;
                     self.ensure_authorized(internals, caller)?;
                     let to = call.to;
@@ -268,6 +274,11 @@ impl Precompile for MintPrecompile {
                     Ok(Bytes::new())
                 }
                 INativeToken::INativeTokenCalls::burn(call) => {
+                    if is_static {
+                        return Err(MintPrecompileError::halt_static(
+                            "state change during static call",
+                        ));
+                    }
                     Self::ensure_direct_call(is_direct_call)?;
                     self.ensure_authorized(internals, caller)?;
                     let from = call.from;
@@ -282,12 +293,22 @@ impl Precompile for MintPrecompile {
                     Ok(Bytes::new())
                 }
                 INativeToken::INativeTokenCalls::addToAllowList(call) => {
+                    if is_static {
+                        return Err(MintPrecompileError::halt_static(
+                            "state change during static call",
+                        ));
+                    }
                     Self::ensure_direct_call(is_direct_call)?;
                     self.ensure_admin(caller)?;
                     Self::set_allowlisted(internals, call.account, true)?;
                     Ok(Bytes::new())
                 }
                 INativeToken::INativeTokenCalls::removeFromAllowList(call) => {
+                    if is_static {
+                        return Err(MintPrecompileError::halt_static(
+                            "state change during static call",
+                        ));
+                    }
                     Self::ensure_direct_call(is_direct_call)?;
                     self.ensure_admin(caller)?;
                     Self::set_allowlisted(internals, call.account, false)?;
@@ -390,6 +411,32 @@ mod tests {
         precompile.call(input)
     }
 
+    /// Reaches the precompile as a STATICCALL does: a direct call whose frame
+    /// forbids state changes (`is_static`).
+    fn run_call_static<'a>(
+        journal: &'a mut TestJournal,
+        block_env: &'a BlockEnv,
+        cfg_env: &'a CfgEnv,
+        tx_env: &'a TxEnv,
+        precompile: &MintPrecompile,
+        caller: Address,
+        data: &'a [u8],
+    ) -> PrecompileResult {
+        let input = PrecompileInput {
+            data,
+            gas: GAS_LIMIT,
+            reservoir: 0,
+            caller,
+            value: U256::ZERO,
+            target_address: MINT_PRECOMPILE_ADDR,
+            is_static: true,
+            bytecode_address: MINT_PRECOMPILE_ADDR,
+            internals: EvmInternals::new(journal, block_env, cfg_env, tx_env),
+        };
+
+        precompile.call(input)
+    }
+
     fn assert_halt_message(result: PrecompileResult, expected: &str) {
         match result {
             Ok(output) => {
@@ -451,6 +498,38 @@ mod tests {
         );
         // note: is_created() is only true for accounts created via CREATE/CREATE2,
         // not for accounts that just received a balance transfer
+    }
+
+    #[test]
+    fn mint_rejected_in_static_call_from_admin() {
+        // A STATICCALL frame must not commit state. An authorized caller
+        // reaching the precompile under `is_static` must halt without minting.
+        let admin = address!("0x00000000000000000000000000000000000000a1");
+        let recipient = address!("0x00000000000000000000000000000000000000b1");
+        let precompile = MintPrecompile::new(admin);
+
+        let (mut journal, block_env, cfg_env, tx_env) = setup_context();
+        let calldata = INativeToken::mintCall {
+            to: recipient,
+            amount: U256::from(42u64),
+        }
+        .abi_encode();
+
+        let result = run_call_static(
+            &mut journal,
+            &block_env,
+            &cfg_env,
+            &tx_env,
+            &precompile,
+            admin,
+            &calldata,
+        );
+
+        assert_halt_message(result, "state change during static call");
+        assert!(
+            account_balance(&journal, recipient).is_none(),
+            "no mint may occur inside a static call"
+        );
     }
 
     #[test]
