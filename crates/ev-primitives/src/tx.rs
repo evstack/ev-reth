@@ -107,7 +107,9 @@ impl EvNodeTransaction {
         // Reject malleable high-s signatures (EIP-2): `s` must be in the lower
         // half of the curve order.
         if signature.normalize_s().is_some() {
-            return Err(alloy_primitives::SignatureError::FromBytes("high-s signature"));
+            return Err(alloy_primitives::SignatureError::FromBytes(
+                "high-s signature",
+            ));
         }
         signature.recover_address_from_prehash(&self.executor_signing_hash())
     }
@@ -702,7 +704,9 @@ mod tests {
         let high_s = Signature::new(U256::from(1u64), n - U256::from(1u64), false);
         assert!(matches!(
             tx.recover_executor(&high_s),
-            Err(alloy_primitives::SignatureError::FromBytes("high-s signature"))
+            Err(alloy_primitives::SignatureError::FromBytes(
+                "high-s signature"
+            ))
         ));
 
         // A low-s signature passes the malleability guard (recovery may then
@@ -710,7 +714,9 @@ mod tests {
         let low_s = Signature::new(U256::from(1u64), U256::from(1u64), false);
         assert!(!matches!(
             tx.recover_executor(&low_s),
-            Err(alloy_primitives::SignatureError::FromBytes("high-s signature"))
+            Err(alloy_primitives::SignatureError::FromBytes(
+                "high-s signature"
+            ))
         ));
     }
 
