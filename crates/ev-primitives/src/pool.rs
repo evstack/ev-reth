@@ -45,8 +45,8 @@ impl SignerRecoverable for EvPooledTxEnvelope {
         match self {
             EvPooledTxEnvelope::Ethereum(tx) => tx.recover_signer(),
             EvPooledTxEnvelope::EvNode(tx) => tx
-                .signature()
-                .recover_address_from_prehash(&tx.tx().executor_signing_hash())
+                .tx()
+                .recover_executor(tx.signature())
                 .map_err(|_| alloy_consensus::crypto::RecoveryError::new()),
         }
     }
