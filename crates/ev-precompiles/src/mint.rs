@@ -102,6 +102,12 @@ impl MintPrecompile {
         Ok(())
     }
 
+    /// Upper bound on a minted balance. revm assumes no more than `u128::MAX`
+    /// of the native token exists, so keeping balances under this bound leaves
+    /// ample headroom below `U256::MAX`: later credits (transfers, fee
+    /// reimbursements) can never saturate at the ceiling and silently drop value.
+    const MAX_BALANCE: U256 = U256::from_limbs([u64::MAX, u64::MAX, 0, 0]);
+
     fn add_balance(
         internals: &mut EvmInternals<'_>,
         addr: Address,
@@ -110,9 +116,11 @@ impl MintPrecompile {
         let mut account = internals
             .load_account_mut(addr)
             .map_err(Self::map_internals_error)?;
-        if !account.incr_balance(amount) {
-            return Err(MintPrecompileError::halt_static("balance overflow"));
-        }
+        let new_balance = (*account.balance())
+            .checked_add(amount)
+            .filter(|balance| *balance <= Self::MAX_BALANCE)
+            .ok_or(MintPrecompileError::halt_static("balance exceeds maximum"))?;
+        account.set_balance(new_balance);
         Ok(())
     }
 
@@ -498,6 +506,59 @@ mod tests {
         );
         // note: is_created() is only true for accounts created via CREATE/CREATE2,
         // not for accounts that just received a balance transfer
+    }
+
+    #[test]
+    fn mint_rejected_when_exceeding_max_balance() {
+        let admin = address!("0x00000000000000000000000000000000000000a1");
+        let recipient = address!("0x00000000000000000000000000000000000000b1");
+        let precompile = MintPrecompile::new(admin);
+
+        let (mut journal, block_env, cfg_env, tx_env) = setup_context();
+
+        // One over the cap: the resulting balance would exceed MAX_BALANCE.
+        let over_cap = MintPrecompile::MAX_BALANCE + U256::from(1u64);
+        let calldata = INativeToken::mintCall {
+            to: recipient,
+            amount: over_cap,
+        }
+        .abi_encode();
+        let result = run_call(
+            &mut journal,
+            &block_env,
+            &cfg_env,
+            &tx_env,
+            &precompile,
+            admin,
+            &calldata,
+        );
+        assert_halt_message(result, "balance exceeds maximum");
+        assert_eq!(
+            account_balance(&journal, recipient).unwrap_or_default(),
+            U256::ZERO,
+            "a mint over the cap must not add balance"
+        );
+
+        // Minting exactly up to the cap is allowed.
+        let calldata = INativeToken::mintCall {
+            to: recipient,
+            amount: MintPrecompile::MAX_BALANCE,
+        }
+        .abi_encode();
+        run_call(
+            &mut journal,
+            &block_env,
+            &cfg_env,
+            &tx_env,
+            &precompile,
+            admin,
+            &calldata,
+        )
+        .expect("mint up to the cap should succeed");
+        assert_eq!(
+            account_balance(&journal, recipient),
+            Some(MintPrecompile::MAX_BALANCE)
+        );
     }
 
     #[test]
