@@ -15,7 +15,7 @@ use reth_revm::{
     revm::{
         context::{result::ExecutionResult, ContextSetters},
         context_interface::{
-            cfg::gas_params::Eip2780TxInfo,
+            cfg::{gas_params::Eip2780TxInfo, GasParams},
             journaled_state::{account::JournaledAccountTr, JournalCheckpoint},
             result::HaltReason,
             transaction::{AccessListItemTr, TransactionType},
@@ -26,10 +26,8 @@ use reth_revm::{
             MainnetHandler,
         },
         interpreter::{
-            gas::{calculate_initial_tx_gas, ACCESS_LIST_ADDRESS, ACCESS_LIST_STORAGE_KEY},
-            interpreter::EthInterpreter,
-            interpreter_action::FrameInit,
-            GasTracker, InitialAndFloorGas,
+            gas::calculate_initial_tx_gas, interpreter::EthInterpreter,
+            interpreter_action::FrameInit, GasTracker, InitialAndFloorGas,
         },
         primitives::{eip7702, hardfork::SpecId},
         state::{AccountInfo, Bytecode, EvmState},
@@ -184,6 +182,7 @@ where
                         tx,
                         calls,
                         ctx.cfg().spec().into(),
+                        ctx.cfg().gas_params(),
                         ctx.cfg().is_eip7623_disabled(),
                         ctx.cfg().is_amsterdam_eip8037_enabled(),
                         ctx.cfg().tx_gas_limit_cap(),
@@ -398,10 +397,12 @@ where
             let gas = exec_result.gas();
             let basefee = evm.ctx().block().basefee() as u128;
             let effective_gas_price = evm.ctx().tx().effective_gas_price(basefee);
-            let reimbursement = U256::from(
-                effective_gas_price
-                    .saturating_mul((gas.remaining() + gas.refunded() as u64) as u128),
-            );
+            // Include reservoir gas (EIP-8037): like remaining and refunded gas
+            // it was charged upfront but not spent, so the sponsor must get it
+            // back. This mirrors revm's reimburse_caller.
+            let reimbursement = U256::from(effective_gas_price.saturating_mul(
+                (gas.remaining() + gas.reservoir() + gas.refunded() as u64) as u128,
+            ));
             let journal = evm.ctx_mut().journal_mut();
             let mut sponsor_account = journal.load_account_mut(sponsor)?.data;
             let new_balance = sponsor_account.balance().saturating_add(reimbursement);
@@ -539,6 +540,7 @@ fn validate_batch_initial_tx_gas<Tx: Transaction>(
     tx: &Tx,
     calls: &[ev_primitives::Call],
     spec: SpecId,
+    gas_params: &GasParams,
     is_eip7623_disabled: bool,
     is_eip8037_enabled: bool,
     tx_gas_limit_cap: u64,
@@ -580,9 +582,15 @@ fn validate_batch_initial_tx_gas<Tx: Transaction>(
         }
     }
 
+    // Price the access list with the configured, spec-aware gas params rather
+    // than fixed constants, and (EIP-7981) include its floor contribution.
     initial_total_gas = initial_total_gas
-        .saturating_add(accounts.saturating_mul(ACCESS_LIST_ADDRESS))
-        .saturating_add(storages.saturating_mul(ACCESS_LIST_STORAGE_KEY));
+        .saturating_add(accounts.saturating_mul(gas_params.tx_access_list_address_cost()))
+        .saturating_add(storages.saturating_mul(gas_params.tx_access_list_storage_key_cost()));
+    let access_list_floor_tokens = gas_params.tx_floor_tokens_in_access_list(accounts, storages);
+    floor_gas = floor_gas.saturating_add(
+        access_list_floor_tokens.saturating_mul(gas_params.tx_floor_cost_per_token()),
+    );
 
     if spec.is_enabled_in(SpecId::PRAGUE) {
         let auth_state_gas =
@@ -943,6 +951,60 @@ mod tests {
     }
 
     #[test]
+    fn sponsor_reimbursement_includes_reservoir() {
+        // A sponsored tx leaves unused reservoir gas (EIP-8037). It was charged
+        // upfront, so the sponsor must be reimbursed for it alongside remaining
+        // and refunded gas.
+        let caller = address!("0x0000000000000000000000000000000000000aaa");
+        let sponsor = address!("0x0000000000000000000000000000000000000bbb");
+
+        let mut evm_env: EvmEnv<SpecId> = EvmEnv::default();
+        evm_env.cfg_env.chain_id = 1;
+        evm_env.cfg_env.spec = SpecId::CANCUN;
+        evm_env.block_env.basefee = 0;
+        evm_env.block_env.gas_limit = 30_000_000;
+        evm_env.block_env.number = U256::from(1);
+        let mut evm = EvTxEvmFactory::default().create_evm(EmptyDB::default(), evm_env);
+
+        let calls = vec![Call {
+            to: TxKind::Call(caller),
+            value: U256::ZERO,
+            input: Bytes::new(),
+        }];
+        let tx_env = TxEnv {
+            caller,
+            gas_limit: 100_000,
+            gas_price: 100,
+            gas_priority_fee: Some(100),
+            chain_id: Some(1),
+            tx_type: TransactionType::Eip1559.into(),
+            ..Default::default()
+        };
+        let tx = EvTxEnv::with_calls_and_sponsor(tx_env, calls, sponsor);
+        let price = tx.effective_gas_price(0);
+        evm.ctx_mut().set_tx(tx);
+
+        const RESERVOIR: u64 = 1_000;
+        let gas = Gas::new_spent_with_reservoir(50_000, RESERVOIR);
+        let interpreter_result =
+            InterpreterResult::new(InstructionResult::Return, Bytes::new(), gas);
+        let mut frame_result = FrameResult::Call(CallOutcome::new(interpreter_result, 0..0));
+
+        let handler: EvHandler<_, TestError, EthFrame<EthInterpreter>> = EvHandler::new(None, None);
+        handler
+            .reimburse_caller(&mut evm, &mut frame_result)
+            .expect("reimburse succeeds");
+
+        // remaining and refunded are 0 here, so the whole reimbursement is the
+        // reservoir — zero without the fix.
+        let expected = U256::from(price.saturating_mul(RESERVOIR as u128));
+        assert!(!expected.is_zero());
+        let ctx_ref = evm.ctx();
+        let balance = ctx_ref.journal().account(sponsor).info.balance;
+        assert_eq!(balance, expected);
+    }
+
+    #[test]
     fn batch_initial_gas_sums_calls_and_access_list() {
         let tx_env = TxEnv {
             gas_limit: 1_000_000,
@@ -985,11 +1047,20 @@ mod tests {
             0,
             None,
         );
-        let access_list_cost = ACCESS_LIST_ADDRESS + 2 * ACCESS_LIST_STORAGE_KEY;
+        let gas_params = GasParams::new_spec(SpecId::PRAGUE);
+        let access_list_cost = gas_params.tx_access_list_address_cost()
+            + 2 * gas_params.tx_access_list_storage_key_cost();
 
-        let result =
-            validate_batch_initial_tx_gas(&tx_env, &calls, SpecId::PRAGUE, false, false, u64::MAX)
-                .expect("batch gas should validate");
+        let result = validate_batch_initial_tx_gas(
+            &tx_env,
+            &calls,
+            SpecId::PRAGUE,
+            &gas_params,
+            false,
+            false,
+            u64::MAX,
+        )
+        .expect("batch gas should validate");
 
         let expected_initial = gas_call_1
             .initial_total_gas()
@@ -999,6 +1070,81 @@ mod tests {
 
         assert_eq!(result.initial_total_gas(), expected_initial);
         assert_eq!(result.floor_gas, expected_floor);
+    }
+
+    #[test]
+    fn batch_access_list_priced_from_gas_params_and_floor_under_amsterdam() {
+        // Under Amsterdam the access list contributes to the EIP-7981 floor and
+        // is priced from the spec gas params. Compare the same batch with and
+        // without an access list: the per-call parts cancel, leaving only the
+        // access-list contribution.
+        let gas_params = GasParams::new_spec(SpecId::AMSTERDAM);
+        let accounts = 1u64;
+        let storages = 2u64;
+        let expected_exec_delta = accounts * gas_params.tx_access_list_address_cost()
+            + storages * gas_params.tx_access_list_storage_key_cost();
+        let expected_floor_delta = gas_params
+            .tx_floor_tokens_in_access_list(accounts, storages)
+            .saturating_mul(gas_params.tx_floor_cost_per_token());
+        assert!(
+            expected_floor_delta > 0,
+            "Amsterdam must price the access-list floor"
+        );
+
+        let calls = vec![
+            Call {
+                to: TxKind::Call(address!("0x00000000000000000000000000000000000000c1")),
+                value: U256::ZERO,
+                input: Bytes::new(),
+            },
+            Call {
+                to: TxKind::Call(address!("0x00000000000000000000000000000000000000c2")),
+                value: U256::ZERO,
+                input: Bytes::new(),
+            },
+        ];
+
+        let with_access_list = TxEnv {
+            gas_limit: 1_000_000,
+            tx_type: TransactionType::Eip1559.into(),
+            access_list: AccessList(vec![AccessListItem {
+                address: address!("0x00000000000000000000000000000000000000aa"),
+                storage_keys: vec![B256::ZERO, B256::from([0x11; 32])],
+            }]),
+            ..Default::default()
+        };
+        let without_access_list = TxEnv {
+            gas_limit: 1_000_000,
+            tx_type: TransactionType::Eip1559.into(),
+            ..Default::default()
+        };
+
+        let with = validate_batch_initial_tx_gas(
+            &EvTxEnv::with_calls(with_access_list, calls.clone()),
+            &calls,
+            SpecId::AMSTERDAM,
+            &gas_params,
+            false,
+            false,
+            u64::MAX,
+        )
+        .expect("batch gas should validate");
+        let without = validate_batch_initial_tx_gas(
+            &EvTxEnv::with_calls(without_access_list, calls.clone()),
+            &calls,
+            SpecId::AMSTERDAM,
+            &gas_params,
+            false,
+            false,
+            u64::MAX,
+        )
+        .expect("batch gas should validate");
+
+        assert_eq!(
+            with.initial_total_gas() - without.initial_total_gas(),
+            expected_exec_delta
+        );
+        assert_eq!(with.floor_gas - without.floor_gas, expected_floor_delta);
     }
 
     #[test]
@@ -1054,6 +1200,7 @@ mod tests {
             &tx_env,
             &calls,
             SpecId::AMSTERDAM,
+            &GasParams::new_spec(SpecId::AMSTERDAM),
             false,
             false,
             u64::MAX,
@@ -1112,6 +1259,7 @@ mod tests {
             &tx_env,
             &calls,
             SpecId::AMSTERDAM,
+            &GasParams::new_spec(SpecId::AMSTERDAM),
             false,
             true,
             u64::MAX,
@@ -1148,9 +1296,16 @@ mod tests {
             input: Bytes::from(vec![0x11; 64]),
         }];
 
-        let err =
-            validate_batch_initial_tx_gas(&tx_env, &calls, SpecId::CANCUN, false, false, u64::MAX)
-                .expect_err("should reject when gas limit is too low");
+        let err = validate_batch_initial_tx_gas(
+            &tx_env,
+            &calls,
+            SpecId::CANCUN,
+            &GasParams::new_spec(SpecId::CANCUN),
+            false,
+            false,
+            u64::MAX,
+        )
+        .expect_err("should reject when gas limit is too low");
 
         assert!(matches!(
             err,
