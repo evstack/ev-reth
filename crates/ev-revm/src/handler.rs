@@ -309,8 +309,12 @@ where
                 evm.ctx_mut()
                     .journal_mut()
                     .checkpoint_revert(batch_checkpoint);
-                gas.rollback_state_gas();
-                gas.set_refunded(0);
+                // last_frame_result already copied the tracker into the frame
+                // result, so the rollback and refund drop must land there — it
+                // is what post-execution reads.
+                let frame_gas = frame_result.gas_mut().tracker_mut();
+                frame_gas.rollback_state_gas();
+                frame_gas.set_refunded(0);
                 return Ok(Some(frame_result));
             }
             let mut call_tx = base_tx.clone();
@@ -320,8 +324,9 @@ where
                 evm.ctx_mut()
                     .journal_mut()
                     .checkpoint_revert(batch_checkpoint);
-                gas.rollback_state_gas();
-                gas.set_refunded(0);
+                // Returning None makes the handler rebuild a pristine
+                // transaction-level gas (runtime_oog_result), so no gas
+                // adjustment is needed here.
                 evm.ctx_mut().set_tx(base_tx.clone());
                 bump_create_nonce(evm, &base_tx);
                 return Ok(None);
@@ -334,8 +339,9 @@ where
             evm.ctx_mut()
                 .journal_mut()
                 .checkpoint_revert(batch_checkpoint);
-            gas.rollback_state_gas();
-            gas.set_refunded(0);
+            let frame_gas = frame_result.gas_mut().tracker_mut();
+            frame_gas.rollback_state_gas();
+            frame_gas.set_refunded(0);
             bump_create_nonce(evm, &base_tx);
             return Ok(Some(frame_result));
         }
@@ -850,6 +856,9 @@ mod tests {
     const GAS_PRICE: u128 = 200;
     const STORAGE_RUNTIME: [u8; 6] = [0x60, 0x01, 0x60, 0x00, 0x55, 0x00];
     const REVERT_RUNTIME: [u8; 5] = [0x60, 0x00, 0x60, 0x00, 0xfd];
+    // PUSH1 0, PUSH1 0, SSTORE, STOP — clears slot 0 (accrues an EIP-3529 refund
+    // when the slot held a non-zero value).
+    const CLEAR_RUNTIME: [u8; 6] = [0x60, 0x00, 0x60, 0x00, 0x55, 0x00];
 
     #[test]
     fn caller_fee_returns_error_on_payment_overflow() {
@@ -1248,6 +1257,107 @@ mod tests {
             assert!(slot.present_value.is_zero());
             assert!(!slot.is_changed());
         }
+    }
+
+    #[test]
+    fn batch_execution_drops_refund_on_failure() {
+        // First call clears a non-zero storage slot (EIP-3529 refund), second
+        // call reverts the batch. The refund counter lives in Gas, not the
+        // journal, so the checkpoint revert does not drop it: a failed batch
+        // must not keep the refund of a reverted call.
+        let caller = address!("0x0000000000000000000000000000000000000aaa");
+        let clear_contract = address!("0x0000000000000000000000000000000000000bbb");
+        let revert_contract = address!("0x0000000000000000000000000000000000000ccc");
+
+        let mut state = State::builder()
+            .with_database(CacheDB::<EmptyDB>::default())
+            .with_bundle_update()
+            .build();
+
+        state.insert_account(
+            caller,
+            AccountInfo {
+                balance: U256::from(10_000_000_000u64),
+                nonce: 0,
+                code_hash: KECCAK_EMPTY,
+                code: None,
+                account_id: None,
+            },
+        );
+
+        // clear_contract holds a non-zero slot 0 and sets it to zero when called.
+        state.insert_account_with_storage(
+            clear_contract,
+            AccountInfo {
+                balance: U256::ZERO,
+                nonce: 1,
+                code_hash: alloy_primitives::keccak256(CLEAR_RUNTIME.as_slice()),
+                code: Some(RevmBytecode::new_raw(Bytes::copy_from_slice(
+                    CLEAR_RUNTIME.as_slice(),
+                ))),
+                account_id: None,
+            },
+            std::iter::once((U256::ZERO, U256::from(1u64))).collect(),
+        );
+
+        state.insert_account(
+            revert_contract,
+            AccountInfo {
+                balance: U256::ZERO,
+                nonce: 1,
+                code_hash: alloy_primitives::keccak256(REVERT_RUNTIME.as_slice()),
+                code: Some(RevmBytecode::new_raw(Bytes::copy_from_slice(
+                    REVERT_RUNTIME.as_slice(),
+                ))),
+                account_id: None,
+            },
+        );
+
+        let mut evm_env: EvmEnv<SpecId> = EvmEnv::default();
+        evm_env.cfg_env.chain_id = 1;
+        evm_env.cfg_env.spec = SpecId::CANCUN;
+        evm_env.block_env.basefee = 1;
+        evm_env.block_env.gas_limit = 30_000_000;
+        evm_env.block_env.number = U256::from(1);
+
+        let mut evm = EvTxEvmFactory::default().create_evm(state, evm_env);
+
+        let calls = vec![
+            Call {
+                to: TxKind::Call(clear_contract),
+                value: U256::ZERO,
+                input: Bytes::new(),
+            },
+            Call {
+                to: TxKind::Call(revert_contract),
+                value: U256::ZERO,
+                input: Bytes::new(),
+            },
+        ];
+
+        let tx_env = TxEnv {
+            caller,
+            gas_limit: 200_000,
+            gas_price: 1,
+            gas_priority_fee: Some(1),
+            chain_id: Some(1),
+            tx_type: TransactionType::Eip1559.into(),
+            ..Default::default()
+        };
+
+        let result_and_state = evm
+            .transact_raw(EvTxEnv::with_calls(tx_env, calls))
+            .expect("batch execution should complete");
+
+        assert!(
+            matches!(result_and_state.result, ExecutionResult::Revert { .. }),
+            "unexpected execution result: {:?}",
+            result_and_state.result
+        );
+        // The reverted SSTORE-clear accrues a 4800-gas EIP-3529 refund. Without
+        // dropping it, that refund leaks into the charge (tx_gas_used 42_212);
+        // the failed batch must be charged the full 47_012.
+        assert_eq!(result_and_state.result.tx_gas_used(), 47_012);
     }
 
     #[test]
