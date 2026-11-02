@@ -2617,7 +2617,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c54e03a951783e8b327515db3f2a2fd0e3bed362a96b066f341ce66ed49b4ead"
 dependencies = [
  "data-encoding",
- "syn 1.0.109",
+ "syn 3.0.9",
 ]
 
 [[package]]
@@ -3004,7 +3004,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3107,7 +3107,7 @@ dependencies = [
  "reth-ethereum",
  "reth-ethereum-forks",
  "reth-ethereum-payload-builder",
- "reth-ethereum-primitives",
+ "reth-ethereum-primitives 2.9.0",
  "reth-evm",
  "reth-evm-ethereum",
  "reth-execution-types",
@@ -3170,7 +3170,7 @@ dependencies = [
  "bytes",
  "reth-codecs",
  "reth-db-api",
- "reth-ethereum-primitives",
+ "reth-ethereum-primitives 2.9.0",
  "reth-primitives-traits",
  "serde",
 ]
@@ -3200,7 +3200,7 @@ dependencies = [
  "reth-ethereum-cli",
  "reth-ethereum-forks",
  "reth-ethereum-payload-builder",
- "reth-ethereum-primitives",
+ "reth-ethereum-primitives 2.9.0",
  "reth-node-api",
  "reth-node-builder",
  "reth-payload-builder",
@@ -3269,7 +3269,7 @@ dependencies = [
  "reth-engine-local",
  "reth-engine-primitives",
  "reth-errors",
- "reth-ethereum-primitives",
+ "reth-ethereum-primitives 2.9.0",
  "reth-evm",
  "reth-evm-ethereum",
  "reth-execution-types",
@@ -3325,7 +3325,7 @@ dependencies = [
  "reth-engine-primitives",
  "reth-ethereum",
  "reth-ethereum-consensus",
- "reth-ethereum-primitives",
+ "reth-ethereum-primitives 2.9.0",
  "reth-execution-types",
  "reth-node-api",
  "reth-payload-primitives",
@@ -5488,7 +5488,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6402,7 +6402,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6848,7 +6848,7 @@ dependencies = [
  "pin-project",
  "rand 0.9.5",
  "reth-chainspec",
- "reth-ethereum-primitives",
+ "reth-ethereum-primitives 2.8.0",
  "reth-execution-types",
  "reth-metrics",
  "reth-primitives-traits",
@@ -6943,7 +6943,7 @@ dependencies = [
  "reth-era-downloader",
  "reth-era-utils",
  "reth-eth-wire",
- "reth-ethereum-primitives",
+ "reth-ethereum-primitives 2.8.0",
  "reth-etl",
  "reth-evm",
  "reth-exex",
@@ -7161,7 +7161,7 @@ dependencies = [
  "proptest",
  "reth-codecs",
  "reth-db-models",
- "reth-ethereum-primitives",
+ "reth-ethereum-primitives 2.8.0",
  "reth-primitives-traits",
  "reth-prune-types",
  "reth-stages-types",
@@ -7308,7 +7308,7 @@ dependencies = [
  "reth-config",
  "reth-consensus",
  "reth-eth-wire-types",
- "reth-ethereum-primitives",
+ "reth-ethereum-primitives 2.8.0",
  "reth-metrics",
  "reth-network-p2p",
  "reth-network-peers",
@@ -7355,7 +7355,7 @@ dependencies = [
  "reth-engine-local",
  "reth-engine-primitives",
  "reth-eth-wire-types",
- "reth-ethereum-primitives",
+ "reth-ethereum-primitives 2.8.0",
  "reth-fs-util",
  "reth-network-api",
  "reth-network-p2p",
@@ -7452,7 +7452,7 @@ dependencies = [
  "futures",
  "reth-chain-state",
  "reth-errors",
- "reth-ethereum-primitives",
+ "reth-ethereum-primitives 2.8.0",
  "reth-evm",
  "reth-execution-errors",
  "reth-execution-types",
@@ -7493,7 +7493,7 @@ dependencies = [
  "reth-db",
  "reth-engine-primitives",
  "reth-errors",
- "reth-ethereum-primitives",
+ "reth-ethereum-primitives 2.8.0",
  "reth-evm",
  "reth-execution-cache",
  "reth-execution-types",
@@ -7670,7 +7670,7 @@ dependencies = [
  "proptest-arbitrary-interop",
  "reth-chainspec",
  "reth-codecs-derive",
- "reth-ethereum-primitives",
+ "reth-ethereum-primitives 2.8.0",
  "reth-primitives-traits",
  "serde",
  "thiserror 2.0.21",
@@ -7693,7 +7693,7 @@ dependencies = [
  "reth-eth-wire",
  "reth-ethereum-cli",
  "reth-ethereum-consensus",
- "reth-ethereum-primitives",
+ "reth-ethereum-primitives 2.8.0",
  "reth-evm",
  "reth-evm-ethereum",
  "reth-network",
@@ -7764,7 +7764,7 @@ dependencies = [
  "alloy-primitives",
  "alloy-rpc-types-engine",
  "reth-engine-primitives",
- "reth-ethereum-primitives",
+ "reth-ethereum-primitives 2.8.0",
  "reth-payload-primitives",
  "reth-primitives-traits",
  "serde",
@@ -7799,7 +7799,7 @@ dependencies = [
  "reth-chainspec",
  "reth-consensus-common",
  "reth-errors",
- "reth-ethereum-primitives",
+ "reth-ethereum-primitives 2.8.0",
  "reth-evm",
  "reth-evm-ethereum",
  "reth-execution-cache",
@@ -7819,6 +7819,19 @@ dependencies = [
 name = "reth-ethereum-primitives"
 version = "2.8.0"
 source = "git+https://github.com/paradigmxyz/reth.git?tag=v2.8.0#05ba48120a0ce8d6beb65f0b2a7ad4710f4f2915"
+dependencies = [
+ "alloy-consensus",
+ "alloy-eips",
+ "alloy-rpc-types-eth",
+ "reth-codecs",
+ "reth-primitives-traits",
+ "serde",
+]
+
+[[package]]
+name = "reth-ethereum-primitives"
+version = "2.9.0"
+source = "git+https://github.com/paradigmxyz/reth.git?tag=v2.9.0#c9a780f4f23d6752ca299b104c93b7f099673c80"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -7876,7 +7889,7 @@ dependencies = [
  "alloy-rpc-types-engine",
  "reth-chainspec",
  "reth-ethereum-forks",
- "reth-ethereum-primitives",
+ "reth-ethereum-primitives 2.8.0",
  "reth-evm",
  "reth-execution-types",
  "reth-primitives-traits",
@@ -7928,7 +7941,7 @@ dependencies = [
  "alloy-primitives",
  "alloy-rlp",
  "derive_more",
- "reth-ethereum-primitives",
+ "reth-ethereum-primitives 2.8.0",
  "reth-primitives-traits",
  "reth-trie-common",
  "revm",
@@ -7952,7 +7965,7 @@ dependencies = [
  "reth-chain-state",
  "reth-chainspec",
  "reth-config",
- "reth-ethereum-primitives",
+ "reth-ethereum-primitives 2.8.0",
  "reth-evm",
  "reth-exex-types",
  "reth-fs-util",
@@ -8138,7 +8151,7 @@ dependencies = [
  "reth-eth-wire",
  "reth-eth-wire-types",
  "reth-ethereum-forks",
- "reth-ethereum-primitives",
+ "reth-ethereum-primitives 2.8.0",
  "reth-evm",
  "reth-evm-ethereum",
  "reth-fs-util",
@@ -8207,7 +8220,7 @@ dependencies = [
  "parking_lot",
  "reth-consensus",
  "reth-eth-wire-types",
- "reth-ethereum-primitives",
+ "reth-ethereum-primitives 2.8.0",
  "reth-network-peers",
  "reth-network-types",
  "reth-primitives-traits",
@@ -8436,7 +8449,7 @@ dependencies = [
  "reth-ethereum-consensus",
  "reth-ethereum-engine-primitives",
  "reth-ethereum-payload-builder",
- "reth-ethereum-primitives",
+ "reth-ethereum-primitives 2.8.0",
  "reth-evm",
  "reth-evm-ethereum",
  "reth-network",
@@ -8683,7 +8696,7 @@ dependencies = [
  "reth-db-api",
  "reth-errors",
  "reth-ethereum-engine-primitives",
- "reth-ethereum-primitives",
+ "reth-ethereum-primitives 2.8.0",
  "reth-execution-types",
  "reth-fs-util",
  "reth-metrics",
@@ -9040,7 +9053,7 @@ dependencies = [
  "reth-chain-state",
  "reth-chainspec",
  "reth-errors",
- "reth-ethereum-primitives",
+ "reth-ethereum-primitives 2.8.0",
  "reth-evm",
  "reth-execution-types",
  "reth-metrics",
@@ -9162,7 +9175,7 @@ dependencies = [
  "reth-era",
  "reth-era-downloader",
  "reth-era-utils",
- "reth-ethereum-primitives",
+ "reth-ethereum-primitives 2.8.0",
  "reth-etl",
  "reth-evm",
  "reth-execution-types",
@@ -9282,7 +9295,7 @@ dependencies = [
  "reth-chainspec",
  "reth-db-api",
  "reth-db-models",
- "reth-ethereum-primitives",
+ "reth-ethereum-primitives 2.8.0",
  "reth-execution-types",
  "reth-primitives-traits",
  "reth-prune-types",
@@ -9324,7 +9337,7 @@ dependencies = [
  "reth-chain-state",
  "reth-db-api",
  "reth-errors",
- "reth-ethereum-primitives",
+ "reth-ethereum-primitives 2.8.0",
  "reth-metrics",
  "reth-primitives-traits",
  "reth-prune-types",
@@ -9371,7 +9384,7 @@ dependencies = [
  "alloy-primitives",
  "rand 0.8.8",
  "rand 0.9.5",
- "reth-ethereum-primitives",
+ "reth-ethereum-primitives 2.8.0",
  "reth-primitives-traits",
  "secp256k1 0.30.0",
 ]
@@ -9446,7 +9459,7 @@ dependencies = [
  "reth-chain-state",
  "reth-chainspec",
  "reth-eth-wire-types",
- "reth-ethereum-primitives",
+ "reth-ethereum-primitives 2.8.0",
  "reth-evm",
  "reth-evm-ethereum",
  "reth-execution-types",
@@ -10008,7 +10021,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -10088,7 +10101,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs 1.0.11",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -10875,10 +10888,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -11988,7 +12001,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
