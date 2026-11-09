@@ -18,7 +18,7 @@ jobs:
     steps:
       - name: Add to project
         id: add
-        uses: actions/add-to-project@v2.0.0
+        uses: actions/add-to-project@v2.0.1
         with:
           project-url: https://github.com/orgs/evstack/projects/7
           github-token: ${{ secrets.ADD_TO_PROJECT_PAT }}
