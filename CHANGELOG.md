@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-18
+
+### Fixed
+
+- Reject state-changing calls (`mint`, `burn`, `addToAllowList`, `removeFromAllowList`) to the
+  native-token precompile from within a `STATICCALL` frame
+  ([#422](https://github.com/evstack/ev-reth/pull/422)).
+- Cap native-token balances produced by minting at `u128::MAX`, so later credits (transfers, fee
+  reimbursements, base-fee redirect) can no longer saturate near `U256::MAX` and silently drop
+  value ([#428](https://github.com/evstack/ev-reth/pull/428)).
+- Reject malleable high-s (EIP-2) executor and sponsor signatures on EvNode transactions, on both
+  the transaction and pooled-transaction recovery paths
+  ([#425](https://github.com/evstack/ev-reth/pull/425), [#426](https://github.com/evstack/ev-reth/pull/426)).
+- Strictly decode payload transactions, rejecting trailing bytes after a transaction instead of
+  silently ignoring them ([#426](https://github.com/evstack/ev-reth/pull/426)).
+- Consume the executor nonce when a non-final call in an EvNode batch reverts, so a CREATE-first
+  batch no longer leaves the nonce unchanged on this path
+  ([#423](https://github.com/evstack/ev-reth/pull/423)).
+- Drop the EIP-3529 refund and roll back state gas on the frame result when a batch reverts; the
+  previous reset targeted the transaction-level tracker and had no effect
+  ([#424](https://github.com/evstack/ev-reth/pull/424)).
+- Correct Amsterdam gas accounting: reimburse the sponsor for unused EIP-8037 reservoir gas, and
+  price batch access lists from the configured gas params and include them in the EIP-7623/7981
+  floor ([#427](https://github.com/evstack/ev-reth/pull/427)).
+
 ## [0.7.0] - 2026-10-26
 
 ### Changed
